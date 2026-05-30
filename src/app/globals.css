@@ -1,13 +1,31 @@
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Paleta All4laser — degradé roxo→azul da marca */
+  --background: #f6f5fb;
+  --surface: #ffffff;
+  --foreground: #1b1b2e;
+  --muted: #6b7280;
+  --border: #e6e3f0;
+  --primary: #644de3;        /* cor central da marca */
+  --primary-dark: #3552eb;
+  --accent: #644de3;         /* destaques (tags, grupos) */
+  --accent-bg: #ece8fb;      /* fundo suave roxo */
+  --danger: #c0392b;
+  --danger-bg: #fbecea;
+  /* Degradé da marca (roxo → azul) */
+  --brand-gradient: linear-gradient(
+    90deg,
+    #be40cf 0%,
+    #9745d7 25%,
+    #644de3 50%,
+    #3552eb 75%,
+    #0500ff 100%
+  );
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
 }
 
 html {
@@ -22,19 +40,13 @@ body {
 
 body {
   min-height: 100%;
-  display: flex;
-  flex-direction: column;
   color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  /* Tipo de letra Aptos (marca All4laser); alternativas próximas para quem não o tem */
+  font-family: 'Aptos', 'Aptos Display', 'Segoe UI', system-ui, -apple-system,
+    'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-
-* {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
 }
 
 a {
@@ -42,8 +54,103 @@ a {
   text-decoration: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
+button,
+input,
+select {
+  font-family: inherit;
+  font-size: 16px; /* evita zoom automático no iOS */
+}
+
+/* ----- Barra de topo da marca All4laser ----- */
+.topbar {
+  background: #ffffff;
+  padding: 10px 16px;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+.topbar-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.usermenu {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.usermenu-nome {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--foreground);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.usermenu-badge {
+  background: var(--accent-bg);
+  color: var(--primary-dark);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+}
+
+.usermenu-sair {
+  background: var(--surface);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.usermenu-sair:hover {
+  background: var(--background);
+}
+
+@media (max-width: 560px) {
+  .usermenu-nome {
+    display: none;
+  }
+}
+
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.topbar-logo {
+  height: 52px;
+  width: auto;
+  display: block;
+}
+
+.topbar-lema {
+  font-style: italic;
+  font-weight: 500;
+  color: var(--muted);
+  font-size: 14px;
+  padding-left: 14px;
+  border-left: 1px solid var(--border);
+}
+
+/* No telemóvel esconde o lema para o logo respirar */
+@media (max-width: 560px) {
+  .topbar-lema {
+    display: none;
   }
 }

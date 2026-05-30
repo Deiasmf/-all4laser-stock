@@ -1,0 +1,198 @@
+.page {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.voltar {
+  display: inline-block;
+  color: var(--primary);
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.titulo {
+  font-size: 24px;
+  font-weight: 800;
+  margin-bottom: 4px;
+}
+
+.subtitulo {
+  color: var(--muted);
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+
+/* Cartões de números no topo */
+.resumo {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.kpi {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.kpiNumero {
+  font-size: 30px;
+  font-weight: 800;
+  color: var(--primary);
+}
+
+.kpiRotulo {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.seccao {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.seccaoTitulo {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.tabela {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.tabela th,
+.tabela td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.tabela th {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.tabela td.num,
+.tabela th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.grupoMarca td {
+  background: var(--brand-gradient);
+  color: #fff;
+  font-weight: 800;
+}
+
+.linhaClicavel {
+  cursor: pointer;
+}
+
+.linhaClicavel:hover {
+  background: var(--accent-bg);
+}
+
+.vazio {
+  color: var(--muted);
+  font-style: italic;
+  padding: 12px 0;
+}
+
+/* ----- Gráfico de barras (entradas vs saídas) ----- */
+.legenda {
+  display: flex;
+  gap: 18px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.legendaItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legendaCor {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.corEntrada {
+  background: #9745d7;
+}
+
+.corSaida {
+  background: #3552eb;
+}
+
+.grafico {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  height: 180px;
+  padding-top: 18px;
+  overflow-x: auto;
+}
+
+.mesCol {
+  flex: 1 0 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+}
+
+.barras {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 4px;
+  height: 100%;
+  width: 100%;
+}
+
+.barra {
+  width: 14px;
+  border-radius: 4px 4px 0 0;
+  position: relative;
+  min-height: 2px;
+  transition: height 0.2s;
+}
+
+.barraValor {
+  position: absolute;
+  top: -16px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.mesLabel {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.estado {
+  padding: 40px 0;
+  text-align: center;
+  color: var(--muted);
+}

@@ -1,142 +1,330 @@
 .page {
-  --background: #fafafa;
-  --foreground: #fff;
-
-  --text-primary: #000;
-  --text-secondary: #666;
-
-  --button-primary-hover: #383838;
-  --button-secondary-hover: #f2f2f2;
-  --button-secondary-border: #ebebeb;
-
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-geist-sans);
-  background-color: var(--background);
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 16px;
 }
 
-.main {
+.header {
   display: flex;
-  flex: 1;
-  width: 100%;
-  max-width: 800px;
-  flex-direction: column;
-  align-items: flex-start;
+  align-items: baseline;
   justify-content: space-between;
-  background-color: var(--foreground);
-  padding: 120px 60px;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
 }
 
-.intro {
+.title {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--primary);
+  letter-spacing: -0.01em;
+}
+
+.headerDireita {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  text-align: left;
-  gap: 24px;
+  align-items: center;
+  gap: 12px;
 }
 
-.intro h1 {
-  max-width: 320px;
-  font-size: 40px;
-  font-weight: 600;
-  line-height: 48px;
-  letter-spacing: -2.4px;
-  text-wrap: balance;
-  color: var(--text-primary);
-}
-
-.intro p {
-  max-width: 440px;
-  font-size: 18px;
-  line-height: 32px;
-  text-wrap: balance;
-  color: var(--text-secondary);
-}
-
-.intro a {
-  font-weight: 500;
-  color: var(--text-primary);
-}
-
-.ctas {
-  display: flex;
-  flex-direction: row;
-  width: 100%;
-  max-width: 440px;
-  gap: 16px;
+.count {
+  color: var(--muted);
   font-size: 14px;
 }
 
-.ctas a {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 40px;
-  padding: 0 16px;
-  border-radius: 128px;
-  border: 1px solid transparent;
-  transition: 0.2s;
+.btnAdicionar {
+  display: inline-block;
+  background: var(--primary);
+  color: #fff;
+  padding: 9px 16px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.btnSecundario {
+  display: inline-block;
+  background: var(--surface);
+  color: var(--primary);
+  border: 1px solid var(--border);
+  padding: 9px 16px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+/* ----- Alerta de incompletos ----- */
+.alertaIncompletos {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--danger-bg);
+  color: var(--danger);
+  border: 1px solid #f3c4c4;
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
-  width: fit-content;
-  font-weight: 500;
+  margin-bottom: 16px;
 }
 
-a.primary {
-  background: var(--text-primary);
-  color: var(--background);
+/* ----- Filtros ----- */
+.filtros {
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+  margin-bottom: 16px;
 }
 
-a.secondary {
-  border-color: var(--button-secondary-border);
+.input,
+.select {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--foreground);
 }
 
-/* Enable hover only on non-touch devices */
-@media (hover: hover) and (pointer: fine) {
-  a.primary:hover {
-    background: var(--button-primary-hover);
-    border-color: transparent;
-  }
-
-  a.secondary:hover {
-    background: var(--button-secondary-hover);
-    border-color: transparent;
-  }
+.input {
+  flex: 1 1 220px;
+  min-width: 0;
 }
 
-@media (max-width: 600px) {
-  .main {
-    padding: 48px 24px;
-  }
-
-  .intro {
-    gap: 16px;
-  }
-
-  .intro h1 {
-    font-size: 32px;
-    line-height: 40px;
-    letter-spacing: -1.92px;
-  }
+.select {
+  flex: 0 1 auto;
 }
 
-@media (prefers-color-scheme: dark) {
-  .logo {
-    filter: invert();
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--foreground);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 12px;
+  cursor: pointer;
+}
+
+.btnLimpar {
+  background: transparent;
+  color: var(--primary);
+  border: 1px solid var(--primary);
+  border-radius: 8px;
+  padding: 0 14px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ----- Tabela (ecrã grande) ----- */
+.tabelaWrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.tabela {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.tabela th,
+.tabela td {
+  text-align: left;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.tabela th {
+  background: #fafbfc;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.linhaEquip {
+  cursor: pointer;
+}
+
+.serialCell {
+  font-weight: 700;
+  color: var(--primary-dark);
+}
+
+.linhaEquip:hover {
+  background: #f7f9fc;
+}
+
+/* Cabeçalho de MARCA — barra de cor estreita a separar marcas */
+.grupoMarca {
+  cursor: pointer;
+}
+
+.grupoMarca td {
+  background: var(--brand-gradient);
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 6px 12px;
+  border-top: 2px solid #ffffff;
+}
+
+.grupoMarca .seta {
+  display: inline-block;
+  width: 14px;
+  font-size: 11px;
+  opacity: 0.9;
+}
+
+/* O primeiro grupo não precisa da linha branca em cima */
+.grupoMarca:first-child td {
+  border-top: none;
+}
+
+.grupoModelo td {
+  background: var(--accent-bg);
+  color: var(--primary-dark);
+  font-weight: 700;
+  font-size: 13px;
+  padding-left: 28px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* ----- Cartões (telemóvel) ----- */
+.cards {
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cardGrupoMarca {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--brand-gradient);
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 7px 12px;
+  border-radius: 6px;
+  margin-top: 10px;
+  cursor: pointer;
+}
+
+.cardGrupoMarca .seta {
+  font-size: 11px;
+  width: 14px;
+}
+
+.cardGrupoModelo {
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 13px;
+  padding: 2px 4px 0;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  cursor: pointer;
+}
+
+.cardTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.cardModelo {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.cardLinha {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+/* ----- Badges ----- */
+.badgeFalta {
+  display: inline-block;
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.statusTag {
+  display: inline-block;
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+/* ----- Paginação ----- */
+.paginacao {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 18px 0;
+}
+
+.btn {
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--foreground);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.pagInfo {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.estado {
+  padding: 40px 0;
+  text-align: center;
+  color: var(--muted);
+}
+
+/* Em ecrãs pequenos: esconde a tabela e mostra cartões */
+@media (max-width: 720px) {
+  .tabelaWrap {
+    display: none;
   }
-
-  .page {
-    --background: #000;
-    --foreground: #000;
-
-    --text-primary: #ededed;
-    --text-secondary: #999;
-
-    --button-primary-hover: #ccc;
-    --button-secondary-hover: #1a1a1a;
-    --button-secondary-border: #1a1a1a;
+  .cards {
+    display: flex;
   }
 }
