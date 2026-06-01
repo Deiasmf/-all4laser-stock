@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
+import AlugueresNav from '@/components/AlugueresNav'
 import {
   TIPOS_ALUGUER,
   TIPOS_INTERNACIONAL,
@@ -52,6 +53,8 @@ export default function AlugueresPage() {
         <h1 style={s.titulo}>Alugueres</h1>
         <Link href="/" style={s.voltar}>← Stock</Link>
       </div>
+
+      <AlugueresNav />
 
       <div style={s.tabs}>
         <button
