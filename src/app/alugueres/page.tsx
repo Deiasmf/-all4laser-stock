@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
 import {
   TIPOS_ALUGUER,
+  TIPOS_INTERNACIONAL,
   METODOS_PAGAMENTO,
   type Cliente,
   type Aluguer,
@@ -24,8 +25,12 @@ function ehNacional(pais: string) {
 function grupoPreco(modelo: string): string | null {
   const n = modelo.toLowerCase().replace(/[^a-z]/g, '')
   if (!n) return null
-  if (n.includes('maxpro')) return 'gentlemaxpro' // cobre MaxPro e MaxPro Plus
+  if (n.includes('maxpro')) return n.includes('plus') ? 'gentlemaxproplus' : 'gentlemaxpro'
   if (n.includes('gentlepro') && !n.includes('prou')) return 'gentlepro' // exclui Pro-U
+  if (n.includes('soprano')) {
+    if (n.includes('platinum')) return 'sopranoplatinum'
+    if (n.includes('ice')) return 'sopranoice'
+  }
   return null
 }
 
@@ -105,19 +110,35 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
       .then(({ data }) => setClientes((data as Cliente[]) ?? []))
     supabase
       .from('precos_aluguer')
-      .select('modelo_grupo, tipo_aluguer, valor')
+      .select('modelo_grupo, mercado, tipo_aluguer, valor')
       .then(({ data }) => {
         const m = new Map<string, number>()
-        for (const r of (data ?? []) as { modelo_grupo: string; tipo_aluguer: string; valor: number }[]) {
-          m.set(`${r.modelo_grupo}|${r.tipo_aluguer}`, Number(r.valor))
+        for (const r of (data ?? []) as { modelo_grupo: string; mercado: string; tipo_aluguer: string; valor: number }[]) {
+          m.set(`${r.modelo_grupo}|${r.mercado}|${r.tipo_aluguer}`, Number(r.valor))
         }
         setPrecos(m)
       })
   }, [])
 
-  // Valor sugerido pela tabela (modelo + tipo)
+  // Cliente existente correspondente ao texto escrito
+  const clienteExistente = clientes.find(
+    (c) => c.nome.trim().toLowerCase() === cliente.trim().toLowerCase()
+  )
+
+  // Mercado do aluguer = pelo país do cliente (Portugal = nacional)
+  const nacionalAtual = clienteExistente ? clienteExistente.nacional : ehNacional(pais)
+  const mercado = nacionalAtual ? 'nacional' : 'internacional'
+  const tiposDisponiveis: readonly string[] = nacionalAtual ? TIPOS_ALUGUER : TIPOS_INTERNACIONAL
+
+  // Se mudar de mercado, o tipo escolhido pode deixar de existir → limpar
+  useEffect(() => {
+    if (tipo && !tiposDisponiveis.includes(tipo)) setTipo('')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mercado])
+
+  // Valor sugerido pela tabela (modelo + mercado + tipo)
   const grupo = grupoPreco(modelo)
-  const sugestao = grupo && tipo ? precos.get(`${grupo}|${tipo}`) : undefined
+  const sugestao = grupo && tipo ? precos.get(`${grupo}|${mercado}|${tipo}`) : undefined
 
   // Preenche o valor com a sugestão quando ainda está vazio
   useEffect(() => {
@@ -128,14 +149,9 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
   // Ao escolher o tipo, aplica a sugestão (pode ser ajustada depois)
   function escolherTipo(novo: string) {
     setTipo(novo)
-    const sug = grupo ? precos.get(`${grupo}|${novo}`) : undefined
+    const sug = grupo ? precos.get(`${grupo}|${mercado}|${novo}`) : undefined
     if (sug !== undefined) setValor(String(sug))
   }
-
-  // Cliente existente correspondente ao texto escrito
-  const clienteExistente = clientes.find(
-    (c) => c.nome.trim().toLowerCase() === cliente.trim().toLowerCase()
-  )
 
   // Pesquisa de serial no stock (preenche marca/modelo/ano)
   useEffect(() => {
@@ -302,10 +318,12 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
         </div>
       </div>
 
-      <label style={s.label}>Tipo de aluguer</label>
+      <label style={s.label}>
+        Tipo de aluguer {!nacionalAtual && <span style={s.nota}>(internacional — contrato)</span>}
+      </label>
       <select style={s.input} value={tipo} onChange={(e) => escolherTipo(e.target.value)}>
         <option value="">— escolher —</option>
-        {TIPOS_ALUGUER.map((t) => (
+        {tiposDisponiveis.map((t) => (
           <option key={t} value={t}>{t}</option>
         ))}
       </select>

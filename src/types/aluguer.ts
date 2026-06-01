@@ -27,13 +27,19 @@ export type Aluguer = {
   updated_at: string
 }
 
-// Opções fixas (CLAUDE.md / pedido da Andreia)
+// Tipos de aluguer NACIONAIS (curto prazo)
 export const TIPOS_ALUGUER = [
   'Diário',
   '3 dias',
   'Semanal',
   'Quinzenal',
   'Mensal',
+] as const
+
+// Tipos de aluguer INTERNACIONAIS (contratos de longa duração)
+export const TIPOS_INTERNACIONAL = [
+  '12 meses',
+  '24 meses',
 ] as const
 
 export const METODOS_PAGAMENTO = [
