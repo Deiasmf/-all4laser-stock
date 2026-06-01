@@ -45,6 +45,10 @@ export default function RootLayout({
                 <img src="/logo.jpg" alt="All4laser" className="topbar-logo" />
                 <span className="topbar-lema">Where technology meets trust</span>
               </a>
+              <nav className="topbar-nav">
+                <a href="/" className="topbar-link">Stock</a>
+                <a href="/alugueres" className="topbar-link">Alugueres</a>
+              </nav>
               <UserMenu />
             </div>
           </header>

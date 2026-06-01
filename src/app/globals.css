@@ -127,6 +127,36 @@ select {
   }
 }
 
+.topbar-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+}
+
+.topbar-link {
+  color: var(--foreground);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 7px 12px;
+  border-radius: 8px;
+}
+
+.topbar-link:hover {
+  background: var(--accent-bg);
+  color: var(--primary-dark);
+}
+
+@media (max-width: 560px) {
+  .topbar-lema {
+    display: none;
+  }
+  .topbar-link {
+    padding: 7px 9px;
+  }
+}
+
 .topbar-brand {
   display: flex;
   align-items: center;
