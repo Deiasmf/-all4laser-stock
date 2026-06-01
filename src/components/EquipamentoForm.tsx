@@ -31,8 +31,9 @@ const CAMPOS_EDITAVEIS = [
   'data_entrada', 'data_saida', 'status', 'original_upgraded',
   'valor_compra', 'preco_venda', 'fatura_compra', 'fatura_compra_url',
   'fatura_compra_caminho', 'fatura_saida',
-  'awb_dau', 'nota_encomenda', 'rentabilizacao', 'acessorios',
-  'relatorio_tecnico', 'observacoes',
+  'awb_dau', 'awb_dau_caminho', 'nota_encomenda', 'nota_encomenda_caminho',
+  'rentabilizacao', 'acessorios',
+  'relatorio_tecnico', 'relatorio_tecnico_caminho', 'observacoes',
 ] as const
 
 function nomeSeguro(nome: string) {
@@ -124,18 +125,20 @@ function CampoLista({ label, valor, aoMudar, opcoes, listId, erro, obrigatorio }
   )
 }
 
-// Anexo de ficheiro para a fatura de compra
-function CampoFaturaFicheiro({
+// Anexo de ficheiro genérico (bucket privado `faturas`) — fatura, DAU, nota, relatório
+function CampoFicheiro({
+  label,
   caminho,
   aoMudar,
 }: {
+  label: string
   caminho: string
-  aoMudar: (url: string, caminho: string) => void
+  aoMudar: (caminho: string) => void
 }) {
   const [aCarregar, setACarregar] = useState(false)
   const [linkSeguro, setLinkSeguro] = useState<string | null>(null)
 
-  // Gera link temporário seguro para ver a fatura (bucket privado)
+  // Gera link temporário seguro para ver o ficheiro (bucket privado)
   useEffect(() => {
     if (caminho) {
       supabase.storage
@@ -158,18 +161,18 @@ function CampoFaturaFicheiro({
       setACarregar(false)
       return
     }
-    aoMudar(novoCaminho, novoCaminho)
+    aoMudar(novoCaminho)
     setACarregar(false)
   }
 
   async function remover() {
     if (caminho) await supabase.storage.from(BUCKET_FATURAS).remove([caminho])
-    aoMudar('', '')
+    aoMudar('')
   }
 
   return (
     <div className={styles.campo}>
-      <label className={styles.label}>Ficheiro da fatura de compra (PDF ou foto)</label>
+      <label className={styles.label}>{label}</label>
       {caminho ? (
         <div className={styles.anexoLinha}>
           <a href={linkSeguro ?? '#'} target="_blank" rel="noopener noreferrer" className={styles.anexoLink}>
@@ -363,17 +366,30 @@ export default function EquipamentoForm({
       <div className={styles.seccao}>
         <div className={styles.seccaoTitulo}>Documentos</div>
         <CampoTexto label="Fatura de compra (nº/referência)" valor={form.fatura_compra} aoMudar={(v) => set('fatura_compra', v)} />
-        <CampoFaturaFicheiro
+        <CampoFicheiro
+          label="Ficheiro da fatura de compra (PDF ou foto)"
           caminho={form.fatura_compra_caminho}
-          aoMudar={(u, c) => {
-            set('fatura_compra_url', u)
+          aoMudar={(c) => {
+            set('fatura_compra_url', c)
             set('fatura_compra_caminho', c)
           }}
         />
         <CampoTexto label="Fatura de saída" valor={form.fatura_saida} aoMudar={(v) => set('fatura_saida', v)} />
-        <CampoTexto label="AWB + DAU" valor={form.awb_dau} aoMudar={(v) => set('awb_dau', v)} />
-        <CampoTexto label="Nota de encomenda" valor={form.nota_encomenda} aoMudar={(v) => set('nota_encomenda', v)} />
-        <CampoTexto label="Relatório técnico" valor={form.relatorio_tecnico} aoMudar={(v) => set('relatorio_tecnico', v)} />
+        <CampoFicheiro
+          label="AWB + DAU (PDF ou foto)"
+          caminho={form.awb_dau_caminho}
+          aoMudar={(c) => set('awb_dau_caminho', c)}
+        />
+        <CampoFicheiro
+          label="Nota de encomenda (PDF ou foto)"
+          caminho={form.nota_encomenda_caminho}
+          aoMudar={(c) => set('nota_encomenda_caminho', c)}
+        />
+        <CampoFicheiro
+          label="Relatório técnico (PDF ou foto)"
+          caminho={form.relatorio_tecnico_caminho}
+          aoMudar={(c) => set('relatorio_tecnico_caminho', c)}
+        />
       </div>
 
       <div className={styles.seccao}>

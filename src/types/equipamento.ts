@@ -17,11 +17,14 @@ export type Equipamento = {
   fatura_compra_caminho: string | null
   fatura_saida: string | null
   awb_dau: string | null
+  awb_dau_caminho: string | null
   nota_encomenda: string | null
+  nota_encomenda_caminho: string | null
   rentabilizacao: string | null
   hp: string | null
   acessorios: string | null
   relatorio_tecnico: string | null
+  relatorio_tecnico_caminho: string | null
   observacoes: string | null
   criado_por: string | null
   criado_por_nome: string | null

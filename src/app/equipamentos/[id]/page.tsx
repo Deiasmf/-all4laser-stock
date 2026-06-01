@@ -23,6 +23,31 @@ function formatarEuro(v: number | null) {
   return v.toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' })
 }
 
+// Link temporário seguro para um ficheiro no bucket privado `faturas` (só admins
+// veem estas linhas). Devolve null se não houver ficheiro.
+function FicheiroLink({ caminho }: { caminho: string | null }) {
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    if (!caminho) {
+      setUrl(null)
+      return
+    }
+    supabase.storage
+      .from('faturas')
+      .createSignedUrl(caminho, 3600)
+      .then(({ data }) => setUrl(data?.signedUrl ?? null))
+  }, [caminho])
+
+  if (!caminho) return null
+  return url ? (
+    <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', fontWeight: 600 }}>
+      📄 Ver ficheiro
+    </a>
+  ) : (
+    <>a preparar link...</>
+  )
+}
+
 export default function DetalheEquipamento() {
   const params = useParams()
   const router = useRouter()
@@ -33,7 +58,6 @@ export default function DetalheEquipamento() {
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
   const [aApagar, setAApagar] = useState(false)
-  const [faturaUrl, setFaturaUrl] = useState<string | null>(null)
 
   useEffect(() => {
     supabase
@@ -47,19 +71,6 @@ export default function DetalheEquipamento() {
         setLoading(false)
       })
   }, [id])
-
-  // Link temporário seguro para a fatura (bucket privado), só admins
-  useEffect(() => {
-    const caminho = eq?.fatura_compra_caminho
-    if (isAdmin && caminho) {
-      supabase.storage
-        .from('faturas')
-        .createSignedUrl(caminho, 3600)
-        .then(({ data }) => setFaturaUrl(data?.signedUrl ?? null))
-    } else {
-      setFaturaUrl(null)
-    }
-  }, [eq?.fatura_compra_caminho, isAdmin])
 
   if (loading) return <main className={styles.page}><p className={styles.estado}>A carregar...</p></main>
   if (erro || !eq)
@@ -165,23 +176,28 @@ export default function DetalheEquipamento() {
         <div className={styles.seccaoTitulo}>Documentos</div>
         <Linha rotulo="Fatura de compra" valor={eq.fatura_compra} />
         {isAdmin && (
-          <Linha
-            rotulo="Ficheiro da fatura"
-            valor={
-              faturaUrl ? (
-                <a href={faturaUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', fontWeight: 600 }}>
-                  📄 Ver ficheiro
-                </a>
-              ) : eq.fatura_compra_caminho ? (
-                'a preparar link...'
-              ) : null
-            }
-          />
+          <Linha rotulo="Ficheiro da fatura" valor={<FicheiroLink caminho={eq.fatura_compra_caminho} />} />
         )}
         <Linha rotulo="Fatura de saída" valor={eq.fatura_saida} />
-        <Linha rotulo="AWB + DAU" valor={eq.awb_dau} />
-        <Linha rotulo="Nota de encomenda" valor={eq.nota_encomenda} />
-        <Linha rotulo="Relatório técnico" valor={eq.relatorio_tecnico} />
+        <Linha
+          rotulo="AWB + DAU"
+          valor={
+            eq.awb_dau || (isAdmin && eq.awb_dau_caminho) ? (
+              <>
+                {eq.awb_dau && <div>{eq.awb_dau}</div>}
+                {isAdmin && eq.awb_dau_caminho && (
+                  <div><FicheiroLink caminho={eq.awb_dau_caminho} /></div>
+                )}
+              </>
+            ) : null
+          }
+        />
+        {isAdmin && (
+          <Linha rotulo="Nota de encomenda" valor={<FicheiroLink caminho={eq.nota_encomenda_caminho} />} />
+        )}
+        {isAdmin && (
+          <Linha rotulo="Relatório técnico" valor={<FicheiroLink caminho={eq.relatorio_tecnico_caminho} />} />
+        )}
       </div>
 
       <div className={styles.seccao}>
