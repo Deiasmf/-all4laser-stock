@@ -19,6 +19,16 @@ function ehNacional(pais: string) {
   return pais.trim().toLowerCase() === 'portugal'
 }
 
+// Associa o nome do modelo (escrito de várias formas no stock) a um grupo de preço.
+// Ignora maiúsculas, espaços e símbolos.
+function grupoPreco(modelo: string): string | null {
+  const n = modelo.toLowerCase().replace(/[^a-z]/g, '')
+  if (!n) return null
+  if (n.includes('maxpro')) return 'gentlemaxpro' // cobre MaxPro e MaxPro Plus
+  if (n.includes('gentlepro') && !n.includes('prou')) return 'gentlepro' // exclui Pro-U
+  return null
+}
+
 type EquipResumo = {
   id: string
   marca: string | null
@@ -80,6 +90,9 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
   const [metodo, setMetodo] = useState<string>('')
   const [dataEntrega, setDataEntrega] = useState(hoje())
 
+  // Tabela de preços: chave `${grupo}|${tipo}` -> valor
+  const [precos, setPrecos] = useState<Map<string, number>>(new Map())
+
   const [aGuardar, setAGuardar] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [okMsg, setOkMsg] = useState<string | null>(null)
@@ -90,7 +103,34 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
       .select('*')
       .order('nome')
       .then(({ data }) => setClientes((data as Cliente[]) ?? []))
+    supabase
+      .from('precos_aluguer')
+      .select('modelo_grupo, tipo_aluguer, valor')
+      .then(({ data }) => {
+        const m = new Map<string, number>()
+        for (const r of (data ?? []) as { modelo_grupo: string; tipo_aluguer: string; valor: number }[]) {
+          m.set(`${r.modelo_grupo}|${r.tipo_aluguer}`, Number(r.valor))
+        }
+        setPrecos(m)
+      })
   }, [])
+
+  // Valor sugerido pela tabela (modelo + tipo)
+  const grupo = grupoPreco(modelo)
+  const sugestao = grupo && tipo ? precos.get(`${grupo}|${tipo}`) : undefined
+
+  // Preenche o valor com a sugestão quando ainda está vazio
+  useEffect(() => {
+    if (sugestao !== undefined && valor.trim() === '') setValor(String(sugestao))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sugestao])
+
+  // Ao escolher o tipo, aplica a sugestão (pode ser ajustada depois)
+  function escolherTipo(novo: string) {
+    setTipo(novo)
+    const sug = grupo ? precos.get(`${grupo}|${novo}`) : undefined
+    if (sug !== undefined) setValor(String(sug))
+  }
 
   // Cliente existente correspondente ao texto escrito
   const clienteExistente = clientes.find(
@@ -263,7 +303,7 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
       </div>
 
       <label style={s.label}>Tipo de aluguer</label>
-      <select style={s.input} value={tipo} onChange={(e) => setTipo(e.target.value)}>
+      <select style={s.input} value={tipo} onChange={(e) => escolherTipo(e.target.value)}>
         <option value="">— escolher —</option>
         {TIPOS_ALUGUER.map((t) => (
           <option key={t} value={t}>{t}</option>
@@ -280,6 +320,9 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
             value={valor}
             onChange={(e) => setValor(e.target.value)}
           />
+          {sugestao !== undefined && (
+            <div style={s.nota}>Preço de tabela: {sugestao}€ (podes ajustar)</div>
+          )}
         </div>
         <div>
           <label style={s.label}>Método de pagamento</label>
