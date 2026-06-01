@@ -1,9 +1,10 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth";
 import AuthGate from "@/components/AuthGate";
 import UserMenu from "@/components/UserMenu";
+import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -18,6 +19,13 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "All4laser Stock",
   description: "Gestão de stock de equipamentos All4laser",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, title: "All4laser", statusBarStyle: "default" },
+  icons: { icon: "/icon-192.png", apple: "/icon-192.png" },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#16294d",
 };
 
 export default function RootLayout({
@@ -29,6 +37,7 @@ export default function RootLayout({
     <html lang="pt" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body>
         <AuthProvider>
+          <ServiceWorkerRegister />
           <header className="topbar">
             <div className="topbar-inner">
               <a href="/" className="topbar-brand">
