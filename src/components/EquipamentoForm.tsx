@@ -2,7 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import type { Equipamento } from '@/types/equipamento'
+import {
+  CAMPOS_OBRIGATORIOS,
+  ROTULO_OBRIGATORIO,
+  type Equipamento,
+} from '@/types/equipamento'
 import styles from './equipamentoForm.module.css'
 
 // Os 8 status oficiais (CLAUDE.md). Juntam-se aos que já existem nos dados.
@@ -273,12 +277,13 @@ export default function EquipamentoForm({
 
   function validar(f: FormState): Record<string, string> {
     const e: Record<string, string> = {}
-    if (!f.marca.trim()) e.marca = 'A marca é obrigatória.'
-    if (!f.modelo.trim()) e.modelo = 'O modelo é obrigatório.'
-    if (!f.serial_number.trim()) e.serial_number = 'O serial number é obrigatório.'
-    if (!f.ano.trim()) e.ano = 'O ano é obrigatório.'
-    if (!f.data_entrada.trim()) e.data_entrada = 'A data de entrada é obrigatória.'
-    // Valores deixam de ser obrigatórios, mas se preenchidos têm de ser números
+    // Campos obrigatórios — fonte única de verdade em @/types/equipamento
+    for (const campo of CAMPOS_OBRIGATORIOS) {
+      if (!(f[campo] ?? '').trim()) {
+        e[campo] = `${ROTULO_OBRIGATORIO[campo]} é de preenchimento obrigatório.`
+      }
+    }
+    // Valores não são obrigatórios, mas se preenchidos têm de ser números
     if (f.valor_compra.trim() && isNaN(Number(f.valor_compra)))
       e.valor_compra = 'Tem de ser um número.'
     if (f.preco_venda.trim() && isNaN(Number(f.preco_venda)))
@@ -318,7 +323,7 @@ export default function EquipamentoForm({
 
       <div className={styles.seccao}>
         <div className={styles.seccaoTitulo}>Identificação</div>
-        <CampoLista label="Marca" listId="lista-marca" opcoes={opcoes.marca} valor={form.marca} aoMudar={(v) => set('marca', v)} erro={errosCampos.marca} obrigatorio />
+        <CampoLista label="Marca" listId="lista-marca" opcoes={opcoes.marca} valor={form.marca} aoMudar={(v) => set('marca', v)} erro={errosCampos.marca} />
         <CampoLista label="Modelo" listId="lista-modelo" opcoes={opcoesModelo} valor={form.modelo} aoMudar={(v) => set('modelo', v)} erro={errosCampos.modelo} obrigatorio />
         <CampoTexto label="Serial Number" valor={form.serial_number} aoMudar={(v) => set('serial_number', v)} erro={errosCampos.serial_number} obrigatorio />
         <CampoLista label="Ano" listId="lista-ano" opcoes={opcoes.ano} valor={form.ano} aoMudar={(v) => set('ano', v)} erro={errosCampos.ano} obrigatorio />

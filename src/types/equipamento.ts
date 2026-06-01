@@ -33,20 +33,20 @@ export type Equipamento = {
 
 // Campos obrigatórios — usados para mostrar avisos de informação em falta
 export const CAMPOS_OBRIGATORIOS: (keyof Equipamento)[] = [
-  'marca',
   'modelo',
   'serial_number',
   'ano',
   'data_entrada',
+  'status',
 ]
 
 // Nome legível de cada campo obrigatório
 export const ROTULO_OBRIGATORIO: Record<string, string> = {
-  marca: 'Marca',
   modelo: 'Modelo',
   serial_number: 'Serial Number',
   ano: 'Ano',
   data_entrada: 'Data de entrada',
+  status: 'Status',
 }
 
 // Devolve a lista de campos obrigatórios em falta num equipamento
