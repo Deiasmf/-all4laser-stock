@@ -38,19 +38,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data }) => {
+    let ativo = true
+
+    // A sessão liberta o ecrã de imediato; o perfil carrega à parte (não bloqueia).
+    supabase.auth.getSession().then(({ data }) => {
+      if (!ativo) return
       setSession(data.session)
-      if (data.session) await carregarPerfil(data.session.user.id)
       setCarregando(false)
+      if (data.session) carregarPerfil(data.session.user.id)
     })
 
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_evento, novaSessao) => {
+    // IMPORTANTE: não fazer `await` a chamadas à BD dentro deste callback — o
+    // supabase-js usa um lock de auth e isso provoca deadlock (ecrã preso a
+    // "A carregar..."). Adiamos com setTimeout para correr fora do callback.
+    const { data: sub } = supabase.auth.onAuthStateChange((_evento, novaSessao) => {
       setSession(novaSessao)
-      if (novaSessao) await carregarPerfil(novaSessao.user.id)
+      setCarregando(false)
+      if (novaSessao) setTimeout(() => carregarPerfil(novaSessao.user.id), 0)
       else setPerfil(null)
     })
 
-    return () => sub.subscription.unsubscribe()
+    return () => {
+      ativo = false
+      sub.subscription.unsubscribe()
+    }
   }, [])
 
   async function sair() {
