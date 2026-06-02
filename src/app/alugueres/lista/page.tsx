@@ -39,6 +39,7 @@ export default function ListaAlugueres() {
     return alugueres
       .filter((a) => (a.data_entrega ?? '').startsWith(mes))
       .filter((a) => !q || (a.cliente_nome ?? '').toLowerCase().includes(q))
+      .sort((a, b) => (a.cliente_nome ?? '').localeCompare(b.cliente_nome ?? '', 'pt'))
   }, [alugueres, mes, pesquisa])
 
   const total = somar(filtrados, (a) => a.valor)
