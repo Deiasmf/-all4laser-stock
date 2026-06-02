@@ -26,8 +26,12 @@ export default function DashboardAlugueres() {
       .from('alugueres')
       .select('*')
       .then(({ data }) => {
-        setAlugueres((data as Aluguer[]) ?? [])
+        const lista = (data as Aluguer[]) ?? []
+        setAlugueres(lista)
         setCarregando(false)
+        // abrir no mês mais recente que tenha registos
+        const ms = lista.map((a) => (a.data_entrega ?? '').slice(0, 7)).filter(Boolean).sort()
+        if (ms.length) setMes(ms[ms.length - 1])
       })
   }, [])
 

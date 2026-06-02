@@ -47,7 +47,7 @@ export default function RootLayout({
               </a>
               <nav className="topbar-nav">
                 <a href="/" className="topbar-link">Stock</a>
-                <a href="/alugueres" className="topbar-link">Alugueres</a>
+                <a href="/alugueres/lista" className="topbar-link">Alugueres</a>
               </nav>
               <UserMenu />
             </div>
