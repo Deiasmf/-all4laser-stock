@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
 import type { Equipamento } from '@/types/equipamento'
 import { camposEmFalta, ROTULO_OBRIGATORIO } from '@/types/equipamento'
+import type { FaturacaoEquip } from '@/types/aluguer'
 import MediaGaleria from '@/components/MediaGaleria'
 import QrEquipamento from '@/components/QrEquipamento'
 import styles from './detalhe.module.css'
@@ -58,6 +59,7 @@ export default function DetalheEquipamento() {
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
   const [aApagar, setAApagar] = useState(false)
+  const [fatur, setFatur] = useState<FaturacaoEquip | null>(null)
 
   useEffect(() => {
     supabase
@@ -70,6 +72,16 @@ export default function DetalheEquipamento() {
         else setEq(data as Equipamento)
         setLoading(false)
       })
+  }, [id])
+
+  // Faturação de alugueres deste equipamento (se existir)
+  useEffect(() => {
+    supabase
+      .from('faturacao_equipamento')
+      .select('*')
+      .eq('equipamento_id', id)
+      .maybeSingle()
+      .then(({ data }) => setFatur((data as FaturacaoEquip) ?? null))
   }, [id])
 
   if (loading) return <main className={styles.page}><p className={styles.estado}>A carregar...</p></main>
@@ -171,6 +183,17 @@ export default function DetalheEquipamento() {
         <Linha rotulo="Preço de venda" valor={formatarEuro(eq.preco_venda)} />
         <Linha rotulo="Rentabilização" valor={eq.rentabilizacao} />
       </div>
+
+      {fatur && (
+        <div className={styles.seccao}>
+          <div className={styles.seccaoTitulo}>Faturação (alugueres)</div>
+          <Linha rotulo="Valor mensal" valor={fatur.valor_mensal != null ? formatarEuro(fatur.valor_mensal) : null} />
+          <Linha rotulo="Total acumulado" valor={fatur.total_acumulado != null ? formatarEuro(fatur.total_acumulado) : null} />
+          <Linha rotulo="Localização" valor={fatur.localizacao} />
+          <Linha rotulo="Mercado" valor={fatur.nacional ? 'Nacional' : 'Internacional'} />
+          <Linha rotulo="Estado" valor={fatur.estado} />
+        </div>
+      )}
 
       <div className={styles.seccao}>
         <div className={styles.seccaoTitulo}>Documentos</div>

@@ -4,59 +4,45 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import AlugueresNav from '@/components/AlugueresNav'
-import { formatarEuro, mesAtual, nomeMes, somar } from '@/lib/alugueres'
-import type { Aluguer } from '@/types/aluguer'
-
-type LinhaEquip = {
-  serial: string
-  modelo: string
-  marca: string
-  total: number
-  num: number
-}
+import { formatarEuro, somar } from '@/lib/alugueres'
+import type { FaturacaoEquip } from '@/types/aluguer'
 
 export default function FaturacaoPorEquipamento() {
-  const [alugueres, setAlugueres] = useState<Aluguer[]>([])
-  const [tudo, setTudo] = useState(true)
-  const [mes, setMes] = useState(mesAtual())
+  const [linhas, setLinhas] = useState<FaturacaoEquip[]>([])
+  const [pesquisa, setPesquisa] = useState('')
+  const [estado, setEstado] = useState('todos')
   const [carregando, setCarregando] = useState(true)
 
   useEffect(() => {
     supabase
-      .from('alugueres')
+      .from('faturacao_equipamento')
       .select('*')
+      .order('total_acumulado', { ascending: false, nullsFirst: false })
       .then(({ data }) => {
-        setAlugueres((data as Aluguer[]) ?? [])
+        setLinhas((data as FaturacaoEquip[]) ?? [])
         setCarregando(false)
       })
   }, [])
 
-  const filtrados = useMemo(
-    () => (tudo ? alugueres : alugueres.filter((a) => (a.data_entrega ?? '').startsWith(mes))),
-    [alugueres, tudo, mes]
+  const estados = useMemo(
+    () => Array.from(new Set(linhas.map((l) => l.estado).filter(Boolean))) as string[],
+    [linhas]
   )
 
-  const linhas: LinhaEquip[] = useMemo(() => {
-    const m = new Map<string, LinhaEquip>()
-    for (const a of filtrados) {
-      const serial = a.serial_number ?? '—'
-      const l = m.get(serial) ?? {
-        serial,
-        modelo: a.modelo ?? '',
-        marca: a.marca ?? '',
-        total: 0,
-        num: 0,
-      }
-      l.total += a.valor || 0
-      l.num += 1
-      if (!l.modelo && a.modelo) l.modelo = a.modelo
-      if (!l.marca && a.marca) l.marca = a.marca
-      m.set(serial, l)
-    }
-    return [...m.values()].sort((x, y) => y.total - x.total)
-  }, [filtrados])
+  const filtradas = useMemo(() => {
+    const q = pesquisa.trim().toLowerCase()
+    return linhas
+      .filter((l) => estado === 'todos' || (l.estado ?? '') === estado)
+      .filter(
+        (l) =>
+          !q ||
+          (l.serial_number ?? '').toLowerCase().includes(q) ||
+          (l.modelo ?? '').toLowerCase().includes(q)
+      )
+  }, [linhas, pesquisa, estado])
 
-  const totalGeral = somar(filtrados, (a) => a.valor)
+  const totalAcc = somar(filtradas, (l) => l.total_acumulado)
+  const totalMensal = somar(filtradas, (l) => l.valor_mensal)
 
   return (
     <main style={c.page}>
@@ -66,47 +52,58 @@ export default function FaturacaoPorEquipamento() {
       </div>
       <AlugueresNav />
 
-      <div style={c.filtro}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }}>
-          <input type="checkbox" checked={tudo} onChange={(e) => setTudo(e.target.checked)} />
-          Todo o histórico
-        </label>
-        {!tudo && (
-          <>
-            <input type="month" value={mes} onChange={(e) => setMes(e.target.value)} style={c.inputMes} />
-            <span style={c.mesNome}>{nomeMes(mes)}</span>
-          </>
-        )}
+      <div style={c.filtros}>
+        <input
+          placeholder="Procurar serial ou modelo..."
+          value={pesquisa}
+          onChange={(e) => setPesquisa(e.target.value)}
+          style={c.inputPesq}
+        />
+        <select value={estado} onChange={(e) => setEstado(e.target.value)} style={c.select}>
+          <option value="todos">Todos os estados</option>
+          {estados.map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+      </div>
+
+      <div style={c.resumo}>
+        <span>{filtradas.length} equipamento(s)</span>
+        <span>Mensal: <strong>{formatarEuro(totalMensal)}</strong></span>
+        <span>Acumulado: <strong>{formatarEuro(totalAcc)}</strong></span>
       </div>
 
       {carregando ? (
         <p style={c.estado}>A carregar...</p>
-      ) : linhas.length === 0 ? (
-        <p style={c.estado}>Sem alugueres no período selecionado.</p>
+      ) : filtradas.length === 0 ? (
+        <p style={c.estado}>Sem equipamentos.</p>
       ) : (
-        <>
-          <div style={c.resumo}>
-            Total faturado: <strong>{formatarEuro(totalGeral)}</strong> · {linhas.length} equipamento(s)
+        <div style={c.tabela}>
+          <div style={{ ...c.linha, ...c.cab }}>
+            <span>Serial</span>
+            <span>Modelo</span>
+            <span>Localização</span>
+            <span>Estado</span>
+            <span style={{ textAlign: 'right' }}>Mensal</span>
+            <span style={{ textAlign: 'right' }}>Acumulado</span>
           </div>
-          <div style={c.tabela}>
-            <div style={{ ...c.linha, ...c.linhaCab }}>
-              <span>Serial</span>
-              <span>Modelo</span>
-              <span>Marca</span>
-              <span style={{ textAlign: 'center' }}>Nº alugueres</span>
-              <span style={{ textAlign: 'right' }}>Faturado</span>
+          {filtradas.map((l) => (
+            <div key={l.id} style={c.linha}>
+              <span style={{ fontWeight: 600 }}>
+                {l.equipamento_id ? (
+                  <Link href={`/equipamentos/${l.equipamento_id}`} style={c.link}>{l.serial_number}</Link>
+                ) : (
+                  l.serial_number
+                )}
+              </span>
+              <span>{l.modelo || '—'}</span>
+              <span>{l.localizacao || '—'}{!l.nacional && ' 🌍'}</span>
+              <span>{l.estado || '—'}</span>
+              <span style={{ textAlign: 'right' }}>{l.valor_mensal != null ? formatarEuro(l.valor_mensal) : '—'}</span>
+              <span style={{ textAlign: 'right', fontWeight: 700 }}>{l.total_acumulado != null ? formatarEuro(l.total_acumulado) : '—'}</span>
             </div>
-            {linhas.map((l) => (
-              <div key={l.serial} style={c.linha}>
-                <span style={{ fontWeight: 600 }}>{l.serial}</span>
-                <span>{l.modelo || '—'}</span>
-                <span>{l.marca || '—'}</span>
-                <span style={{ textAlign: 'center' }}>{l.num}</span>
-                <span style={{ textAlign: 'right', fontWeight: 700 }}>{formatarEuro(l.total)}</span>
-              </div>
-            ))}
-          </div>
-        </>
+          ))}
+        </div>
       )}
     </main>
   )
@@ -117,12 +114,13 @@ const c: Record<string, React.CSSProperties> = {
   cabecalho: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   titulo: { fontSize: 22, fontWeight: 700, color: 'var(--primary)' },
   voltar: { color: 'var(--muted)', textDecoration: 'none' },
-  filtro: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18, flexWrap: 'wrap' },
-  inputMes: { padding: 8, border: '1px solid #ccc', borderRadius: 8, fontSize: 15 },
-  mesNome: { color: 'var(--muted)', textTransform: 'capitalize' },
+  filtros: { display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' },
+  inputPesq: { flex: 1, minWidth: 180, padding: 10, border: '1px solid #ccc', borderRadius: 8, fontSize: 15 },
+  select: { padding: 10, border: '1px solid #ccc', borderRadius: 8, fontSize: 15 },
+  resumo: { display: 'flex', gap: 20, flexWrap: 'wrap', background: 'var(--accent-bg, #eef1f6)', borderRadius: 10, padding: '10px 14px', marginBottom: 14 },
   estado: { color: 'var(--muted)', padding: 8 },
-  resumo: { background: 'var(--accent-bg, #eef1f6)', borderRadius: 10, padding: 14, marginBottom: 16 },
-  tabela: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 14 },
-  linha: { display: 'grid', gridTemplateColumns: '1.5fr 1.5fr 1fr 1fr 1fr', gap: 8, padding: '8px 0', fontSize: 14, borderBottom: '1px solid #f5f5f5' },
-  linhaCab: { fontWeight: 700, color: 'var(--muted)', fontSize: 12 },
+  tabela: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 8 },
+  linha: { display: 'grid', gridTemplateColumns: '1.6fr 1.4fr 1.2fr 0.9fr 1fr 1.1fr', gap: 8, padding: '9px 8px', fontSize: 13, borderBottom: '1px solid #f2f2f2', alignItems: 'center' },
+  cab: { fontWeight: 700, color: 'var(--muted)', fontSize: 12, borderBottom: '2px solid var(--border)' },
+  link: { color: 'var(--primary)', fontWeight: 700, textDecoration: 'none' },
 }

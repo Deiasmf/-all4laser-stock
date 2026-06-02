@@ -27,6 +27,21 @@ export type Aluguer = {
   updated_at: string
 }
 
+export type FaturacaoEquip = {
+  id: string
+  serial_number: string
+  equipamento_id: string | null
+  modelo: string | null
+  tipo: string | null
+  localizacao: string | null
+  nacional: boolean | null
+  ano: string | null
+  valor_mensal: number | null
+  total_acumulado: number | null
+  estado: string | null
+  notas: string | null
+}
+
 // Tipos de aluguer NACIONAIS (curto prazo)
 export const TIPOS_ALUGUER = [
   'Diário',
