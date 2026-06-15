@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import AlugueresNav from '@/components/AlugueresNav'
 import { supabase } from '@/lib/supabase'
-import { atualizarLead } from '@/lib/leads'
+import { useAuth } from '@/lib/auth'
+import { atualizarLead, eliminarLead } from '@/lib/leads'
 import {
   CANAL_CONFIG, ESTADO_CONFIG, CANAL_OPCOES, ESTADO_OPCOES,
   type Lead, type EstadoLead,
@@ -31,6 +32,7 @@ function EstadoTag({ estado }: { estado: EstadoLead }) {
 }
 
 export default function LeadsPage() {
+  const { isAdmin } = useAuth()
   const [leads, setLeads] = useState<Lead[]>([])
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
@@ -136,10 +138,15 @@ export default function LeadsPage() {
       {aberta && (
         <LeadDrawer
           lead={aberta}
+          isAdmin={isAdmin}
           onClose={() => setAberta(null)}
           onGuardado={(atualizada) => {
             setLeads((prev) => prev.map((x) => (x.id === atualizada.id ? atualizada : x)))
             setAberta(atualizada)
+          }}
+          onEliminado={(id) => {
+            setLeads((prev) => prev.filter((x) => x.id !== id))
+            setAberta(null)
           }}
         />
       )}
@@ -148,16 +155,27 @@ export default function LeadsPage() {
 }
 
 function LeadDrawer({
-  lead, onClose, onGuardado,
+  lead, isAdmin, onClose, onGuardado, onEliminado,
 }: {
   lead: Lead
+  isAdmin: boolean
   onClose: () => void
   onGuardado: (l: Lead) => void
+  onEliminado: (id: string) => void
 }) {
   const [estado, setEstado] = useState<EstadoLead>(lead.estado)
   const [nota, setNota] = useState(lead.nota_interna ?? '')
   const [aGravar, setAGravar] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+
+  async function eliminar() {
+    if (!confirm('Eliminar esta lead? Esta ação não pode ser anulada.')) return
+    setAGravar(true)
+    const { error } = await eliminarLead(lead.id)
+    setAGravar(false)
+    if (error) { setMsg('Erro ao eliminar: ' + error.message); return }
+    onEliminado(lead.id)
+  }
 
   useEffect(() => {
     setEstado(lead.estado)
@@ -216,9 +234,12 @@ function LeadDrawer({
 
         {msg && <div style={{ marginTop: 10, fontSize: 13, color: msg.startsWith('Erro') ? 'var(--danger)' : 'var(--primary)', fontWeight: 600 }}>{msg}</div>}
 
-        <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+        <div style={{ display: 'flex', gap: 10, marginTop: 16, alignItems: 'center' }}>
           <button onClick={guardar} disabled={aGravar} style={c.btnPrimario}>{aGravar ? 'A guardar...' : 'Guardar'}</button>
           <button onClick={onClose} style={c.btnSecundario}>Fechar</button>
+          {isAdmin && (
+            <button onClick={eliminar} disabled={aGravar} style={c.btnEliminar}>Eliminar</button>
+          )}
         </div>
       </div>
     </div>
@@ -257,4 +278,5 @@ const c: Record<string, React.CSSProperties> = {
   textarea: { width: '100%', marginTop: 6, minHeight: 90, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8, resize: 'vertical', font: 'inherit' },
   btnPrimario: { background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontWeight: 700, cursor: 'pointer' },
   btnSecundario: { background: 'var(--surface)', color: 'var(--foreground)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 18px', fontWeight: 600, cursor: 'pointer' },
+  btnEliminar: { marginLeft: 'auto', background: 'var(--surface)', color: 'var(--danger)', border: '1px solid var(--danger)', borderRadius: 8, padding: '10px 16px', fontWeight: 600, cursor: 'pointer' },
 }

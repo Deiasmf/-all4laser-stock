@@ -19,6 +19,10 @@ export async function atualizarLead(
     .eq('id', id)
 }
 
+export async function eliminarLead(id: string) {
+  return supabase.from('leads').delete().eq('id', id)
+}
+
 export const ESTADOS_SEGUINTES: Record<EstadoLead, EstadoLead[]> = {
   nova: ['contactada', 'proposta_enviada', 'convertida', 'perdida'],
   contactada: ['proposta_enviada', 'convertida', 'perdida'],
