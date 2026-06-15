@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
 import type { Equipamento } from '@/types/equipamento'
 import { camposEmFalta } from '@/types/equipamento'
+import FiltroMulti from '@/components/FiltroMulti'
 import styles from './page.module.css'
 
 const TAMANHO_LOTE = 1000 // o Supabase devolve no máximo 1000 por pedido
@@ -31,14 +32,14 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
 
-  // Filtros (todos combináveis)
+  // Filtros (todos combináveis). Os dropdowns aceitam várias opções (multi-seleção).
   const [pesquisa, setPesquisa] = useState('')
-  const [marca, setMarca] = useState('')
-  const [modelo, setModelo] = useState('')
-  const [ano, setAno] = useState('')
-  const [status, setStatus] = useState('')
-  const [origem, setOrigem] = useState('')
-  const [destino, setDestino] = useState('')
+  const [marca, setMarca] = useState<string[]>([])
+  const [modelo, setModelo] = useState<string[]>([])
+  const [ano, setAno] = useState<string[]>([])
+  const [status, setStatus] = useState<string[]>([])
+  const [origem, setOrigem] = useState<string[]>([])
+  const [destino, setDestino] = useState<string[]>([])
   const [soIncompletos, setSoIncompletos] = useState(false)
 
   const [recolhidas, setRecolhidas] = useState<Set<string>>(new Set())
@@ -88,9 +89,9 @@ export default function Home() {
   const opcoes = useMemo(() => {
     return {
       marcas: distintos(todos, 'marca').sort((a, b) => a.localeCompare(b, 'pt')),
-      // Modelos: se houver marca escolhida, só os dessa marca
+      // Modelos: se houver marca(s) escolhida(s), só os dessas marcas
       modelos: distintos(
-        marca ? todos.filter((e) => e.marca === marca) : todos,
+        marca.length ? todos.filter((e) => marca.includes(e.marca as string)) : todos,
         'modelo'
       ).sort((a, b) => a.localeCompare(b, 'pt')),
       anos: distintos(todos, 'ano').sort((a, b) => b.localeCompare(a)),
@@ -100,16 +101,18 @@ export default function Home() {
     }
   }, [todos, marca])
 
-  // Aplica todos os filtros (combinados com E)
+  // Aplica todos os filtros (combinados com E; dentro de cada filtro é OU)
   const equipamentos = useMemo(() => {
     const q = pesquisa.trim().toLowerCase()
+    const incluido = (sel: string[], valor: string | null) =>
+      sel.length === 0 || (valor != null && sel.includes(valor))
     return todos.filter((e) => {
-      if (marca && e.marca !== marca) return false
-      if (modelo && e.modelo !== modelo) return false
-      if (ano && e.ano !== ano) return false
-      if (status && e.status !== status) return false
-      if (origem && e.origem !== origem) return false
-      if (destino && e.destino !== destino) return false
+      if (!incluido(marca, e.marca)) return false
+      if (!incluido(modelo, e.modelo)) return false
+      if (!incluido(ano, e.ano)) return false
+      if (!incluido(status, e.status)) return false
+      if (!incluido(origem, e.origem)) return false
+      if (!incluido(destino, e.destino)) return false
       if (soIncompletos && camposEmFalta(e).length === 0) return false
       if (q) {
         const alvo = `${e.marca ?? ''} ${e.modelo ?? ''} ${e.serial_number ?? ''} ${e.destino ?? ''}`.toLowerCase()
@@ -124,25 +127,38 @@ export default function Home() {
     [todos]
   )
 
-  // Se mudar a marca, limpa o modelo escolhido (pode já não pertencer à marca)
-  function mudarMarca(novaMarca: string) {
-    setMarca(novaMarca)
-    setModelo('')
+  // Se mudarem as marcas, remove os modelos escolhidos que já não pertencem às marcas
+  function mudarMarca(novasMarcas: string[]) {
+    setMarca(novasMarcas)
+    const modelosValidos = new Set(
+      distintos(
+        novasMarcas.length ? todos.filter((e) => novasMarcas.includes(e.marca as string)) : todos,
+        'modelo'
+      )
+    )
+    setModelo((atual) => atual.filter((m) => modelosValidos.has(m)))
   }
 
   function limparFiltros() {
     setPesquisa('')
-    setMarca('')
-    setModelo('')
-    setAno('')
-    setStatus('')
-    setOrigem('')
-    setDestino('')
+    setMarca([])
+    setModelo([])
+    setAno([])
+    setStatus([])
+    setOrigem([])
+    setDestino([])
     setSoIncompletos(false)
   }
 
   const temFiltros =
-    pesquisa || marca || modelo || ano || status || origem || destino || soIncompletos
+    !!pesquisa ||
+    marca.length > 0 ||
+    modelo.length > 0 ||
+    ano.length > 0 ||
+    status.length > 0 ||
+    origem.length > 0 ||
+    destino.length > 0 ||
+    soIncompletos
 
   // Constrói linhas da tabela com cabeçalhos de grupo (Marca → Modelo)
   function linhasTabela() {
@@ -268,30 +284,12 @@ export default function Home() {
           value={pesquisa}
           onChange={(e) => setPesquisa(e.target.value)}
         />
-        <select className={styles.select} value={marca} onChange={(e) => mudarMarca(e.target.value)}>
-          <option value="">Todas as marcas</option>
-          {opcoes.marcas.map((v) => <option key={v} value={v}>{v}</option>)}
-        </select>
-        <select className={styles.select} value={modelo} onChange={(e) => setModelo(e.target.value)}>
-          <option value="">Todos os modelos</option>
-          {opcoes.modelos.map((v) => <option key={v} value={v}>{v}</option>)}
-        </select>
-        <select className={styles.select} value={ano} onChange={(e) => setAno(e.target.value)}>
-          <option value="">Todos os anos</option>
-          {opcoes.anos.map((v) => <option key={v} value={v}>{v}</option>)}
-        </select>
-        <select className={styles.select} value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="">Todos os status</option>
-          {opcoes.status.map((v) => <option key={v} value={v}>{v}</option>)}
-        </select>
-        <select className={styles.select} value={origem} onChange={(e) => setOrigem(e.target.value)}>
-          <option value="">Todas as origens</option>
-          {opcoes.origens.map((v) => <option key={v} value={v}>{v}</option>)}
-        </select>
-        <select className={styles.select} value={destino} onChange={(e) => setDestino(e.target.value)}>
-          <option value="">Todos os destinos</option>
-          {opcoes.destinos.map((v) => <option key={v} value={v}>{v}</option>)}
-        </select>
+        <FiltroMulti label="Marcas" opcoes={opcoes.marcas} selecionados={marca} onChange={mudarMarca} />
+        <FiltroMulti label="Modelos" opcoes={opcoes.modelos} selecionados={modelo} onChange={setModelo} />
+        <FiltroMulti label="Anos" opcoes={opcoes.anos} selecionados={ano} onChange={setAno} />
+        <FiltroMulti label="Status" opcoes={opcoes.status} selecionados={status} onChange={setStatus} />
+        <FiltroMulti label="Origens" opcoes={opcoes.origens} selecionados={origem} onChange={setOrigem} />
+        <FiltroMulti label="Destinos" opcoes={opcoes.destinos} selecionados={destino} onChange={setDestino} />
         <label className={styles.checkbox}>
           <input
             type="checkbox"
