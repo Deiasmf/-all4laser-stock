@@ -8,6 +8,7 @@ import { useAuth } from '@/lib/auth'
 import type { Equipamento } from '@/types/equipamento'
 import { camposEmFalta } from '@/types/equipamento'
 import FiltroMulti from '@/components/FiltroMulti'
+import FiltroData from '@/components/FiltroData'
 import styles from './page.module.css'
 
 const TAMANHO_LOTE = 1000 // o Supabase devolve no máximo 1000 por pedido
@@ -40,6 +41,11 @@ export default function Home() {
   const [status, setStatus] = useState<string[]>([])
   const [origem, setOrigem] = useState<string[]>([])
   const [destino, setDestino] = useState<string[]>([])
+  // Intervalos de datas: receção (data_entrada) e envio (data_saida)
+  const [recDe, setRecDe] = useState('')
+  const [recAte, setRecAte] = useState('')
+  const [envDe, setEnvDe] = useState('')
+  const [envAte, setEnvAte] = useState('')
   const [soIncompletos, setSoIncompletos] = useState(false)
 
   const [recolhidas, setRecolhidas] = useState<Set<string>>(new Set())
@@ -106,6 +112,14 @@ export default function Home() {
     const q = pesquisa.trim().toLowerCase()
     const incluido = (sel: string[], valor: string | null) =>
       sel.length === 0 || (valor != null && sel.includes(valor))
+    // Datas em ISO (YYYY-MM-DD) comparam-se diretamente como texto
+    const noIntervalo = (valor: string | null, de: string, ate: string) => {
+      if (!de && !ate) return true
+      if (!valor) return false
+      if (de && valor < de) return false
+      if (ate && valor > ate) return false
+      return true
+    }
     return todos.filter((e) => {
       if (!incluido(marca, e.marca)) return false
       if (!incluido(modelo, e.modelo)) return false
@@ -113,6 +127,8 @@ export default function Home() {
       if (!incluido(status, e.status)) return false
       if (!incluido(origem, e.origem)) return false
       if (!incluido(destino, e.destino)) return false
+      if (!noIntervalo(e.data_entrada, recDe, recAte)) return false
+      if (!noIntervalo(e.data_saida, envDe, envAte)) return false
       if (soIncompletos && camposEmFalta(e).length === 0) return false
       if (q) {
         const alvo = `${e.marca ?? ''} ${e.modelo ?? ''} ${e.serial_number ?? ''} ${e.destino ?? ''}`.toLowerCase()
@@ -120,7 +136,7 @@ export default function Home() {
       }
       return true
     })
-  }, [todos, pesquisa, marca, modelo, ano, status, origem, destino, soIncompletos])
+  }, [todos, pesquisa, marca, modelo, ano, status, origem, destino, recDe, recAte, envDe, envAte, soIncompletos])
 
   const totalIncompletos = useMemo(
     () => todos.filter((e) => camposEmFalta(e).length > 0).length,
@@ -147,6 +163,10 @@ export default function Home() {
     setStatus([])
     setOrigem([])
     setDestino([])
+    setRecDe('')
+    setRecAte('')
+    setEnvDe('')
+    setEnvAte('')
     setSoIncompletos(false)
   }
 
@@ -158,6 +178,7 @@ export default function Home() {
     status.length > 0 ||
     origem.length > 0 ||
     destino.length > 0 ||
+    !!recDe || !!recAte || !!envDe || !!envAte ||
     soIncompletos
 
   // Constrói linhas da tabela com cabeçalhos de grupo (Marca → Modelo)
@@ -290,6 +311,8 @@ export default function Home() {
         <FiltroMulti label="Status" opcoes={opcoes.status} selecionados={status} onChange={setStatus} />
         <FiltroMulti label="Origens" opcoes={opcoes.origens} selecionados={origem} onChange={setOrigem} />
         <FiltroMulti label="Destinos" opcoes={opcoes.destinos} selecionados={destino} onChange={setDestino} />
+        <FiltroData label="Receção" de={recDe} ate={recAte} onChange={(d, a) => { setRecDe(d); setRecAte(a) }} />
+        <FiltroData label="Envio" de={envDe} ate={envAte} onChange={(d, a) => { setEnvDe(d); setEnvAte(a) }} />
         <label className={styles.checkbox}>
           <input
             type="checkbox"
