@@ -35,14 +35,26 @@ export async function POST(req: Request) {
   const canalBruto = String(corpo.canal ?? 'website').toLowerCase()
   const canal = CANAIS.includes(canalBruto) ? canalBruto : 'website'
 
+  // O formulário Wix envia 'equipamento', 'modalidade' e 'datas'.
+  // - 'equipamento' → modelo_interesse
+  // - 'modalidade' e 'datas' não têm coluna própria na tabela, por isso são
+  //   acrescentados ao fim da mensagem (sem alterar o schema da BD).
+  const modalidade = texto(corpo.modalidade)
+  const datas = texto(corpo.datas)
+  const extras = [
+    modalidade ? `Modalidade: ${modalidade}` : null,
+    datas ? `Datas pretendidas: ${datas}` : null,
+  ].filter(Boolean)
+  const mensagem = [texto(corpo.mensagem), ...extras].filter(Boolean).join('\n') || null
+
   const lead = {
     nome,
     email: texto(corpo.email),
     telefone: texto(corpo.telefone),
     cidade: texto(corpo.cidade),
-    mensagem: texto(corpo.mensagem),
+    mensagem,
     canal,
-    modelo_interesse: texto(corpo.modelo_interesse),
+    modelo_interesse: texto(corpo.equipamento) ?? texto(corpo.modelo_interesse),
     data_inicio: texto(corpo.data_inicio),
     data_fim: texto(corpo.data_fim),
     estado: 'nova',
@@ -67,7 +79,11 @@ export async function POST(req: Request) {
   // Notificação por email (só se o Resend estiver configurado). Falha não bloqueia a resposta.
   await notificarEquipa(lead).catch(() => {})
 
-  return Response.json({ ok: true, id: (data as { id: string }).id }, { status: 201, headers: corsHeaders })
+  // `success` é o que o formulário Wix espera; `ok` mantém-se para compatibilidade.
+  return Response.json(
+    { success: true, ok: true, id: (data as { id: string }).id },
+    { status: 201, headers: corsHeaders }
+  )
 }
 
 async function notificarEquipa(lead: {
