@@ -116,6 +116,21 @@ begin
   end loop;
 end $$;
 
+-- GRANTs ao nível da tabela: tabelas criadas por SQL não recebem
+-- automaticamente privilégios para o role `authenticated` (ao contrário
+-- das criadas pelo dashboard). Sem isto o Postgres bloqueia antes da RLS.
+-- A RLS continua a ser a barreira real (escrita só admin via is_admin()).
+grant select, insert, update, delete on
+  public.areas_processos,
+  public.processos,
+  public.processo_steps,
+  public.processo_inputs,
+  public.processo_outputs,
+  public.processo_kpis,
+  public.processo_ferramentas,
+  public.area_gaps
+to authenticated;
+
 -- VIEW consolidada (gaps vêm de area_gaps, não por processo)
 create or replace view public.v_processos_completos as
 select
@@ -144,3 +159,7 @@ select
 from public.processos p
 join public.areas_processos a on a.id = p.area_id
 order by a.ordem, p.ordem;
+
+-- A view corre com as permissões de quem consulta (RLS das tabelas base aplica-se).
+alter view public.v_processos_completos set (security_invoker = on);
+grant select on public.v_processos_completos to authenticated;
