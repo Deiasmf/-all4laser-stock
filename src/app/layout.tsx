@@ -5,6 +5,7 @@ import { AuthProvider } from "@/lib/auth";
 import AuthGate from "@/components/AuthGate";
 import UserMenu from "@/components/UserMenu";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
+import ProcessosTopLink from "@/components/processos/ProcessosTopLink";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -48,6 +49,7 @@ export default function RootLayout({
               <nav className="topbar-nav">
                 <a href="/" className="topbar-link">Stock</a>
                 <a href="/alugueres/lista" className="topbar-link">Alugueres</a>
+                <ProcessosTopLink />
               </nav>
               <UserMenu />
             </div>
