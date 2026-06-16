@@ -3,9 +3,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/lib/auth'
 import AlugueresNav from '@/components/AlugueresNav'
 import { formatarEuro, mesAtual, nomeMes, somar } from '@/lib/alugueres'
-import type { Aluguer } from '@/types/aluguer'
+import {
+  TIPOS_ALUGUER,
+  TIPOS_INTERNACIONAL,
+  METODOS_PAGAMENTO,
+  type Aluguer,
+} from '@/types/aluguer'
 
 function formatarData(d: string | null) {
   if (!d) return '—'
@@ -14,10 +20,12 @@ function formatarData(d: string | null) {
 }
 
 export default function ListaAlugueres() {
+  const { isAdmin } = useAuth()
   const [alugueres, setAlugueres] = useState<Aluguer[]>([])
   const [mes, setMes] = useState(mesAtual())
   const [pesquisa, setPesquisa] = useState('')
   const [carregando, setCarregando] = useState(true)
+  const [editar, setEditar] = useState<Aluguer | null>(null)
 
   useEffect(() => {
     supabase
@@ -43,6 +51,16 @@ export default function ListaAlugueres() {
   }, [alugueres, mes, pesquisa])
 
   const total = somar(filtrados, (a) => a.valor)
+
+  function aoGuardar(atualizado: Aluguer) {
+    setAlugueres((prev) => prev.map((a) => (a.id === atualizado.id ? atualizado : a)))
+    setEditar(null)
+  }
+
+  function aoEliminar(id: string) {
+    setAlugueres((prev) => prev.filter((a) => a.id !== id))
+    setEditar(null)
+  }
 
   return (
     <main style={c.page}>
@@ -80,7 +98,12 @@ export default function ListaAlugueres() {
             <span style={{ textAlign: 'right' }}>Valor</span>
           </div>
           {filtrados.map((a) => (
-            <div key={a.id} style={c.linha}>
+            <div
+              key={a.id}
+              style={{ ...c.linha, ...(isAdmin ? c.linhaClicavel : {}) }}
+              onClick={isAdmin ? () => setEditar(a) : undefined}
+              title={isAdmin ? 'Clica para editar ou apagar' : undefined}
+            >
               <span style={{ fontWeight: 600 }}>
                 {a.cliente_nome ?? '—'}
                 {!a.nacional && <span style={c.intl}>Internacional</span>}
@@ -92,7 +115,184 @@ export default function ListaAlugueres() {
           ))}
         </div>
       )}
+
+      {isAdmin && <p style={c.dica}>Toca num aluguer para editar ou apagar.</p>}
+
+      {editar && (
+        <ModalEditar
+          aluguer={editar}
+          onFechar={() => setEditar(null)}
+          onGuardado={aoGuardar}
+          onEliminado={aoEliminar}
+        />
+      )}
     </main>
+  )
+}
+
+// ---------------------------------------------------------------- EDITAR
+function ModalEditar({
+  aluguer, onFechar, onGuardado, onEliminado,
+}: {
+  aluguer: Aluguer
+  onFechar: () => void
+  onGuardado: (a: Aluguer) => void
+  onEliminado: (id: string) => void
+}) {
+  const [clienteNome, setClienteNome] = useState(aluguer.cliente_nome ?? '')
+  const [serial, setSerial] = useState(aluguer.serial_number ?? '')
+  const [marca, setMarca] = useState(aluguer.marca ?? '')
+  const [modelo, setModelo] = useState(aluguer.modelo ?? '')
+  const [ano, setAno] = useState(aluguer.ano ?? '')
+  const [nacional, setNacional] = useState(aluguer.nacional ?? true)
+  const [tipo, setTipo] = useState(aluguer.tipo_aluguer ?? '')
+  const [valor, setValor] = useState(aluguer.valor != null ? String(aluguer.valor) : '')
+  const [metodo, setMetodo] = useState(aluguer.metodo_pagamento ?? '')
+  const [dataEntrega, setDataEntrega] = useState((aluguer.data_entrega ?? '').slice(0, 10))
+  const [dataRecolha, setDataRecolha] = useState((aluguer.data_recolha ?? '').slice(0, 10))
+
+  const [aGuardar, setAGuardar] = useState(false)
+  const [aApagar, setAApagar] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  // Tipos disponíveis conforme o mercado; garante que o valor atual aparece sempre
+  const tiposBase: readonly string[] = nacional ? TIPOS_ALUGUER : TIPOS_INTERNACIONAL
+  const tipos = tipo && !tiposBase.includes(tipo) ? [tipo, ...tiposBase] : tiposBase
+
+  async function guardar() {
+    setErro(null)
+    if (!clienteNome.trim()) return setErro('Indica o cliente.')
+    if (!serial.trim()) return setErro('Indica o serial number.')
+    if (valor.trim() && isNaN(Number(valor))) return setErro('O valor não é válido.')
+
+    setAGuardar(true)
+    const patch = {
+      cliente_nome: clienteNome.trim(),
+      serial_number: serial.trim(),
+      marca: marca.trim() || null,
+      modelo: modelo.trim() || null,
+      ano: ano.trim() || null,
+      nacional,
+      tipo_aluguer: tipo || null,
+      valor: valor.trim() ? Number(valor) : null,
+      metodo_pagamento: metodo || null,
+      data_entrega: dataEntrega || null,
+      data_recolha: dataRecolha || null,
+      updated_at: new Date().toISOString(),
+    }
+    const { data, error } = await supabase
+      .from('alugueres')
+      .update(patch)
+      .eq('id', aluguer.id)
+      .select()
+      .single()
+    setAGuardar(false)
+    if (error) return setErro('Erro a guardar: ' + error.message)
+    onGuardado(data as Aluguer)
+  }
+
+  async function eliminar() {
+    if (!confirm(`Apagar o aluguer de ${aluguer.cliente_nome ?? 'cliente'} (${aluguer.serial_number ?? '—'})? Esta ação não pode ser anulada.`)) return
+    setErro(null)
+    setAApagar(true)
+    const { error } = await supabase.from('alugueres').delete().eq('id', aluguer.id)
+    setAApagar(false)
+    if (error) return setErro('Erro a apagar: ' + error.message)
+    onEliminado(aluguer.id)
+  }
+
+  return (
+    <div style={c.overlay} onClick={onFechar}>
+      <div style={c.modal} onClick={(e) => e.stopPropagation()}>
+        <div style={c.modalCab}>
+          <h2 style={c.modalTitulo}>Editar aluguer</h2>
+          <button onClick={onFechar} style={c.fechar} aria-label="Fechar">✕</button>
+        </div>
+
+        {erro && <div style={c.erro}>{erro}</div>}
+
+        <label style={c.label}>Cliente</label>
+        <input style={c.input} value={clienteNome} onChange={(e) => setClienteNome(e.target.value)} />
+
+        <label style={c.label}>Serial number</label>
+        <input style={c.input} value={serial} onChange={(e) => setSerial(e.target.value)} />
+
+        <div style={c.linha3}>
+          <div>
+            <label style={c.label}>Marca</label>
+            <input style={c.input} value={marca} onChange={(e) => setMarca(e.target.value)} />
+          </div>
+          <div>
+            <label style={c.label}>Modelo</label>
+            <input style={c.input} value={modelo} onChange={(e) => setModelo(e.target.value)} />
+          </div>
+          <div>
+            <label style={c.label}>Ano</label>
+            <input style={c.input} value={ano} onChange={(e) => setAno(e.target.value)} />
+          </div>
+        </div>
+
+        <label style={c.checkLinha}>
+          <input
+            type="checkbox"
+            checked={!nacional}
+            onChange={(e) => setNacional(!e.target.checked)}
+          />
+          Aluguer internacional
+        </label>
+
+        <label style={c.label}>Tipo de aluguer</label>
+        <select style={c.input} value={tipo} onChange={(e) => setTipo(e.target.value)}>
+          <option value="">— escolher —</option>
+          {tipos.map((t) => (
+            <option key={t} value={t}>{t}</option>
+          ))}
+        </select>
+
+        <div style={c.linha2}>
+          <div>
+            <label style={c.label}>Valor (€)</label>
+            <input
+              style={c.input}
+              type="number"
+              inputMode="decimal"
+              value={valor}
+              onChange={(e) => setValor(e.target.value)}
+            />
+          </div>
+          <div>
+            <label style={c.label}>Método de pagamento</label>
+            <select style={c.input} value={metodo} onChange={(e) => setMetodo(e.target.value)}>
+              <option value="">— escolher —</option>
+              {METODOS_PAGAMENTO.map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div style={c.linha2}>
+          <div>
+            <label style={c.label}>Data de entrega</label>
+            <input style={c.input} type="date" value={dataEntrega} onChange={(e) => setDataEntrega(e.target.value)} />
+          </div>
+          <div>
+            <label style={c.label}>Data de recolha</label>
+            <input style={c.input} type="date" value={dataRecolha} onChange={(e) => setDataRecolha(e.target.value)} />
+          </div>
+        </div>
+
+        <div style={c.modalAcoes}>
+          <button onClick={eliminar} disabled={aApagar} style={c.btnDanger}>
+            {aApagar ? 'A apagar...' : 'Apagar'}
+          </button>
+          <button onClick={onFechar} style={c.btnGhost}>Cancelar</button>
+          <button onClick={guardar} disabled={aGuardar} style={c.btnPrimario}>
+            {aGuardar ? 'A guardar...' : 'Guardar'}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -108,6 +308,25 @@ const c: Record<string, React.CSSProperties> = {
   estado: { color: 'var(--muted)', padding: 8 },
   tabela: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 8 },
   linha: { display: 'grid', gridTemplateColumns: '2fr 1.2fr 1.3fr 1fr', gap: 8, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center' },
+  linhaClicavel: { cursor: 'pointer' },
   cab: { fontWeight: 700, color: 'var(--muted)', fontSize: 12, borderBottom: '2px solid var(--border)' },
   intl: { marginLeft: 6, fontSize: 10, fontWeight: 700, color: '#fff', background: 'var(--accent, #3552eb)', borderRadius: 999, padding: '1px 6px' },
+  dica: { color: 'var(--muted)', fontSize: 13, marginTop: 10, textAlign: 'center' },
+
+  // Modal de edição
+  overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 16, overflowY: 'auto', zIndex: 100 },
+  modal: { background: '#fff', borderRadius: 14, padding: 20, width: '100%', maxWidth: 560, margin: 'auto', display: 'flex', flexDirection: 'column', gap: 2 },
+  modalCab: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  modalTitulo: { fontSize: 18, fontWeight: 700, color: 'var(--primary)' },
+  fechar: { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: 'var(--muted)', padding: 4 },
+  label: { fontWeight: 600, fontSize: 14, marginTop: 12, marginBottom: 4, display: 'block' },
+  input: { width: '100%', padding: 10, border: '1px solid #ccc', borderRadius: 8, fontSize: 16, boxSizing: 'border-box' },
+  linha2: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 },
+  linha3: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 },
+  checkLinha: { display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, fontSize: 14, fontWeight: 600 },
+  erro: { background: '#ffebee', border: '1px solid #ef9a9a', borderRadius: 8, padding: 12, marginTop: 8, color: '#c62828' },
+  modalAcoes: { display: 'flex', gap: 8, marginTop: 22, alignItems: 'center', flexWrap: 'wrap' },
+  btnPrimario: { background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 18px', fontWeight: 700, cursor: 'pointer', marginLeft: 'auto' },
+  btnGhost: { background: '#fff', color: 'var(--foreground)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 16px', fontWeight: 600, cursor: 'pointer' },
+  btnDanger: { background: '#fff', color: 'var(--danger, #c62828)', border: '1px solid var(--danger, #c62828)', borderRadius: 8, padding: '10px 16px', fontWeight: 700, cursor: 'pointer' },
 }
