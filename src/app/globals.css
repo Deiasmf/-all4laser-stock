@@ -42,8 +42,8 @@ body {
   min-height: 100%;
   color: var(--foreground);
   background: var(--background);
-  /* Tipo de letra Aptos (marca All4laser); alternativas próximas para quem não o tem */
-  font-family: 'Aptos', 'Aptos Display', 'Segoe UI', system-ui, -apple-system,
+  /* Tipo de letra Aptos (marca All4laser); Nunito como alternativa próxima (carregada no layout) */
+  font-family: 'Aptos', 'Aptos Display', 'Nunito', 'Segoe UI', system-ui, -apple-system,
     'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -216,5 +216,376 @@ select {
   .processo-section,
   table {
     page-break-inside: avoid;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════
+   DESIGN SYSTEM All4laser — cores reais do logo
+   ════════════════════════════════════════════════════════════ */
+:root {
+  --a4l-1: #0500ff;
+  --a4l-2: #3552eb;
+  --a4l-3: #644de3;
+  --a4l-4: #9745d7;
+  --a4l-5: #be40cf;
+  --a4l-gradient: linear-gradient(135deg, #0500ff, #644de3, #be40cf);
+  --a4l-gradient-soft: linear-gradient(135deg, #3552eb, #9745d7, #be40cf);
+  --a4l-sidebar-bg: #0D0B2B;
+  --a4l-sidebar-border: rgba(255, 255, 255, 0.08);
+  --a4l-sidebar-item-hover: rgba(255, 255, 255, 0.07);
+  --a4l-sidebar-text: rgba(255, 255, 255, 0.65);
+  --a4l-sidebar-section: rgba(255, 255, 255, 0.28);
+  --a4l-bg: #F7F6FF;
+  --a4l-surface: #FFFFFF;
+  --a4l-border: #E8E6F8;
+  --a4l-text-dark: #0D0B2B;
+  --a4l-text-mid: #3A3870;
+  --a4l-text-light: #8884AA;
+}
+
+/* ----- Shell: sidebar fixa + área principal ----- */
+.a4l-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+.a4l-sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  background: var(--a4l-sidebar-bg);
+  border-right: 1px solid var(--a4l-sidebar-border);
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 60;
+  overflow-y: auto;
+}
+
+.a4l-main-wrap {
+  flex: 1;
+  min-width: 0;
+  margin-left: 240px;
+  display: flex;
+  flex-direction: column;
+  background: var(--a4l-bg);
+  min-height: 100vh;
+}
+
+.a4l-main {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+/* ----- Sidebar: topo (logo) ----- */
+.a4l-sb-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 16px 14px;
+  border-bottom: 1px solid var(--a4l-sidebar-border);
+}
+
+.a4l-sb-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--a4l-gradient);
+  color: #fff;
+  font-weight: 700;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.a4l-sb-name {
+  color: #fff;
+  font-weight: 800;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.a4l-sb-sub {
+  text-transform: uppercase;
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.35);
+  letter-spacing: 0.8px;
+}
+
+/* ----- Sidebar: navegação ----- */
+.a4l-sb-nav {
+  flex: 1;
+  padding: 12px 10px;
+}
+
+.a4l-sb-section {
+  text-transform: uppercase;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  color: var(--a4l-sidebar-section);
+  padding: 14px 10px 6px;
+}
+
+.a4l-sb-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  color: var(--a4l-sidebar-text);
+  font-size: 13.5px;
+  font-weight: 600;
+  text-decoration: none;
+  margin-bottom: 2px;
+}
+
+.a4l-sb-item:hover {
+  background: var(--a4l-sidebar-item-hover);
+}
+
+.a4l-sb-item.ativo {
+  background: var(--a4l-gradient);
+  box-shadow: 0 2px 10px rgba(5, 0, 255, 0.3);
+  color: #fff;
+  font-weight: 700;
+}
+
+.a4l-sb-icon {
+  font-size: 15px;
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.a4l-sb-badge {
+  margin-left: auto;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 1px 7px;
+  min-width: 18px;
+  text-align: center;
+}
+
+.a4l-sb-item.ativo .a4l-sb-badge {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+/* ----- Sidebar: rodapé (utilizador) ----- */
+.a4l-sb-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--a4l-sidebar-border);
+}
+
+.a4l-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--a4l-gradient);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.a4l-sb-foot-nome {
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.a4l-sb-foot-role {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 11px;
+  text-transform: capitalize;
+}
+
+/* ----- Topbar ----- */
+.a4l-topbar {
+  height: 56px;
+  background: #fff;
+  border-bottom: 0.5px solid var(--a4l-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+}
+
+.a4l-topbar-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--a4l-text-dark);
+}
+
+.a4l-topbar-crumb {
+  font-size: 11px;
+  color: var(--a4l-text-light);
+}
+
+.a4l-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.a4l-pill-leads {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #EEF0FF;
+  color: var(--a4l-2);
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 4px 10px;
+  text-decoration: none;
+}
+
+/* botão menu (mobile) */
+.a4l-burger {
+  display: none;
+  background: transparent;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--a4l-text-dark);
+}
+
+/* ----- Cards ----- */
+.a4l-card {
+  background: #ffffff;
+  border: 0.5px solid var(--a4l-border);
+  border-radius: 12px;
+  padding: 20px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.a4l-card:hover {
+  border-color: rgba(190, 64, 207, 0.3);
+  box-shadow: 0 4px 16px rgba(5, 0, 255, 0.06);
+}
+
+/* ----- Botões ----- */
+.a4l-btn {
+  background: var(--a4l-gradient);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.a4l-btn:hover {
+  opacity: 0.9;
+}
+
+.a4l-btn-ghost {
+  background: transparent;
+  color: var(--a4l-3);
+  border: 0.5px solid var(--a4l-border);
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.a4l-btn-ghost:hover {
+  background: #EEF0FF;
+  border-color: var(--a4l-3);
+}
+
+/* ----- Inputs ----- */
+.a4l-input {
+  width: 100%;
+  padding: 9px 12px;
+  border: 0.5px solid var(--a4l-border);
+  border-radius: 8px;
+  background: #fff;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--a4l-text-dark);
+  box-sizing: border-box;
+}
+.a4l-input:focus {
+  outline: none;
+  border-color: var(--a4l-3);
+  box-shadow: 0 0 0 3px rgba(100, 77, 227, 0.12);
+}
+
+/* ----- Texto gradiente ----- */
+.a4l-gradient-text {
+  background: var(--a4l-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ----- Pills de prioridade ----- */
+.a4l-prio {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.a4l-prio-normal { background: #EEF0FF; color: #3552eb; }
+.a4l-prio-importante { background: #F5EEFF; color: #9745d7; }
+.a4l-prio-urgente { background: #FDEEFF; color: #be40cf; }
+
+/* ----- Scrollbar ----- */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(190, 64, 207, 0.3);
+  border-radius: 2px;
+}
+
+/* ----- Responsivo (mobile) ----- */
+@media (max-width: 860px) {
+  .a4l-sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.3);
+  }
+  .a4l-sidebar.aberta {
+    transform: translateX(0);
+  }
+  .a4l-main-wrap {
+    margin-left: 0;
+  }
+  .a4l-burger {
+    display: block;
+  }
+  .a4l-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 55;
   }
 }

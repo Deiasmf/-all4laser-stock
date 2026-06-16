@@ -67,7 +67,7 @@ export default function Dashboard() {
   if (loading)
     return (
       <main className={styles.page}>
-        <Link href="/" className={styles.voltar}>← Voltar à lista</Link>
+        <Link href="/logistico" className={styles.voltar}>← Voltar à lista</Link>
         <p className={styles.estado}>A carregar dados...</p>
       </main>
     )
@@ -185,7 +185,7 @@ export default function Dashboard() {
 
   return (
     <main className={styles.page}>
-      <Link href="/" className={styles.voltar}>← Voltar à lista</Link>
+      <Link href="/logistico" className={styles.voltar}>← Voltar à lista</Link>
       <div className={styles.titulo}>Dashboard</div>
       <div className={styles.subtitulo}>Resumo do stock · mês corrente: {mesPorExtenso}</div>
 
