@@ -7,7 +7,8 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
 import { iniciais } from '@/lib/ui'
 
-type Item = { href: string; label: string; icon: string; badge?: 'leads' }
+// grupo: rótulo não clicável (cabeçalho de departamento); subitem: indentado por baixo
+type Item = { href?: string; label: string; icon?: string; badge?: 'leads'; grupo?: boolean; subitem?: boolean }
 type Seccao = { titulo: string; itens: Item[] }
 
 const NAV: Seccao[] = [
@@ -20,7 +21,8 @@ const NAV: Seccao[] = [
       { href: '/comercial', label: 'Comercial', icon: '🤝' },
       { href: '/marketing', label: 'Marketing', icon: '📣' },
       { href: '/tecnico', label: 'Técnico', icon: '🔧' },
-      { href: '/logistico', label: 'Logística (Stock)', icon: '📦' },
+      { label: 'Logística', icon: '📦', grupo: true },
+      { href: '/logistico', label: 'Stock', subitem: true },
       { href: '/clinico', label: 'Clínico', icon: '🩺' },
       { href: '/alugueres', label: 'Alugueres', icon: '🔄', badge: 'leads' },
       { href: '/projetos', label: 'Outros Projetos', icon: '🏗️' },
@@ -111,15 +113,26 @@ export default function Shell({ children }: { children: React.ReactNode }) {
           {NAV.map((sec) => (
             <div key={sec.titulo}>
               <div className="a4l-sb-section">{sec.titulo}</div>
-              {sec.itens.map((it) => (
-                <Link key={it.href} href={it.href} className={`a4l-sb-item${ehAtivo(it.href) ? ' ativo' : ''}`}>
-                  <span className="a4l-sb-icon">{it.icon}</span>
-                  <span>{it.label}</span>
-                  {it.badge === 'leads' && leadsNovas > 0 && (
-                    <span className="a4l-sb-badge">{leadsNovas}</span>
-                  )}
-                </Link>
-              ))}
+              {sec.itens.map((it) =>
+                it.grupo ? (
+                  <div key={it.label} className="a4l-sb-grupo">
+                    {it.icon && <span className="a4l-sb-icon">{it.icon}</span>}
+                    <span>{it.label}</span>
+                  </div>
+                ) : (
+                  <Link
+                    key={it.href}
+                    href={it.href!}
+                    className={`a4l-sb-item${it.subitem ? ' a4l-sb-sub' : ''}${ehAtivo(it.href!) ? ' ativo' : ''}`}
+                  >
+                    {!it.subitem && <span className="a4l-sb-icon">{it.icon}</span>}
+                    <span>{it.label}</span>
+                    {it.badge === 'leads' && leadsNovas > 0 && (
+                      <span className="a4l-sb-badge">{leadsNovas}</span>
+                    )}
+                  </Link>
+                )
+              )}
             </div>
           ))}
         </nav>

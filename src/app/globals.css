@@ -349,6 +349,25 @@ select {
   background: var(--a4l-sidebar-item-hover);
 }
 
+/* Cabeçalho de departamento (não clicável) com sub-itens por baixo */
+.a4l-sb-grupo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  color: var(--a4l-sidebar-text);
+  font-size: 13.5px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+/* Sub-item indentado (alinha com o texto do cabeçalho, depois do ícone) */
+.a4l-sb-item.a4l-sb-sub {
+  padding-left: 38px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
 .a4l-sb-item.ativo {
   background: var(--a4l-gradient);
   box-shadow: 0 2px 10px rgba(5, 0, 255, 0.3);
