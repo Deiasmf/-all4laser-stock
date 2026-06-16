@@ -1,5 +1,6 @@
 import type { FolhaObra } from '@/types/folhaObra'
 import { ESTADO_FOLHA_CONFIG } from '@/types/folhaObra'
+import { MARGEM, TOPO_CONTEUDO, RODAPE_ALTURA, carregarLogo, aplicarCabecalhoRodape } from './docTemplate'
 
 function formatarData(d: string | null) {
   if (!d) return '—'
@@ -40,41 +41,32 @@ export async function gerarPdfFolha(folha: FolhaObra): Promise<Blob> {
   const { jsPDF } = await import('jspdf')
   const doc = new jsPDF({ unit: 'pt', format: 'a4' })
 
-  const M = 40 // margem
+  const M = MARGEM // margem
   const larguraPagina = doc.internal.pageSize.getWidth()
   const alturaPagina = doc.internal.pageSize.getHeight()
   const larguraConteudo = larguraPagina - M * 2
   const NAVY: [number, number, number] = [13, 11, 43]
   const CINZA: [number, number, number] = [110, 116, 128]
-  let y = M
+  let y = TOPO_CONTEUDO // o conteúdo começa abaixo do logótipo
 
   function garantirEspaco(h: number) {
-    if (y + h > alturaPagina - M) {
+    if (y + h > alturaPagina - RODAPE_ALTURA) {
       doc.addPage()
-      y = M
+      y = TOPO_CONTEUDO
     }
   }
 
   function titulo() {
+    // O logótipo é desenhado pelo template; aqui fica só o título do documento.
     doc.setTextColor(...NAVY)
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(18)
-    doc.text('All4laser', M, y)
-    doc.setFontSize(13)
-    doc.setTextColor(...CINZA)
-    doc.text('Folha de Obra', larguraPagina - M, y, { align: 'right' })
-    y += 18
-    doc.setTextColor(...NAVY)
     doc.setFontSize(15)
-    doc.text(folha.numero, M, y)
+    doc.text(`Folha de Obra ${folha.numero}`, M, y)
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(11)
+    doc.setFontSize(10)
     doc.setTextColor(...CINZA)
     doc.text(ESTADO_FOLHA_CONFIG[folha.estado].label, larguraPagina - M, y, { align: 'right' })
-    y += 12
-    doc.setDrawColor(220, 222, 226)
-    doc.line(M, y, larguraPagina - M, y)
-    y += 18
+    y += 22
   }
 
   function seccao(nome: string) {
@@ -212,15 +204,9 @@ export async function gerarPdfFolha(folha: FolhaObra): Promise<Blob> {
   }
   y = topo + caixaAlt + 36
 
-  // ── Rodapé ──
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8)
-  doc.setTextColor(...CINZA)
-  doc.text(
-    `Gerado em ${new Date().toLocaleString('pt-PT')} · All4laser`,
-    M,
-    alturaPagina - 24
-  )
+  // ── Cabeçalho (logótipo) + rodapé (info da empresa) em todas as páginas ──
+  const logo = await carregarLogo()
+  aplicarCabecalhoRodape(doc, logo)
 
   return doc.output('blob')
 }
