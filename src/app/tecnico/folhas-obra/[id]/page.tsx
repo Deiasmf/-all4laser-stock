@@ -8,6 +8,7 @@ import { obterFolha, atualizarFolha, eliminarFolha, guardarPdfFolha } from '@/li
 import { gerarPdfFolha } from '@/lib/folhaPdf'
 import FolhaObraForm from '@/components/FolhaObraForm'
 import AssinaturasFolha from '@/components/AssinaturasFolha'
+import FolhasObraFotos from '@/components/FolhasObraFotos'
 import { ESTADO_FOLHA_CONFIG, type FolhaObra, type FolhaInput } from '@/types/folhaObra'
 
 export default function EditarFolhaPage() {
@@ -122,6 +123,8 @@ export default function EditarFolhaPage() {
       <FolhaObraForm inicial={folha} submitLabel="Guardar alterações" aGuardar={aGuardar} erro={erro} onSubmit={guardar} />
 
       <AssinaturasFolha folha={folha} onAtualizada={setFolha} />
+
+      <FolhasObraFotos folhaId={folha.id} />
     </main>
   )
 }
