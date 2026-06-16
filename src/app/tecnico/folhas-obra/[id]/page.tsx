@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 import { obterFolha, atualizarFolha, eliminarFolha } from '@/lib/folhasObra'
 import FolhaObraForm from '@/components/FolhaObraForm'
+import AssinaturasFolha from '@/components/AssinaturasFolha'
 import { ESTADO_FOLHA_CONFIG, type FolhaObra, type FolhaInput } from '@/types/folhaObra'
 
 export default function EditarFolhaPage() {
@@ -79,6 +80,8 @@ export default function EditarFolhaPage() {
       {msg && <div style={s.ok}>{msg}</div>}
 
       <FolhaObraForm inicial={folha} submitLabel="Guardar alterações" aGuardar={aGuardar} erro={erro} onSubmit={guardar} />
+
+      <AssinaturasFolha folha={folha} onAtualizada={setFolha} />
     </main>
   )
 }
