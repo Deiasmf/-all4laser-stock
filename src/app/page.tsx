@@ -1,359 +1,501 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import Link from 'next/link'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
-import type { Equipamento } from '@/types/equipamento'
-import { camposEmFalta } from '@/types/equipamento'
-import FiltroMulti from '@/components/FiltroMulti'
-import FiltroData from '@/components/FiltroData'
-import styles from './page.module.css'
-
-const TAMANHO_LOTE = 1000 // o Supabase devolve no máximo 1000 por pedido
-
-function formatarEuro(v: number | null) {
-  if (v === null || v === undefined) return '—'
-  return v.toLocaleString('pt-PT', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })
-}
-
-// Lista ordenada de valores distintos de um campo
-function distintos(lista: Equipamento[], campo: keyof Equipamento) {
-  return Array.from(
-    new Set(lista.map((e) => e[campo] as string).filter(Boolean))
-  )
-}
+import { iniciais, saudacao, dataPorExtenso, tempoRelativo } from '@/lib/ui'
+import {
+  carregarMetricas,
+  listarComunicados,
+  criarComunicado,
+  listarTarefasHoje,
+  alternarTarefa,
+  criarTarefa,
+  listarChat,
+  enviarMensagem,
+  listarAlugueresFora,
+  listarReservasHoje,
+  type Metricas,
+  type AluguerFora,
+  type ReservaHoje,
+} from '@/lib/dashboard'
+import { AREAS, corArea, type Comunicado, type Tarefa, type ChatMensagem } from '@/types/dashboard'
 
 export default function Home() {
-  const router = useRouter()
-  const { isAdmin } = useAuth()
+  const { perfil } = useAuth()
+  const primeiroNome = (perfil?.nome ?? '').split(/\s+/)[0] || 'equipa'
 
-  const [todos, setTodos] = useState<Equipamento[]>([])
-  const [loading, setLoading] = useState(true)
-  const [erro, setErro] = useState<string | null>(null)
+  return (
+    <div style={{ maxWidth: 1180, margin: '0 auto' }}>
+      {/* 1. Saudação */}
+      <div style={{ marginBottom: 20 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--a4l-text-dark)' }}>
+          {saudacao()}, {primeiroNome}
+        </h1>
+        <p style={{ color: 'var(--a4l-text-light)', fontSize: 13, marginTop: 2 }}>{dataPorExtenso()}</p>
+      </div>
 
-  // Filtros (todos combináveis). Os dropdowns aceitam várias opções (multi-seleção).
-  const [pesquisa, setPesquisa] = useState('')
-  const [marca, setMarca] = useState<string[]>([])
-  const [modelo, setModelo] = useState<string[]>([])
-  const [ano, setAno] = useState<string[]>([])
-  const [status, setStatus] = useState<string[]>([])
-  const [origem, setOrigem] = useState<string[]>([])
-  const [destino, setDestino] = useState<string[]>([])
-  // Intervalos de datas: receção (data_entrada) e envio (data_saida)
-  const [recDe, setRecDe] = useState('')
-  const [recAte, setRecAte] = useState('')
-  const [envDe, setEnvDe] = useState('')
-  const [envAte, setEnvAte] = useState('')
-  const [soIncompletos, setSoIncompletos] = useState(false)
+      {/* 2. Métricas */}
+      <Metricas />
 
-  const [recolhidas, setRecolhidas] = useState<Set<string>>(new Set())
+      {/* 3. Grid principal */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 14, marginTop: 14 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <ComunicadosCard />
+          <TarefasCard />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <ChatCard />
+          <ADecorrerCard />
+        </div>
+      </div>
+    </div>
+  )
+}
 
-  function alternarMarca(m: string) {
-    setRecolhidas((atual) => {
-      const nova = new Set(atual)
-      if (nova.has(m)) nova.delete(m)
-      else nova.add(m)
-      return nova
-    })
-  }
+// ───────────────────────────────────────── Métricas
+function Metricas() {
+  const [m, setM] = useState<Metricas>({ alugueresFora: 0, leadsNovas: 0, emPrep: 0, entregasHoje: 0 })
 
-  // Carregar TODOS os equipamentos uma vez (em lotes de 1000)
   useEffect(() => {
-    async function carregar() {
-      setLoading(true)
-      setErro(null)
-      const acumulado: Equipamento[] = []
-      let de = 0
-      let erroMsg: string | null = null
-      while (true) {
-        const { data, error } = await supabase
-          .from('equipamentos')
-          .select('*')
-          .order('marca', { ascending: true, nullsFirst: false })
-          .order('modelo', { ascending: true })
-          .order('serial_number', { ascending: true })
-          .range(de, de + TAMANHO_LOTE - 1)
-        if (error) {
-          erroMsg = error.message
-          break
-        }
-        if (!data || data.length === 0) break
-        acumulado.push(...(data as Equipamento[]))
-        if (data.length < TAMANHO_LOTE) break
-        de += TAMANHO_LOTE
-      }
-      if (erroMsg) setErro(erroMsg)
-      else setTodos(acumulado)
-      setLoading(false)
-    }
-    carregar()
+    carregarMetricas().then(setM)
   }, [])
 
-  // Opções dos dropdowns (a partir dos dados carregados)
-  const opcoes = useMemo(() => {
-    return {
-      marcas: distintos(todos, 'marca').sort((a, b) => a.localeCompare(b, 'pt')),
-      // Modelos: se houver marca(s) escolhida(s), só os dessas marcas
-      modelos: distintos(
-        marca.length ? todos.filter((e) => marca.includes(e.marca as string)) : todos,
-        'modelo'
-      ).sort((a, b) => a.localeCompare(b, 'pt')),
-      anos: distintos(todos, 'ano').sort((a, b) => b.localeCompare(a)),
-      status: distintos(todos, 'status').sort((a, b) => a.localeCompare(b, 'pt')),
-      origens: distintos(todos, 'origem').sort((a, b) => a.localeCompare(b, 'pt')),
-      destinos: distintos(todos, 'destino').sort((a, b) => a.localeCompare(b, 'pt')),
-    }
-  }, [todos, marca])
+  const cards = [
+    { label: 'Alugueres a decorrer', valor: m.alugueresFora },
+    { label: 'Leads novas', valor: m.leadsNovas },
+    { label: 'Equipamentos em prep.', valor: m.emPrep },
+    { label: 'Entregas hoje', valor: m.entregasHoje },
+  ]
 
-  // Aplica todos os filtros (combinados com E; dentro de cada filtro é OU)
-  const equipamentos = useMemo(() => {
-    const q = pesquisa.trim().toLowerCase()
-    const incluido = (sel: string[], valor: string | null) =>
-      sel.length === 0 || (valor != null && sel.includes(valor))
-    // Datas em ISO (YYYY-MM-DD) comparam-se diretamente como texto
-    const noIntervalo = (valor: string | null, de: string, ate: string) => {
-      if (!de && !ate) return true
-      if (!valor) return false
-      if (de && valor < de) return false
-      if (ate && valor > ate) return false
-      return true
-    }
-    return todos.filter((e) => {
-      if (!incluido(marca, e.marca)) return false
-      if (!incluido(modelo, e.modelo)) return false
-      if (!incluido(ano, e.ano)) return false
-      if (!incluido(status, e.status)) return false
-      if (!incluido(origem, e.origem)) return false
-      if (!incluido(destino, e.destino)) return false
-      if (!noIntervalo(e.data_entrada, recDe, recAte)) return false
-      if (!noIntervalo(e.data_saida, envDe, envAte)) return false
-      if (soIncompletos && camposEmFalta(e).length === 0) return false
-      if (q) {
-        const alvo = `${e.marca ?? ''} ${e.modelo ?? ''} ${e.serial_number ?? ''} ${e.destino ?? ''}`.toLowerCase()
-        if (!alvo.includes(q)) return false
-      }
-      return true
-    })
-  }, [todos, pesquisa, marca, modelo, ano, status, origem, destino, recDe, recAte, envDe, envAte, soIncompletos])
-
-  const totalIncompletos = useMemo(
-    () => todos.filter((e) => camposEmFalta(e).length > 0).length,
-    [todos]
-  )
-
-  // Se mudarem as marcas, remove os modelos escolhidos que já não pertencem às marcas
-  function mudarMarca(novasMarcas: string[]) {
-    setMarca(novasMarcas)
-    const modelosValidos = new Set(
-      distintos(
-        novasMarcas.length ? todos.filter((e) => novasMarcas.includes(e.marca as string)) : todos,
-        'modelo'
-      )
-    )
-    setModelo((atual) => atual.filter((m) => modelosValidos.has(m)))
-  }
-
-  function limparFiltros() {
-    setPesquisa('')
-    setMarca([])
-    setModelo([])
-    setAno([])
-    setStatus([])
-    setOrigem([])
-    setDestino([])
-    setRecDe('')
-    setRecAte('')
-    setEnvDe('')
-    setEnvAte('')
-    setSoIncompletos(false)
-  }
-
-  const temFiltros =
-    !!pesquisa ||
-    marca.length > 0 ||
-    modelo.length > 0 ||
-    ano.length > 0 ||
-    status.length > 0 ||
-    origem.length > 0 ||
-    destino.length > 0 ||
-    !!recDe || !!recAte || !!envDe || !!envAte ||
-    soIncompletos
-
-  // Constrói linhas da tabela com cabeçalhos de grupo (Marca → Modelo)
-  function linhasTabela() {
-    let ultimaMarca: string | null = null
-    let ultimoModelo: string | null = null
-    const linhas: React.ReactElement[] = []
-
-    for (const e of equipamentos) {
-      const m = e.marca || 'Sem marca'
-      const mod = e.modelo || 'Sem modelo'
-
-      if (m !== ultimaMarca) {
-        const recolhida = recolhidas.has(m)
-        linhas.push(
-          <tr key={`marca-${m}`} className={styles.grupoMarca} onClick={() => alternarMarca(m)}>
-            <td colSpan={5}>
-              <span className={styles.seta}>{recolhida ? '▸' : '▾'}</span>
-              {m}
-            </td>
-          </tr>
-        )
-        ultimaMarca = m
-        ultimoModelo = null
-      }
-
-      if (recolhidas.has(m)) continue
-
-      if (mod !== ultimoModelo) {
-        linhas.push(
-          <tr key={`modelo-${m}-${mod}`} className={styles.grupoModelo}>
-            <td colSpan={5}>{mod}</td>
-          </tr>
-        )
-        ultimoModelo = mod
-      }
-
-      const falta = camposEmFalta(e)
-      linhas.push(
-        <tr key={e.id} className={styles.linhaEquip} onClick={() => router.push(`/equipamentos/${e.id}`)}>
-          <td className={styles.serialCell}>{e.serial_number ?? '—'}</td>
-          <td>{e.ano ?? '—'}</td>
-          <td>{e.status ? <span className={styles.statusTag}>{e.status}</span> : '—'}</td>
-          <td>{formatarEuro(e.valor_compra)}</td>
-          <td>{falta.length > 0 && <span className={styles.badgeFalta}>{falta.length} em falta</span>}</td>
-        </tr>
-      )
-    }
-    return linhas
-  }
-
-  // Constrói cartões (telemóvel) com cabeçalhos de grupo
-  function cartoes() {
-    let ultimaMarca: string | null = null
-    let ultimoModelo: string | null = null
-    const itens: React.ReactElement[] = []
-
-    for (const e of equipamentos) {
-      const m = e.marca || 'Sem marca'
-      const mod = e.modelo || 'Sem modelo'
-
-      if (m !== ultimaMarca) {
-        const recolhida = recolhidas.has(m)
-        itens.push(
-          <div key={`marca-${m}`} className={styles.cardGrupoMarca} onClick={() => alternarMarca(m)}>
-            <span className={styles.seta}>{recolhida ? '▸' : '▾'}</span>
-            {m}
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+      {cards.map((c) => (
+        <div key={c.label} className="a4l-card" style={{ padding: '16px 20px' }}>
+          <div className="a4l-gradient-text" style={{ fontSize: 30, fontWeight: 800, lineHeight: 1.1 }}>
+            {c.valor}
           </div>
-        )
-        ultimaMarca = m
-        ultimoModelo = null
-      }
-
-      if (recolhidas.has(m)) continue
-
-      if (mod !== ultimoModelo) {
-        itens.push(<div key={`modelo-${m}-${mod}`} className={styles.cardGrupoModelo}>{mod}</div>)
-        ultimoModelo = mod
-      }
-
-      const falta = camposEmFalta(e)
-      itens.push(
-        <div key={e.id} className={styles.card} onClick={() => router.push(`/equipamentos/${e.id}`)}>
-          <div className={styles.cardTop}>
-            <span className={styles.cardModelo}>Serial: {e.serial_number ?? '— sem serial'}</span>
-            {falta.length > 0 && <span className={styles.badgeFalta}>{falta.length} em falta</span>}
+          <div style={{ color: 'var(--a4l-text-light)', fontSize: 12.5, fontWeight: 600, marginTop: 4 }}>
+            {c.label}
           </div>
-          <div className={styles.cardLinha}>
-            {e.status ? <span className={styles.statusTag}>{e.status}</span> : 'Sem status'}
-            {e.ano ? ` · ${e.ano}` : ''}
-          </div>
-          <div className={styles.cardLinha}>Compra: {formatarEuro(e.valor_compra)}</div>
         </div>
-      )
-    }
-    return itens
+      ))}
+    </div>
+  )
+}
+
+// ───────────────────────────────────────── Cabeçalho de card
+function CardHead({ titulo, acao }: { titulo: string; acao?: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+      <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--a4l-text-dark)' }}>{titulo}</h2>
+      {acao}
+    </div>
+  )
+}
+
+function PrioPill({ p }: { p: string }) {
+  return <span className={`a4l-prio a4l-prio-${p}`}>{p}</span>
+}
+
+function Avatar({ ini }: { ini: string }) {
+  return <div className="a4l-avatar" style={{ width: 26, height: 26, fontSize: 11 }}>{ini}</div>
+}
+
+// ───────────────────────────────────────── Comunicados
+function ComunicadosCard() {
+  const { perfil } = useAuth()
+  const [lista, setLista] = useState<Comunicado[]>([])
+  const [modal, setModal] = useState(false)
+  const [titulo, setTitulo] = useState('')
+  const [corpo, setCorpo] = useState('')
+  const [area, setArea] = useState('')
+  const [prioridade, setPrioridade] = useState('normal')
+  const [aGuardar, setAGuardar] = useState(false)
+
+  function carregar() {
+    listarComunicados(5).then(setLista)
+  }
+  useEffect(carregar, [])
+
+  async function guardar() {
+    if (!titulo.trim() || !corpo.trim()) return
+    setAGuardar(true)
+    await criarComunicado({
+      titulo: titulo.trim(),
+      corpo: corpo.trim(),
+      area: area || null,
+      prioridade,
+      autor_id: perfil?.id ?? null,
+      autor_nome: perfil?.nome ?? perfil?.email ?? 'Equipa',
+      autor_iniciais: iniciais(perfil?.nome, perfil?.email),
+    })
+    setAGuardar(false)
+    setModal(false)
+    setTitulo(''); setCorpo(''); setArea(''); setPrioridade('normal')
+    carregar()
   }
 
   return (
-    <main className={styles.page}>
-      <div className={styles.header}>
-        <span className={styles.title}>Stock de equipamentos</span>
-        <div className={styles.headerDireita}>
-          <Link href="/dashboard" className={styles.btnSecundario}>Dashboard</Link>
-          <span className={styles.count}>{equipamentos.length} de {todos.length}</span>
-          {isAdmin && (
-            <Link href="/equipamentos/novo" className={styles.btnAdicionar}>
-              + Adicionar
-            </Link>
-          )}
-        </div>
-      </div>
-
-      {totalIncompletos > 0 && !soIncompletos && (
-        <button className={styles.alertaIncompletos} onClick={() => setSoIncompletos(true)}>
-          ⚠ {totalIncompletos} equipamentos com informação em falta — clica para ver
-        </button>
-      )}
-
-      <div className={styles.filtros}>
-        <input
-          className={styles.input}
-          placeholder="Pesquisar por marca, modelo, serial ou destino..."
-          value={pesquisa}
-          onChange={(e) => setPesquisa(e.target.value)}
-        />
-        <FiltroMulti label="Marcas" opcoes={opcoes.marcas} selecionados={marca} onChange={mudarMarca} />
-        <FiltroMulti label="Modelos" opcoes={opcoes.modelos} selecionados={modelo} onChange={setModelo} />
-        <FiltroMulti label="Anos" opcoes={opcoes.anos} selecionados={ano} onChange={setAno} />
-        <FiltroMulti label="Status" opcoes={opcoes.status} selecionados={status} onChange={setStatus} />
-        <FiltroMulti label="Origens" opcoes={opcoes.origens} selecionados={origem} onChange={setOrigem} />
-        <FiltroMulti label="Destinos" opcoes={opcoes.destinos} selecionados={destino} onChange={setDestino} />
-        <FiltroData label="Receção" de={recDe} ate={recAte} onChange={(d, a) => { setRecDe(d); setRecAte(a) }} />
-        <FiltroData label="Envio" de={envDe} ate={envAte} onChange={(d, a) => { setEnvDe(d); setEnvAte(a) }} />
-        <label className={styles.checkbox}>
-          <input
-            type="checkbox"
-            checked={soIncompletos}
-            onChange={(e) => setSoIncompletos(e.target.checked)}
-          />
-          Só incompletos
-        </label>
-        {temFiltros && (
-          <button className={styles.btnLimpar} onClick={limparFiltros}>
-            Limpar filtros
-          </button>
-        )}
-      </div>
-
-      {erro && <p className={styles.estado} style={{ color: 'var(--danger)' }}>Erro: {erro}</p>}
-
-      {loading ? (
-        <p className={styles.estado}>A carregar...</p>
-      ) : equipamentos.length === 0 ? (
-        <p className={styles.estado}>Nenhum equipamento encontrado.</p>
+    <div className="a4l-card">
+      <CardHead
+        titulo="Comunicados da equipa"
+        acao={<button className="a4l-btn" onClick={() => setModal(true)}>+ Comunicado</button>}
+      />
+      {lista.length === 0 ? (
+        <p style={{ color: 'var(--a4l-text-light)', fontSize: 13 }}>Sem comunicados.</p>
       ) : (
-        <>
-          <div className={styles.tabelaWrap}>
-            <table className={styles.tabela}>
-              <thead>
-                <tr>
-                  <th>Serial Number</th>
-                  <th>Ano</th>
-                  <th>Status</th>
-                  <th>Preço de compra</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>{linhasTabela()}</tbody>
-            </table>
-          </div>
-
-          <div className={styles.cards}>{cartoes()}</div>
-        </>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {lista.map((c) => (
+            <div key={c.id} style={{ borderTop: '0.5px solid var(--a4l-border)', paddingTop: 12 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
+                <PrioPill p={c.prioridade} />
+                {c.area && (
+                  <span style={{ fontSize: 11, color: 'var(--a4l-text-light)' }}>{c.area}</span>
+                )}
+              </div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--a4l-text-dark)' }}>{c.titulo}</div>
+              <p style={{
+                fontSize: 13, color: 'var(--a4l-text-mid)', margin: '2px 0 6px',
+                display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+              }}>
+                {c.corpo}
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--a4l-text-light)', fontSize: 11.5 }}>
+                <Avatar ini={c.autor_iniciais} />
+                <span>{c.autor_nome}</span>
+                <span>·</span>
+                <span>{tempoRelativo(c.created_at)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
-    </main>
+
+      {modal && (
+        <Modal titulo="Novo comunicado" onFechar={() => setModal(false)}>
+          <Campo label="Título">
+            <input className="a4l-input" value={titulo} onChange={(e) => setTitulo(e.target.value)} />
+          </Campo>
+          <Campo label="Mensagem">
+            <textarea className="a4l-input" rows={4} value={corpo} onChange={(e) => setCorpo(e.target.value)} />
+          </Campo>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <Campo label="Área">
+              <select className="a4l-input" value={area} onChange={(e) => setArea(e.target.value)}>
+                <option value="">— nenhuma —</option>
+                {AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
+              </select>
+            </Campo>
+            <Campo label="Prioridade">
+              <select className="a4l-input" value={prioridade} onChange={(e) => setPrioridade(e.target.value)}>
+                <option value="normal">Normal</option>
+                <option value="importante">Importante</option>
+                <option value="urgente">Urgente</option>
+              </select>
+            </Campo>
+          </div>
+          <BotoesModal onCancelar={() => setModal(false)} onGuardar={guardar} aGuardar={aGuardar} />
+        </Modal>
+      )}
+    </div>
+  )
+}
+
+// ───────────────────────────────────────── Tarefas
+function TarefasCard() {
+  const { perfil } = useAuth()
+  const [lista, setLista] = useState<Tarefa[]>([])
+  const [modal, setModal] = useState(false)
+  const [titulo, setTitulo] = useState('')
+  const [area, setArea] = useState<string>(AREAS[0])
+  const [dataLimite, setDataLimite] = useState('')
+  const [prioridade, setPrioridade] = useState('normal')
+  const [aGuardar, setAGuardar] = useState(false)
+
+  function carregar() {
+    listarTarefasHoje().then(setLista)
+  }
+  useEffect(carregar, [])
+
+  async function concluir(id: string) {
+    setLista((l) => l.filter((t) => t.id !== id)) // otimista
+    await alternarTarefa(id, 'concluida')
+  }
+
+  async function guardar() {
+    if (!titulo.trim()) return
+    setAGuardar(true)
+    await criarTarefa({
+      titulo: titulo.trim(),
+      descricao: null,
+      area,
+      data_limite: dataLimite || null,
+      prioridade,
+      assignee_id: perfil?.id ?? null,
+      assignee_nome: perfil?.nome ?? null,
+    })
+    setAGuardar(false)
+    setModal(false)
+    setTitulo(''); setDataLimite(''); setPrioridade('normal'); setArea(AREAS[0])
+    carregar()
+  }
+
+  // Agrupar por área
+  const grupos = lista.reduce<Record<string, Tarefa[]>>((acc, t) => {
+    (acc[t.area] ??= []).push(t)
+    return acc
+  }, {})
+
+  return (
+    <div className="a4l-card">
+      <CardHead
+        titulo="Tarefas do dia"
+        acao={<button className="a4l-btn" onClick={() => setModal(true)}>+ Tarefa</button>}
+      />
+      {lista.length === 0 ? (
+        <p style={{ color: 'var(--a4l-text-light)', fontSize: 13 }}>Sem tarefas para hoje. 🎉</p>
+      ) : (
+        Object.entries(grupos).map(([area, tarefas]) => {
+          const cor = corArea(area)
+          return (
+            <div key={area} style={{ marginBottom: 10 }}>
+              <span style={{
+                display: 'inline-block', fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase',
+                color: cor.color, background: cor.bg, borderRadius: 999, padding: '2px 8px', marginBottom: 6,
+              }}>
+                {area}
+              </span>
+              {tarefas.map((t) => (
+                <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '5px 0', cursor: 'pointer' }}>
+                  <input type="checkbox" onChange={() => concluir(t.id)} style={{ width: 16, height: 16, accentColor: 'var(--a4l-3)' }} />
+                  <span style={{ flex: 1, fontSize: 13.5, color: 'var(--a4l-text-mid)' }}>{t.titulo}</span>
+                  {t.prioridade !== 'normal' && <PrioPill p={t.prioridade} />}
+                </label>
+              ))}
+            </div>
+          )
+        })
+      )}
+
+      {modal && (
+        <Modal titulo="Nova tarefa" onFechar={() => setModal(false)}>
+          <Campo label="Tarefa">
+            <input className="a4l-input" value={titulo} onChange={(e) => setTitulo(e.target.value)} />
+          </Campo>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <Campo label="Área">
+              <select className="a4l-input" value={area} onChange={(e) => setArea(e.target.value)}>
+                {AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
+              </select>
+            </Campo>
+            <Campo label="Prioridade">
+              <select className="a4l-input" value={prioridade} onChange={(e) => setPrioridade(e.target.value)}>
+                <option value="normal">Normal</option>
+                <option value="importante">Importante</option>
+                <option value="urgente">Urgente</option>
+              </select>
+            </Campo>
+          </div>
+          <Campo label="Data limite (opcional)">
+            <input className="a4l-input" type="date" value={dataLimite} onChange={(e) => setDataLimite(e.target.value)} />
+          </Campo>
+          <BotoesModal onCancelar={() => setModal(false)} onGuardar={guardar} aGuardar={aGuardar} />
+        </Modal>
+      )}
+    </div>
+  )
+}
+
+// ───────────────────────────────────────── Chat
+function ChatCard() {
+  const { perfil } = useAuth()
+  const [msgs, setMsgs] = useState<ChatMensagem[]>([])
+  const [texto, setTexto] = useState('')
+  const fimRef = useRef<HTMLDivElement>(null)
+  const meuId = perfil?.id ?? null
+
+  useEffect(() => {
+    listarChat(30).then(setMsgs)
+    const canal = supabase
+      .channel('chat')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_mensagens' }, (payload) => {
+        setMsgs((m) => {
+          const nova = payload.new as ChatMensagem
+          if (m.some((x) => x.id === nova.id)) return m
+          return [...m, nova]
+        })
+      })
+      .subscribe()
+    return () => {
+      supabase.removeChannel(canal)
+    }
+  }, [])
+
+  useEffect(() => {
+    fimRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [msgs])
+
+  async function enviar() {
+    const t = texto.trim()
+    if (!t) return
+    setTexto('')
+    await enviarMensagem({
+      mensagem: t,
+      autor_id: meuId,
+      autor_nome: perfil?.nome ?? perfil?.email ?? 'Equipa',
+      autor_iniciais: iniciais(perfil?.nome, perfil?.email),
+    })
+  }
+
+  return (
+    <div className="a4l-card" style={{ display: 'flex', flexDirection: 'column' }}>
+      <CardHead titulo="Chat de equipa" />
+      <div style={{ height: 320, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, paddingRight: 4 }}>
+        {msgs.length === 0 && <p style={{ color: 'var(--a4l-text-light)', fontSize: 13 }}>Sê o primeiro a escrever.</p>}
+        {msgs.map((m) => {
+          const meu = meuId && m.autor_id === meuId
+          return (
+            <div key={m.id} style={{ display: 'flex', flexDirection: meu ? 'row-reverse' : 'row', gap: 8, alignItems: 'flex-end' }}>
+              <Avatar ini={m.autor_iniciais} />
+              <div style={{ maxWidth: '75%' }}>
+                <div style={{
+                  fontSize: 10.5, color: 'var(--a4l-text-light)', marginBottom: 2,
+                  textAlign: meu ? 'right' : 'left',
+                }}>
+                  {meu ? 'Eu' : m.autor_nome} · {tempoRelativo(m.created_at)}
+                </div>
+                <div style={{
+                  padding: '8px 11px', borderRadius: 12, fontSize: 13, lineHeight: 1.35,
+                  background: meu ? 'var(--a4l-gradient)' : '#F7F6FF',
+                  color: meu ? '#fff' : 'var(--a4l-text-mid)',
+                }}>
+                  {m.mensagem}
+                </div>
+              </div>
+            </div>
+          )
+        })}
+        <div ref={fimRef} />
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+        <input
+          className="a4l-input"
+          style={{ flex: 1 }}
+          placeholder="Escrever mensagem..."
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') enviar() }}
+        />
+        <button className="a4l-btn" onClick={enviar}>Enviar</button>
+      </div>
+    </div>
+  )
+}
+
+// ───────────────────────────────────────── A decorrer + reservas hoje
+function badgeDias(dias: number) {
+  if (dias <= 2) return { txt: 'URGENTE', color: '#fff', bg: 'var(--a4l-5)' }
+  if (dias <= 7) return { txt: `${dias}d`, color: '#fff', bg: '#D4820A' }
+  return { txt: `${dias}d`, color: '#fff', bg: '#00A87A' }
+}
+
+function ADecorrerCard() {
+  const [fora, setFora] = useState<AluguerFora[]>([])
+  const [reservas, setReservas] = useState<ReservaHoje[]>([])
+
+  useEffect(() => {
+    listarAlugueresFora(8).then(setFora)
+    listarReservasHoje(8).then(setReservas)
+  }, [])
+
+  return (
+    <div className="a4l-card">
+      <CardHead titulo="Alugueres a decorrer" />
+
+      <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'var(--a4l-text-light)', marginBottom: 6 }}>
+        Fora agora
+      </div>
+      {fora.length === 0 ? (
+        <p style={{ color: 'var(--a4l-text-light)', fontSize: 13, marginBottom: 12 }}>Nenhum aluguer fora.</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginBottom: 14 }}>
+          {fora.map((a) => (
+            <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 600, color: 'var(--a4l-text-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {a.cliente_nome ?? '—'}
+                </div>
+                <div style={{ color: 'var(--a4l-text-light)', fontSize: 12 }}>
+                  {[a.modelo, a.serial_number].filter(Boolean).join(' · ') || '—'}
+                </div>
+              </div>
+              <span style={{ color: 'var(--a4l-text-light)', fontSize: 11.5, whiteSpace: 'nowrap' }}>
+                desde {a.data_entrega ?? '—'}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'var(--a4l-text-light)', marginBottom: 6 }}>
+        Reservados para hoje
+      </div>
+      {reservas.length === 0 ? (
+        <p style={{ color: 'var(--a4l-text-light)', fontSize: 13 }}>Nenhuma reserva para hoje.</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+          {reservas.map((r) => {
+            const b = badgeDias(r.diasRestantes)
+            return (
+              <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, color: 'var(--a4l-text-dark)' }}>{r.cliente_nome ?? '—'}</div>
+                  <div style={{ color: 'var(--a4l-text-light)', fontSize: 12 }}>{r.modelo_nome} · até {r.data_fim}</div>
+                </div>
+                <span style={{ color: b.color, background: b.bg, fontSize: 10.5, fontWeight: 700, borderRadius: 999, padding: '2px 8px', whiteSpace: 'nowrap' }}>
+                  {b.txt}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ───────────────────────────────────────── Modal + campos
+function Modal({ titulo, onFechar, children }: { titulo: string; onFechar: () => void; children: React.ReactNode }) {
+  return (
+    <div
+      onClick={onFechar}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(13,11,43,0.4)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+    >
+      <div onClick={(e) => e.stopPropagation()} className="a4l-card" style={{ width: '100%', maxWidth: 460, maxHeight: '90vh', overflowY: 'auto' }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--a4l-text-dark)', marginBottom: 14 }}>{titulo}</h2>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function Campo({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: 'var(--a4l-text-mid)', marginBottom: 4 }}>{label}</label>
+      {children}
+    </div>
+  )
+}
+
+function BotoesModal({ onCancelar, onGuardar, aGuardar }: { onCancelar: () => void; onGuardar: () => void; aGuardar: boolean }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+      <button className="a4l-btn-ghost" onClick={onCancelar}>Cancelar</button>
+      <button className="a4l-btn" onClick={onGuardar} disabled={aGuardar} style={{ opacity: aGuardar ? 0.6 : 1 }}>
+        {aGuardar ? 'A guardar...' : 'Guardar'}
+      </button>
+    </div>
   )
 }

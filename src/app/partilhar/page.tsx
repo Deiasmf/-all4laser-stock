@@ -122,7 +122,7 @@ export default function PartilharPage() {
         <Link href={`/equipamentos/${escolhido.id}`} style={estilos.botaoLink}>
           Ver equipamento
         </Link>
-        <Link href="/" style={estilos.voltar}>← Voltar à lista</Link>
+        <Link href="/logistico" style={estilos.voltar}>← Voltar à lista</Link>
       </main>
     )
   }
@@ -198,7 +198,7 @@ export default function PartilharPage() {
         {aCarregar ? 'A carregar...' : `Carregar ${ficheiros.length || ''} foto(s)`}
       </button>
 
-      <Link href="/" style={estilos.voltar}>← Cancelar</Link>
+      <Link href="/logistico" style={estilos.voltar}>← Cancelar</Link>
     </main>
   )
 }
