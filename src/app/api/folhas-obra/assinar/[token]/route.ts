@@ -6,11 +6,15 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+// O URL é público (mesmo fallback do lib/supabase.ts), por isso não depende de
+// variável de ambiente. Só a service role (secreta) tem de estar no ambiente.
+const SUPABASE_URL =
+  process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://lykfbclxsyazerffcpta.supabase.co'
+
 function servico(): SupabaseClient | null {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!url || !serviceKey) return null
-  return createClient(url, serviceKey, { auth: { persistSession: false } })
+  if (!serviceKey) return null
+  return createClient(SUPABASE_URL, serviceKey, { auth: { persistSession: false } })
 }
 
 // Devolve a folha (subset seguro) a partir do token, para mostrar ao cliente.
@@ -21,7 +25,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ token: string 
   }
   const supabase = servico()
   if (!supabase) {
-    return Response.json({ ok: false, erro: 'Servidor não configurado.' }, { status: 500 })
+    return Response.json({ ok: false, erro: 'Servidor não configurado (falta SUPABASE_SERVICE_ROLE_KEY).' }, { status: 500 })
   }
 
   const { data, error } = await supabase
@@ -44,7 +48,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
   }
   const supabase = servico()
   if (!supabase) {
-    return Response.json({ ok: false, erro: 'Servidor não configurado.' }, { status: 500 })
+    return Response.json({ ok: false, erro: 'Servidor não configurado (falta SUPABASE_SERVICE_ROLE_KEY).' }, { status: 500 })
   }
 
   const bytes = Buffer.from(await req.arrayBuffer())
