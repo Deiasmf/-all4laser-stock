@@ -73,7 +73,10 @@ export default function FolhasObraPage() {
           <h1 style={c.titulo}>Folhas de Obra</h1>
           <Link href="/tecnico" style={c.voltar}>← Técnico</Link>
         </div>
-        <Link href="/tecnico/folhas-obra/nova" style={c.btnNova}>+ Nova folha</Link>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <Link href="/tecnico/folhas-obra/dashboard" style={c.btnSecundario}>📊 Dashboard</Link>
+          <Link href="/tecnico/folhas-obra/nova" style={c.btnNova}>+ Nova folha</Link>
+        </div>
       </div>
 
       <div style={c.resumoLinha}>
@@ -149,6 +152,7 @@ const c: Record<string, React.CSSProperties> = {
   titulo: { fontSize: 22, fontWeight: 700, color: 'var(--primary)' },
   voltar: { color: 'var(--muted)', textDecoration: 'none', fontSize: 14 },
   btnNova: { background: 'var(--primary)', color: '#fff', textDecoration: 'none', borderRadius: 8, padding: '10px 16px', fontWeight: 700, whiteSpace: 'nowrap' },
+  btnSecundario: { background: 'var(--surface)', color: 'var(--primary)', textDecoration: 'none', border: '1px solid var(--primary)', borderRadius: 8, padding: '10px 14px', fontWeight: 600, whiteSpace: 'nowrap' },
   resumoLinha: { display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 },
   pill: { border: '1px solid var(--border)', borderRadius: 999, padding: '5px 12px', fontSize: 13, fontWeight: 700, cursor: 'pointer' },
   filtros: { display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' },
