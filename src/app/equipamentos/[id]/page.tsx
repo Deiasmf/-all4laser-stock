@@ -29,14 +29,17 @@ function formatarEuro(v: number | null) {
 function FicheiroLink({ caminho }: { caminho: string | null }) {
   const [url, setUrl] = useState<string | null>(null)
   useEffect(() => {
-    if (!caminho) {
-      setUrl(null)
-      return
-    }
+    if (!caminho) return
+    let activo = true
     supabase.storage
       .from('faturas')
       .createSignedUrl(caminho, 3600)
-      .then(({ data }) => setUrl(data?.signedUrl ?? null))
+      .then(({ data }) => {
+        if (activo) setUrl(data?.signedUrl ?? null)
+      })
+    return () => {
+      activo = false
+    }
   }, [caminho])
 
   if (!caminho) return null
@@ -46,6 +49,22 @@ function FicheiroLink({ caminho }: { caminho: string | null }) {
     </a>
   ) : (
     <>a preparar link...</>
+  )
+}
+
+// Componente auxiliar para uma linha de campo
+function Linha({ rotulo, valor }: { rotulo: string; valor: React.ReactNode }) {
+  return (
+    <div className={styles.linha}>
+      <span className={styles.rotulo}>{rotulo}</span>
+      <span className={styles.valor}>
+        {valor === null || valor === undefined || valor === '' ? (
+          <span className={styles.vazio}>em falta</span>
+        ) : (
+          valor
+        )}
+      </span>
+    </div>
   )
 }
 
@@ -110,20 +129,6 @@ export default function DetalheEquipamento() {
   }
 
   const falta = camposEmFalta(eq)
-
-  // Componente auxiliar para uma linha de campo
-  const Linha = ({ rotulo, valor }: { rotulo: string; valor: React.ReactNode }) => (
-    <div className={styles.linha}>
-      <span className={styles.rotulo}>{rotulo}</span>
-      <span className={styles.valor}>
-        {valor === null || valor === undefined || valor === '' ? (
-          <span className={styles.vazio}>em falta</span>
-        ) : (
-          valor
-        )}
-      </span>
-    </div>
-  )
 
   return (
     <main className={styles.page}>

@@ -27,6 +27,32 @@ const nomesMes = [
 ]
 const mesPorExtenso = `${nomesMes[new Date().getMonth()]} de ${new Date().getFullYear()}`
 
+// Render de uma tabela modelo/ano
+function TabelaModeloAno({ dados }: { dados: { modelo: string; ano: string; n: number }[] }) {
+  return dados.length === 0 ? (
+    <p className={styles.vazio}>Nenhum registo este mês.</p>
+  ) : (
+    <table className={styles.tabela}>
+      <thead>
+        <tr>
+          <th>Modelo</th>
+          <th>Ano</th>
+          <th className={styles.num}>Quantidade</th>
+        </tr>
+      </thead>
+      <tbody>
+        {dados.map((d) => (
+          <tr key={`${d.modelo}-${d.ano}`}>
+            <td>{d.modelo}</td>
+            <td>{d.ano}</td>
+            <td className={styles.num}>{d.n}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
 // Conta ocorrências agrupando por uma chave composta
 function agrupar(linhas: Linha[], chave: (l: Linha) => string) {
   const mapa = new Map<string, number>()
@@ -133,31 +159,6 @@ export default function Dashboard() {
 
   const entradasTab = tabelaModeloAno(entradasMes)
   const saidasTab = tabelaModeloAno(saidasMes)
-
-  // Render de uma tabela modelo/ano
-  const TabelaModeloAno = ({ dados }: { dados: { modelo: string; ano: string; n: number }[] }) =>
-    dados.length === 0 ? (
-      <p className={styles.vazio}>Nenhum registo este mês.</p>
-    ) : (
-      <table className={styles.tabela}>
-        <thead>
-          <tr>
-            <th>Modelo</th>
-            <th>Ano</th>
-            <th className={styles.num}>Quantidade</th>
-          </tr>
-        </thead>
-        <tbody>
-          {dados.map((d) => (
-            <tr key={`${d.modelo}-${d.ano}`}>
-              <td>{d.modelo}</td>
-              <td>{d.ano}</td>
-              <td className={styles.num}>{d.n}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    )
 
   // Render da tabela de stock agrupada por marca
   function tabelaStock() {

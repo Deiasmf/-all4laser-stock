@@ -1,5 +1,6 @@
 // Gera os ícones da PWA a partir do logo (public/logo.jpg).
 // Correr com: node scripts/gen-icons.js
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const sharp = require('sharp')
 
 const LOGO = 'public/logo.jpg'

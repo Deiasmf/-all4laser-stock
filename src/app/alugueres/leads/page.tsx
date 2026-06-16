@@ -137,6 +137,7 @@ export default function LeadsPage() {
 
       {aberta && (
         <LeadDrawer
+          key={aberta.id}
           lead={aberta}
           isAdmin={isAdmin}
           onClose={() => setAberta(null)}
@@ -176,12 +177,6 @@ function LeadDrawer({
     if (error) { setMsg('Erro ao eliminar: ' + error.message); return }
     onEliminado(lead.id)
   }
-
-  useEffect(() => {
-    setEstado(lead.estado)
-    setNota(lead.nota_interna ?? '')
-    setMsg(null)
-  }, [lead])
 
   async function guardar() {
     setAGravar(true)

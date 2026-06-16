@@ -13,12 +13,10 @@ type Props = {
 
 export default function QrEquipamento({ equipamentoId, modelo, marca, serial }: Props) {
   const [dataUrl, setDataUrl] = useState<string>('')
-  const [link, setLink] = useState<string>('')
 
   useEffect(() => {
     // Link absoluto para a ficha (funciona no domínio onde a app estiver publicada)
     const url = `${window.location.origin}/equipamentos/${equipamentoId}`
-    setLink(url)
     QRCode.toDataURL(url, { width: 400, margin: 1 })
       .then(setDataUrl)
       .catch(() => setDataUrl(''))
@@ -54,6 +52,8 @@ export default function QrEquipamento({ equipamentoId, modelo, marca, serial }: 
 
   return (
     <div className={styles.seccao}>
+      {/* QR gerado como data URL — next/image não acrescenta valor aqui */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
       {dataUrl && <img className={styles.qrImg} src={dataUrl} alt="QR Code do equipamento" />}
       <div className={styles.info}>
         <div className={styles.titulo}>QR Code</div>

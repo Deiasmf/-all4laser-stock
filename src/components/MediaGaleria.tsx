@@ -35,6 +35,8 @@ export default function MediaGaleria({ equipamentoId }: { equipamentoId: string 
   }
 
   useEffect(() => {
+    // setMedia só corre após o await, dentro de carregarMedia()
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     carregarMedia()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [equipamentoId])

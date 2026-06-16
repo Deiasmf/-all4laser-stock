@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 
@@ -62,11 +62,11 @@ export default function PartilharPage() {
   // Pesquisa de equipamentos (por serial, modelo ou marca)
   useEffect(() => {
     const q = pesquisa.trim()
-    if (q.length < 2) {
-      setResultados([])
-      return
-    }
     const timer = setTimeout(async () => {
+      if (q.length < 2) {
+        setResultados([])
+        return
+      }
       const { data } = await supabase
         .from('equipamentos')
         .select('id, modelo, marca, serial_number')
@@ -205,12 +205,8 @@ export default function PartilharPage() {
 
 // Miniatura de um ficheiro (imagem ou vídeo)
 function FicheiroPreview({ ficheiro }: { ficheiro: File }) {
-  const [url, setUrl] = useState<string>('')
-  useEffect(() => {
-    const u = URL.createObjectURL(ficheiro)
-    setUrl(u)
-    return () => URL.revokeObjectURL(u)
-  }, [ficheiro])
+  const url = useMemo(() => URL.createObjectURL(ficheiro), [ficheiro])
+  useEffect(() => () => URL.revokeObjectURL(url), [url])
   const ehVideo = ficheiro.type.startsWith('video')
   return (
     <div style={estilos.miniatura}>

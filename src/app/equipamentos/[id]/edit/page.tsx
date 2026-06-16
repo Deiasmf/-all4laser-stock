@@ -18,12 +18,15 @@ export default function EditarEquipamento() {
   const [inicial, setInicial] = useState<FormState | null>(null)
   const [loading, setLoading] = useState(true)
   const [naoEncontrado, setNaoEncontrado] = useState(false)
-  const [modoSaida, setModoSaida] = useState(false)
+  // Veio do botão "Registar saída"? (?saida=1) — lido do URL no arranque
+  const [modoSaida] = useState(
+    () =>
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('saida') === '1'
+  )
 
   useEffect(() => {
-    // Veio do botão "Registar saída"? (?saida=1)
-    const saida = new URLSearchParams(window.location.search).get('saida') === '1'
-    setModoSaida(saida)
+    const saida = modoSaida
 
     supabase
       .from('equipamentos')
@@ -43,7 +46,7 @@ export default function EditarEquipamento() {
         }
         setLoading(false)
       })
-  }, [id])
+  }, [id, modoSaida])
 
   async function aoGuardar(payload: Record<string, string | number | null>) {
     const dados = { ...payload }

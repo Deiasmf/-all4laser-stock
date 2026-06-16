@@ -134,20 +134,19 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
   const tiposDisponiveis: readonly string[] = nacionalAtual ? TIPOS_ALUGUER : TIPOS_INTERNACIONAL
 
   // Se mudar de mercado, o tipo escolhido pode deixar de existir → limpar
-  useEffect(() => {
-    if (tipo && !tiposDisponiveis.includes(tipo)) setTipo('')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mercado])
+  // (ajuste de estado durante o render — ver https://react.dev/learn/you-might-not-need-an-effect)
+  if (tipo && !tiposDisponiveis.includes(tipo)) setTipo('')
 
   // Valor sugerido pela tabela (modelo + mercado + tipo)
   const grupo = grupoPreco(modelo)
   const sugestao = grupo && tipo ? precos.get(`${grupo}|${mercado}|${tipo}`) : undefined
 
-  // Preenche o valor com a sugestão quando ainda está vazio
-  useEffect(() => {
+  // Preenche o valor com a sugestão quando ainda está vazio (só quando a sugestão muda)
+  const [sugestaoAplicada, setSugestaoAplicada] = useState(sugestao)
+  if (sugestao !== sugestaoAplicada) {
+    setSugestaoAplicada(sugestao)
     if (sugestao !== undefined && valor.trim() === '') setValor(String(sugestao))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sugestao])
+  }
 
   // Ao escolher o tipo, aplica a sugestão (pode ser ajustada depois)
   function escolherTipo(novo: string) {
@@ -159,11 +158,11 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
   // Pesquisa de serial no stock (preenche marca/modelo/ano)
   useEffect(() => {
     const q = serial.trim()
-    if (q.length < 2) {
-      setSugestoes([])
-      return
-    }
     const t = setTimeout(async () => {
+      if (q.length < 2) {
+        setSugestoes([])
+        return
+      }
       const { data } = await supabase
         .from('equipamentos')
         .select('id, marca, modelo, ano, serial_number')
@@ -385,6 +384,8 @@ function FormRecolha() {
   }
 
   useEffect(() => {
+    // Carregamento inicial — setAbertos só corre após o await, dentro de carregar()
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     carregar()
   }, [])
 

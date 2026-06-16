@@ -140,13 +140,16 @@ function CampoFicheiro({
 
   // Gera link temporário seguro para ver o ficheiro (bucket privado)
   useEffect(() => {
-    if (caminho) {
-      supabase.storage
-        .from(BUCKET_FATURAS)
-        .createSignedUrl(caminho, 3600)
-        .then(({ data }) => setLinkSeguro(data?.signedUrl ?? null))
-    } else {
-      setLinkSeguro(null)
+    if (!caminho) return
+    let activo = true
+    supabase.storage
+      .from(BUCKET_FATURAS)
+      .createSignedUrl(caminho, 3600)
+      .then(({ data }) => {
+        if (activo) setLinkSeguro(data?.signedUrl ?? null)
+      })
+    return () => {
+      activo = false
     }
   }, [caminho])
 

@@ -76,10 +76,12 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     }
   }, [session, pathname])
 
-  // Fecha o menu mobile ao mudar de rota.
-  useEffect(() => {
+  // Fecha o menu mobile ao mudar de rota (ajuste durante o render — sem efeito).
+  const [rotaAnterior, setRotaAnterior] = useState(pathname)
+  if (pathname !== rotaAnterior) {
+    setRotaAnterior(pathname)
     setMenuAberto(false)
-  }, [pathname])
+  }
 
   // Sem sessão (ou no login): mostra só o conteúdo, sem sidebar.
   if (!session || pathname === '/login') {
