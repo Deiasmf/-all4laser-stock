@@ -64,6 +64,31 @@ export async function guardarAssinatura(
   return { data: (data as FolhaObra) ?? null, error }
 }
 
+// ─── PDF ────────────────────────────────────────────────────────────────────
+
+const BUCKET_DOCS = 'folhas-obra-docs'
+
+// Faz upload do PDF gerado e guarda o pdf_url na folha.
+export async function guardarPdfFolha(
+  folha: FolhaObra,
+  blob: Blob
+): Promise<{ data: FolhaObra | null; error: { message: string } | null }> {
+  const caminho = `${folha.id}/${folha.numero}.pdf`
+  const { error: erroUpload } = await supabase.storage
+    .from(BUCKET_DOCS)
+    .upload(caminho, blob, { contentType: 'application/pdf', upsert: true })
+  if (erroUpload) return { data: null, error: erroUpload }
+
+  const { data: pub } = supabase.storage.from(BUCKET_DOCS).getPublicUrl(caminho)
+  const { data, error } = await supabase
+    .from('folhas_obra')
+    .update({ pdf_url: pub.publicUrl })
+    .eq('id', folha.id)
+    .select()
+    .single()
+  return { data: (data as FolhaObra) ?? null, error }
+}
+
 // ─── Seletores para o formulário ────────────────────────────────────────────
 
 export type ClienteOpc = { id: string; nome: string; pais: string | null }
