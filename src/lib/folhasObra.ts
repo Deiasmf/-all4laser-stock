@@ -42,10 +42,13 @@ export async function guardarAssinatura(
   tipo: 'tecnico' | 'cliente',
   blob: Blob
 ): Promise<{ data: FolhaObra | null; error: { message: string } | null }> {
+  // Caminho único (com timestamp) → insert simples. NÃO usar upsert: o
+  // INSERT ... ON CONFLICT DO UPDATE do upsert é bloqueado pela RLS do storage
+  // para o role authenticated ("new row violates row-level security policy").
   const caminho = `${folhaId}/${tipo}-${Date.now()}.png`
   const { error: erroUpload } = await supabase.storage
     .from(BUCKET_ASSINATURAS)
-    .upload(caminho, blob, { contentType: 'image/png', upsert: true })
+    .upload(caminho, blob, { contentType: 'image/png' })
   if (erroUpload) return { data: null, error: erroUpload }
 
   const { data: pub } = supabase.storage.from(BUCKET_ASSINATURAS).getPublicUrl(caminho)
@@ -73,10 +76,12 @@ export async function guardarPdfFolha(
   folha: FolhaObra,
   blob: Blob
 ): Promise<{ data: FolhaObra | null; error: { message: string } | null }> {
-  const caminho = `${folha.id}/${folha.numero}.pdf`
+  // Caminho único (com timestamp) → insert simples (sem upsert; ver nota em
+  // guardarAssinatura). O pdf_url passa a apontar sempre para o PDF mais recente.
+  const caminho = `${folha.id}/${folha.numero}-${Date.now()}.pdf`
   const { error: erroUpload } = await supabase.storage
     .from(BUCKET_DOCS)
-    .upload(caminho, blob, { contentType: 'application/pdf', upsert: true })
+    .upload(caminho, blob, { contentType: 'application/pdf' })
   if (erroUpload) return { data: null, error: erroUpload }
 
   const { data: pub } = supabase.storage.from(BUCKET_DOCS).getPublicUrl(caminho)

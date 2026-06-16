@@ -64,7 +64,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
   const caminho = `${folha.id}/cliente-${Date.now()}.png`
   const { error: erroUpload } = await supabase.storage
     .from('assinaturas')
-    .upload(caminho, bytes, { contentType: 'image/png', upsert: true })
+    .upload(caminho, bytes, { contentType: 'image/png' })
   if (erroUpload) {
     return Response.json({ ok: false, erro: 'Erro ao guardar a assinatura.' }, { status: 500 })
   }
