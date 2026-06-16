@@ -2,6 +2,8 @@ import type { FolhaObra } from '@/types/folhaObra'
 import { ESTADO_FOLHA_CONFIG } from '@/types/folhaObra'
 import { MARGEM, TOPO_CONTEUDO, RODAPE_ALTURA, carregarLogo, aplicarCabecalhoRodape } from './docTemplate'
 
+export type MaterialPdf = { descricao: string | null; quantidade: number }
+
 function formatarData(d: string | null) {
   if (!d) return '—'
   const dt = new Date(d)
@@ -37,7 +39,7 @@ async function urlParaDataUrl(url: string): Promise<string | null> {
 }
 
 // Gera o PDF de uma folha de obra e devolve um Blob.
-export async function gerarPdfFolha(folha: FolhaObra): Promise<Blob> {
+export async function gerarPdfFolha(folha: FolhaObra, materiais: MaterialPdf[] = []): Promise<Blob> {
   const { jsPDF } = await import('jspdf')
   const doc = new jsPDF({ unit: 'pt', format: 'a4' })
 
@@ -107,22 +109,33 @@ export async function gerarPdfFolha(folha: FolhaObra): Promise<Blob> {
   }
 
   // Desenha um quadro simples: primeira linha = cabeçalhos, restantes = dados.
-  function quadroValores(linhas: string[][]) {
+  // Desenha um quadro. Sem `larguras` → colunas iguais e centradas, com a 1ª
+  // coluna a servir de rótulo (quadro de valores). Com `larguras` → larguras à
+  // medida e texto alinhado à esquerda (listagem, ex.: material).
+  function quadroValores(linhas: string[][], larguras?: number[]) {
     const nCols = linhas[0].length
-    const larguraCol = larguraConteudo / nCols
+    const cols = larguras ?? Array(nCols).fill(larguraConteudo / nCols)
+    const xs = cols.reduce<number[]>((acc, w, i) => { acc.push(i === 0 ? M : acc[i - 1] + cols[i - 1]); return acc }, [])
+    const lista = larguras != null
     const altLinha = 18
     garantirEspaco(altLinha * linhas.length + 4)
     doc.setFontSize(10)
     doc.setDrawColor(220, 222, 226)
-    linhas.forEach((cols, i) => {
+    linhas.forEach((row, i) => {
       const yLinha = y + i * altLinha
-      cols.forEach((texto, j) => {
-        const x = M + j * larguraCol
-        doc.rect(x, yLinha, larguraCol, altLinha)
-        const cabecalho = i === 0 || j === 0
-        doc.setFont('helvetica', cabecalho ? 'bold' : 'normal')
-        doc.setTextColor(...(cabecalho ? NAVY : CINZA))
-        if (texto) doc.text(texto, x + larguraCol / 2, yLinha + 12, { align: 'center' })
+      row.forEach((texto, j) => {
+        doc.rect(xs[j], yLinha, cols[j], altLinha)
+        const negrito = i === 0 || (!lista && j === 0)
+        doc.setFont('helvetica', negrito ? 'bold' : 'normal')
+        doc.setTextColor(...(negrito ? NAVY : CINZA))
+        if (texto) {
+          if (lista) {
+            const t = doc.splitTextToSize(texto, cols[j] - 8)[0]
+            doc.text(t, xs[j] + 4, yLinha + 12)
+          } else {
+            doc.text(texto, xs[j] + cols[j] / 2, yLinha + 12, { align: 'center' })
+          }
+        }
       })
     })
     y += altLinha * linhas.length + 8
@@ -162,9 +175,15 @@ export async function gerarPdfFolha(folha: FolhaObra): Promise<Blob> {
     ])
   }
 
-  if (folha.material_utilizado || folha.observacoes) {
+  if (materiais.length > 0 || folha.material_utilizado || folha.observacoes) {
     seccao('Material e observações')
-    blocoTexto('Material utilizado', folha.material_utilizado)
+    if (materiais.length > 0) {
+      quadroValores([
+        ['Peça utilizada', 'Qtd.'],
+        ...materiais.map((m) => [m.descricao ?? '—', String(m.quantidade)]),
+      ], [larguraConteudo * 0.8, larguraConteudo * 0.2])
+    }
+    blocoTexto('Notas de material', folha.material_utilizado)
     blocoTexto('Observações', folha.observacoes)
   }
 

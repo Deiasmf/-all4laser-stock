@@ -12,6 +12,11 @@ export default function TecnicoPage() {
           <span style={s.cartaoTitulo}>Folhas de Obra</span>
           <span style={s.cartaoDesc}>Registar intervenções, reparações e manutenções.</span>
         </Link>
+        <Link href="/tecnico/pecas" style={s.cartao}>
+          <span style={s.icone}>🔩</span>
+          <span style={s.cartaoTitulo}>Stock de Peças</span>
+          <span style={s.cartaoDesc}>Inventário de peças. O material usado nas folhas desconta daqui.</span>
+        </Link>
       </div>
     </main>
   )

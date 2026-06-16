@@ -9,6 +9,8 @@ import { gerarPdfFolha } from '@/lib/folhaPdf'
 import FolhaObraForm from '@/components/FolhaObraForm'
 import AssinaturasFolha from '@/components/AssinaturasFolha'
 import FolhasObraFotos from '@/components/FolhasObraFotos'
+import FolhaMateriais from '@/components/FolhaMateriais'
+import { listarMateriaisFolha } from '@/lib/pecas'
 import { ESTADO_FOLHA_CONFIG, type FolhaObra, type FolhaInput } from '@/types/folhaObra'
 
 export default function EditarFolhaPage() {
@@ -53,7 +55,8 @@ export default function EditarFolhaPage() {
     setErro(null)
     setMsg(null)
     try {
-      const blob = await gerarPdfFolha(folha)
+      const materiais = await listarMateriaisFolha(folha.id)
+      const blob = await gerarPdfFolha(folha, materiais.map((m) => ({ descricao: m.descricao, quantidade: m.quantidade })))
       // Descarrega de imediato
       const objUrl = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -121,6 +124,8 @@ export default function EditarFolhaPage() {
       {msg && <div style={s.ok}>{msg}</div>}
 
       <FolhaObraForm inicial={folha} submitLabel="Guardar alterações" aGuardar={aGuardar} erro={erro} onSubmit={guardar} />
+
+      <FolhaMateriais folhaId={folha.id} />
 
       <AssinaturasFolha folha={folha} onAtualizada={setFolha} />
 

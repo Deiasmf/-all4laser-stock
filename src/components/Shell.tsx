@@ -22,6 +22,7 @@ const NAV: Seccao[] = [
       { href: '/marketing', label: 'Marketing', icon: '📣' },
       { href: '/tecnico', label: 'Técnico', icon: '🔧' },
       { href: '/tecnico/folhas-obra', label: 'Folhas de Obra', subitem: true },
+      { href: '/tecnico/pecas', label: 'Stock de Peças', subitem: true },
       { label: 'Logística', icon: '📦', grupo: true },
       { href: '/logistico', label: 'Stock', subitem: true },
       { href: '/clinico', label: 'Clínico', icon: '🩺' },
