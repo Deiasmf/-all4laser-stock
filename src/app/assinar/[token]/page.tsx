@@ -3,6 +3,16 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import AssinaturaPad from '@/components/AssinaturaPad'
+import { supabase } from '@/lib/supabase'
+
+function blobParaDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader()
+    fr.onloadend = () => resolve(fr.result as string)
+    fr.onerror = () => reject(new Error('leitura falhou'))
+    fr.readAsDataURL(blob)
+  })
+}
 
 type FolhaPublica = {
   numero: string
@@ -35,15 +45,14 @@ export default function AssinarPage() {
 
   useEffect(() => {
     let activo = true
-    fetch(`/api/folhas-obra/assinar/${token}`)
-      .then((r) => r.json())
-      .then((j) => {
+    supabase
+      .rpc('folha_por_token', { p_token: token })
+      .then(({ data, error }) => {
         if (!activo) return
-        if (j.ok) setFolha(j.folha as FolhaPublica)
-        else setErro(j.erro ?? 'Link inválido.')
+        if (error || !data) setErro('Link inválido ou expirado.')
+        else setFolha(data as FolhaPublica)
       })
-      .catch(() => { if (activo) setErro('Não foi possível carregar.') })
-      .finally(() => { if (activo) setCarregando(false) })
+      .then(() => { if (activo) setCarregando(false) })
     return () => { activo = false }
   }, [token])
 
@@ -51,13 +60,12 @@ export default function AssinarPage() {
     setAEnviar(true)
     setErro(null)
     try {
-      const res = await fetch(`/api/folhas-obra/assinar/${token}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'image/png' },
-        body: blob,
+      const dataUrl = await blobParaDataUrl(blob)
+      const { data, error } = await supabase.rpc('assinar_folha_cliente', {
+        p_token: token,
+        p_assinatura: dataUrl,
       })
-      const j = await res.json()
-      if (!res.ok || !j.ok) { setErro(j.erro ?? 'Erro ao enviar a assinatura.'); return }
+      if (error || data !== true) { setErro('Não foi possível registar a assinatura.'); return }
       setConcluido(true)
     } catch {
       setErro('Erro de ligação. Tenta novamente.')
