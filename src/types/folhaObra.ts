@@ -27,6 +27,8 @@ export type FolhaObra = {
   trabalho_realizado: string | null
   valor_cabeca_alex: number | null
   valor_transmissao_alex: number | null
+  valor_cabeca_yag: number | null
+  valor_transmissao_yag: number | null
   material_utilizado: string | null
   observacoes: string | null
   estado: EstadoFolha
@@ -59,6 +61,8 @@ export type FolhaInput = {
   trabalho_realizado: string | null
   valor_cabeca_alex: number | null
   valor_transmissao_alex: number | null
+  valor_cabeca_yag: number | null
+  valor_transmissao_yag: number | null
   material_utilizado: string | null
   observacoes: string | null
   estado: EstadoFolha

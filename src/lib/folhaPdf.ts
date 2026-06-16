@@ -114,6 +114,28 @@ export async function gerarPdfFolha(folha: FolhaObra): Promise<Blob> {
     y += linhas.length * 13 + 6
   }
 
+  // Desenha um quadro simples: primeira linha = cabeçalhos, restantes = dados.
+  function quadroValores(linhas: string[][]) {
+    const nCols = linhas[0].length
+    const larguraCol = larguraConteudo / nCols
+    const altLinha = 18
+    garantirEspaco(altLinha * linhas.length + 4)
+    doc.setFontSize(10)
+    doc.setDrawColor(220, 222, 226)
+    linhas.forEach((cols, i) => {
+      const yLinha = y + i * altLinha
+      cols.forEach((texto, j) => {
+        const x = M + j * larguraCol
+        doc.rect(x, yLinha, larguraCol, altLinha)
+        const cabecalho = i === 0 || j === 0
+        doc.setFont('helvetica', cabecalho ? 'bold' : 'normal')
+        doc.setTextColor(...(cabecalho ? NAVY : CINZA))
+        if (texto) doc.text(texto, x + larguraCol / 2, yLinha + 12, { align: 'center' })
+      })
+    })
+    y += altLinha * linhas.length + 8
+  }
+
   // ── Conteúdo ──
   titulo()
 
@@ -136,10 +158,16 @@ export async function gerarPdfFolha(folha: FolhaObra): Promise<Blob> {
   blocoTexto('Problema observado', folha.problema_observado)
   blocoTexto('Trabalho realizado', folha.trabalho_realizado)
 
-  if (folha.valor_cabeca_alex != null || folha.valor_transmissao_alex != null) {
+  if (
+    folha.valor_cabeca_alex != null || folha.valor_transmissao_alex != null ||
+    folha.valor_cabeca_yag != null || folha.valor_transmissao_yag != null
+  ) {
     seccao('Valores Candela Alex/Yag')
-    linha('Valor da cabeça', numeroOuNull(folha.valor_cabeca_alex))
-    linha('Valor da transmissão', numeroOuNull(folha.valor_transmissao_alex))
+    quadroValores([
+      ['', 'Alexandrite', 'Nd:Yag'],
+      ['Cabeça', numeroOuNull(folha.valor_cabeca_alex) ?? '—', numeroOuNull(folha.valor_cabeca_yag) ?? '—'],
+      ['Transmissão', numeroOuNull(folha.valor_transmissao_alex) ?? '—', numeroOuNull(folha.valor_transmissao_yag) ?? '—'],
+    ])
   }
 
   if (folha.material_utilizado || folha.observacoes) {

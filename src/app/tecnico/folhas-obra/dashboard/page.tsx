@@ -59,7 +59,9 @@ export default function DashboardFolhas() {
     const maxMes = Math.max(1, ...meses.map((m) => m.n))
 
     const comAlex = folhas.filter(
-      (f) => f.valor_cabeca_alex != null || f.valor_transmissao_alex != null
+      (f) =>
+        f.valor_cabeca_alex != null || f.valor_transmissao_alex != null ||
+        f.valor_cabeca_yag != null || f.valor_transmissao_yag != null
     ).length
 
     return { total, esteMes, concluidas, pendentes, porEstado, porTipo, porTecnico, meses, maxMes, comAlex }

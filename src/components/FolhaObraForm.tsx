@@ -49,10 +49,15 @@ export default function FolhaObraForm({ inicial, submitLabel, aGuardar, erro, on
 
   // Candela Alex/Yag
   const [forcarAlex, setForcarAlex] = useState(
-    inicial != null && (inicial.valor_cabeca_alex != null || inicial.valor_transmissao_alex != null)
+    inicial != null && (
+      inicial.valor_cabeca_alex != null || inicial.valor_transmissao_alex != null ||
+      inicial.valor_cabeca_yag != null || inicial.valor_transmissao_yag != null
+    )
   )
-  const [valorCabeca, setValorCabeca] = useState(inicial?.valor_cabeca_alex?.toString() ?? '')
-  const [valorTransmissao, setValorTransmissao] = useState(inicial?.valor_transmissao_alex?.toString() ?? '')
+  const [cabecaAlex, setCabecaAlex] = useState(inicial?.valor_cabeca_alex?.toString() ?? '')
+  const [transmissaoAlex, setTransmissaoAlex] = useState(inicial?.valor_transmissao_alex?.toString() ?? '')
+  const [cabecaYag, setCabecaYag] = useState(inicial?.valor_cabeca_yag?.toString() ?? '')
+  const [transmissaoYag, setTransmissaoYag] = useState(inicial?.valor_transmissao_yag?.toString() ?? '')
 
   // Material e notas
   const [material, setMaterial] = useState(inicial?.material_utilizado ?? '')
@@ -100,8 +105,10 @@ export default function FolhaObraForm({ inicial, submitLabel, aGuardar, erro, on
       codigos_erro: codigosErro.trim() || null,
       problema_observado: problema.trim() || null,
       trabalho_realizado: trabalho.trim() || null,
-      valor_cabeca_alex: mostrarAlex ? numOuNull(valorCabeca) : null,
-      valor_transmissao_alex: mostrarAlex ? numOuNull(valorTransmissao) : null,
+      valor_cabeca_alex: mostrarAlex ? numOuNull(cabecaAlex) : null,
+      valor_transmissao_alex: mostrarAlex ? numOuNull(transmissaoAlex) : null,
+      valor_cabeca_yag: mostrarAlex ? numOuNull(cabecaYag) : null,
+      valor_transmissao_yag: mostrarAlex ? numOuNull(transmissaoYag) : null,
       material_utilizado: material.trim() || null,
       observacoes: observacoes.trim() || null,
       estado,
@@ -208,13 +215,22 @@ export default function FolhaObraForm({ inicial, submitLabel, aGuardar, erro, on
           </label>
         </div>
         {mostrarAlex ? (
-          <div style={f.grid2}>
-            <Campo rotulo="Valor da cabeça">
-              <input type="number" value={valorCabeca} onChange={(e) => setValorCabeca(e.target.value)} style={f.input} />
-            </Campo>
-            <Campo rotulo="Valor da transmissão">
-              <input type="number" value={valorTransmissao} onChange={(e) => setValorTransmissao(e.target.value)} style={f.input} />
-            </Campo>
+          <div style={f.quadro}>
+            <div style={f.quadroLinha}>
+              <span style={f.quadroCabecalho} />
+              <span style={f.quadroCabecalho}>Alexandrite</span>
+              <span style={f.quadroCabecalho}>Nd:Yag</span>
+            </div>
+            <div style={f.quadroLinha}>
+              <span style={f.quadroRotulo}>Cabeça</span>
+              <input type="number" value={cabecaAlex} onChange={(e) => setCabecaAlex(e.target.value)} style={f.input} />
+              <input type="number" value={cabecaYag} onChange={(e) => setCabecaYag(e.target.value)} style={f.input} />
+            </div>
+            <div style={f.quadroLinha}>
+              <span style={f.quadroRotulo}>Transmissão</span>
+              <input type="number" value={transmissaoAlex} onChange={(e) => setTransmissaoAlex(e.target.value)} style={f.input} />
+              <input type="number" value={transmissaoYag} onChange={(e) => setTransmissaoYag(e.target.value)} style={f.input} />
+            </div>
           </div>
         ) : (
           <p style={f.ajuda}>Só para equipamentos Candela Alex/Yag. Marca &quot;Aplicável&quot; (ou escolhe um modelo Alex/Yag) para preencher.</p>
@@ -316,6 +332,10 @@ const f: Record<string, React.CSSProperties> = {
   textarea: { width: '100%', minHeight: 80, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--background)', color: 'var(--foreground)', font: 'inherit', resize: 'vertical' },
   checkLabel: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--muted)', fontWeight: 600 },
   ajuda: { fontSize: 13, color: 'var(--muted)', margin: 0 },
+  quadro: { display: 'flex', flexDirection: 'column', gap: 8 },
+  quadroLinha: { display: 'grid', gridTemplateColumns: '110px 1fr 1fr', gap: 8, alignItems: 'center' },
+  quadroCabecalho: { fontSize: 13, fontWeight: 700, color: 'var(--primary)', textAlign: 'center' },
+  quadroRotulo: { fontSize: 13, fontWeight: 600, color: 'var(--muted)' },
   dropdown: { position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, marginTop: 4, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.12)', overflow: 'hidden' },
   opcao: { display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', background: 'transparent', border: 'none', borderBottom: '1px solid var(--border)', cursor: 'pointer', font: 'inherit', color: 'var(--foreground)' },
   erro: { background: '#fbecea', color: 'var(--danger)', border: '1px solid var(--danger)', borderRadius: 8, padding: '10px 12px', fontSize: 14, fontWeight: 600 },
