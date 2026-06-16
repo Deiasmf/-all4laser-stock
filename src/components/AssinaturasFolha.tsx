@@ -23,6 +23,18 @@ export default function AssinaturasFolha({
   const [aAbrir, setAAbrir] = useState<Tipo | null>(null)
   const [aGuardar, setAGuardar] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+  const [copiado, setCopiado] = useState(false)
+
+  async function copiarLink() {
+    const link = `${window.location.origin}/assinar/${folha.token_assinatura_cliente}`
+    try {
+      await navigator.clipboard.writeText(link)
+      setCopiado(true)
+      setTimeout(() => setCopiado(false), 2500)
+    } catch {
+      window.prompt('Copia o link de assinatura do cliente:', link)
+    }
+  }
 
   async function confirmar(tipo: Tipo, blob: Blob) {
     setAGuardar(true)
@@ -36,7 +48,12 @@ export default function AssinaturasFolha({
 
   return (
     <section style={s.seccao}>
-      <div style={s.titulo}>Assinaturas</div>
+      <div style={s.topo}>
+        <span style={s.titulo}>Assinaturas</span>
+        <button type="button" onClick={copiarLink} style={s.btnLink}>
+          {copiado ? '✓ Link copiado' : '🔗 Link para o cliente assinar'}
+        </button>
+      </div>
       {erro && <div style={s.erro}>{erro}</div>}
       <div style={s.grid}>
         {(['tecnico', 'cliente'] as Tipo[]).map((tipo) => {
@@ -84,7 +101,9 @@ export default function AssinaturasFolha({
 
 const s: Record<string, React.CSSProperties> = {
   seccao: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 },
+  topo: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
   titulo: { fontSize: 14, fontWeight: 700, color: 'var(--primary)' },
+  btnLink: { background: 'transparent', color: 'var(--primary)', border: '1px solid var(--primary)', borderRadius: 8, padding: '6px 12px', fontWeight: 600, fontSize: 13, cursor: 'pointer' },
   erro: { background: '#fbecea', color: 'var(--danger)', border: '1px solid var(--danger)', borderRadius: 8, padding: '10px 12px', fontSize: 14, fontWeight: 600 },
   grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14 },
   bloco: { border: '1px solid var(--border)', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 },

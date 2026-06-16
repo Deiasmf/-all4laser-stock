@@ -86,8 +86,8 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     setMenuAberto(false)
   }
 
-  // Sem sessão (ou no login): mostra só o conteúdo, sem sidebar.
-  if (!session || pathname === '/login') {
+  // Sem sessão, no login ou no link público de assinatura: só o conteúdo, sem sidebar.
+  if (!session || pathname === '/login' || pathname.startsWith('/assinar')) {
     return <>{children}</>
   }
 
