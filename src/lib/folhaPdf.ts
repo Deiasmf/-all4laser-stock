@@ -13,9 +13,9 @@ function formatarDataHora(d: string | null) {
   return isNaN(dt.getTime()) ? '' : dt.toLocaleString('pt-PT')
 }
 
-function formatarEuro(v: number | null) {
+function numeroOuNull(v: number | null) {
   if (v === null || v === undefined) return null
-  return v.toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' })
+  return String(v)
 }
 
 // Carrega um URL de imagem como data URL (evita canvas "tainted" por CORS).
@@ -138,8 +138,8 @@ export async function gerarPdfFolha(folha: FolhaObra): Promise<Blob> {
 
   if (folha.valor_cabeca_alex != null || folha.valor_transmissao_alex != null) {
     seccao('Valores Candela Alex/Yag')
-    linha('Valor da cabeça', formatarEuro(folha.valor_cabeca_alex))
-    linha('Valor da transmissão', formatarEuro(folha.valor_transmissao_alex))
+    linha('Valor da cabeça', numeroOuNull(folha.valor_cabeca_alex))
+    linha('Valor da transmissão', numeroOuNull(folha.valor_transmissao_alex))
   }
 
   if (folha.material_utilizado || folha.observacoes) {

@@ -58,12 +58,11 @@ export default function DashboardFolhas() {
     }
     const maxMes = Math.max(1, ...meses.map((m) => m.n))
 
-    const valoresAlex = folhas.reduce(
-      (acc, f) => acc + (f.valor_cabeca_alex ?? 0) + (f.valor_transmissao_alex ?? 0),
-      0
-    )
+    const comAlex = folhas.filter(
+      (f) => f.valor_cabeca_alex != null || f.valor_transmissao_alex != null
+    ).length
 
-    return { total, esteMes, concluidas, pendentes, porEstado, porTipo, porTecnico, meses, maxMes, valoresAlex }
+    return { total, esteMes, concluidas, pendentes, porEstado, porTipo, porTecnico, meses, maxMes, comAlex }
   }, [folhas])
 
   return (
@@ -125,12 +124,11 @@ export default function DashboardFolhas() {
               ))}
           </section>
 
-          {stats.valoresAlex > 0 && (
+          {stats.comAlex > 0 && (
             <section style={c.seccao}>
               <div style={c.seccaoTitulo}>Candela Alex/Yag</div>
               <p style={{ fontSize: 14, color: 'var(--foreground)', margin: 0 }}>
-                Total de valores registados (cabeça + transmissão):{' '}
-                <strong>{stats.valoresAlex.toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' })}</strong>
+                Folhas com valores de cabeça/transmissão registados: <strong>{stats.comAlex}</strong>
               </p>
             </section>
           )}

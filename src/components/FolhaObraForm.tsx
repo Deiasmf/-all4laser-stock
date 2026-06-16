@@ -209,11 +209,11 @@ export default function FolhaObraForm({ inicial, submitLabel, aGuardar, erro, on
         </div>
         {mostrarAlex ? (
           <div style={f.grid2}>
-            <Campo rotulo="Valor da cabeça (€)">
-              <input type="number" step="0.01" value={valorCabeca} onChange={(e) => setValorCabeca(e.target.value)} style={f.input} />
+            <Campo rotulo="Valor da cabeça">
+              <input type="number" value={valorCabeca} onChange={(e) => setValorCabeca(e.target.value)} style={f.input} />
             </Campo>
-            <Campo rotulo="Valor da transmissão (€)">
-              <input type="number" step="0.01" value={valorTransmissao} onChange={(e) => setValorTransmissao(e.target.value)} style={f.input} />
+            <Campo rotulo="Valor da transmissão">
+              <input type="number" value={valorTransmissao} onChange={(e) => setValorTransmissao(e.target.value)} style={f.input} />
             </Campo>
           </div>
         ) : (
