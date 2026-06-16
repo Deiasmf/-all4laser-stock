@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import { listarPecas, criarPeca, atualizarPeca, eliminarPeca } from '@/lib/pecas'
+import QrPeca from '@/components/QrPeca'
 import type { Peca } from '@/types/peca'
 
 export default function StockPecasPage() {
@@ -13,8 +14,9 @@ export default function StockPecasPage() {
   const [pesquisa, setPesquisa] = useState('')
   const [fMarca, setFMarca] = useState('')
   const [fGrupo, setFGrupo] = useState('')
-  const [editar, setEditar] = useState<Peca | null>(null)
+  const [aberta, setAberta] = useState<Peca | null>(null)
   const [criar, setCriar] = useState(false)
+  const [urlPeca, setUrlPeca] = useState<string | null>(null)
 
   async function carregar() {
     setPecas(await listarPecas())
@@ -25,7 +27,19 @@ export default function StockPecasPage() {
     // setPecas só corre após o await, dentro de carregar()
     // eslint-disable-next-line react-hooks/set-state-in-effect
     carregar()
+    // Abrir automaticamente uma peça vinda de um QR Code (?peca=<id>)
+    const p = new URLSearchParams(window.location.search).get('peca')
+    if (p) setUrlPeca(p)
   }, [])
+
+  // Quando as peças carregam, abre a que veio do QR
+  useEffect(() => {
+    if (urlPeca && pecas.length) {
+      const f = pecas.find((p) => p.id === urlPeca)
+      if (f) setAberta(f)
+      setUrlPeca(null)
+    }
+  }, [urlPeca, pecas])
 
   const marcas = useMemo(() => Array.from(new Set(pecas.map((p) => p.marca).filter(Boolean))) as string[], [pecas])
   const grupos = useMemo(
@@ -47,7 +61,7 @@ export default function StockPecasPage() {
     <main style={c.page}>
       <div style={c.cabecalho}>
         <h1 style={c.titulo}>Stock de Peças</h1>
-        <Link href="/tecnico" style={c.voltar}>← Técnico</Link>
+        <Link href="/logistico" style={c.voltar}>← Logística</Link>
       </div>
 
       <div style={c.filtros}>
@@ -87,11 +101,7 @@ export default function StockPecasPage() {
             <span style={{ textAlign: 'right' }}>Stock</span>
           </div>
           {filtradas.map((p) => (
-            <div
-              key={p.id}
-              style={{ ...c.linha, ...(isAdmin ? c.clicavel : {}) }}
-              onClick={isAdmin ? () => setEditar(p) : undefined}
-            >
+            <div key={p.id} style={{ ...c.linha, ...c.clicavel }} onClick={() => setAberta(p)}>
               <span style={{ fontWeight: 600 }}>
                 {p.nome}
                 {p.marca && <span style={c.marcaTag}>{p.marca}</span>}
@@ -105,13 +115,14 @@ export default function StockPecasPage() {
         </div>
       )}
 
-      {isAdmin && <p style={c.dica}>Toca numa peça para editar a quantidade ou apagar.</p>}
+      <p style={c.dica}>Toca numa peça para ver detalhes e QR Code{isAdmin ? ' (e editar)' : ''}.</p>
 
-      {(editar || criar) && (
+      {(aberta || criar) && (
         <ModalPeca
-          peca={editar}
-          onFechar={() => { setEditar(null); setCriar(false) }}
-          onGuardado={() => { setEditar(null); setCriar(false); carregar() }}
+          peca={aberta}
+          isAdmin={isAdmin}
+          onFechar={() => { setAberta(null); setCriar(false) }}
+          onGuardado={() => { setAberta(null); setCriar(false); carregar() }}
         />
       )}
     </main>
@@ -119,9 +130,10 @@ export default function StockPecasPage() {
 }
 
 function ModalPeca({
-  peca, onFechar, onGuardado,
+  peca, isAdmin, onFechar, onGuardado,
 }: {
   peca: Peca | null
+  isAdmin: boolean
   onFechar: () => void
   onGuardado: () => void
 }) {
@@ -134,6 +146,8 @@ function ModalPeca({
   const [aGuardar, setAGuardar] = useState(false)
   const [aApagar, setAApagar] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+
+  const soLeitura = !isAdmin
 
   async function guardar() {
     setErro(null)
@@ -164,54 +178,61 @@ function ModalPeca({
     onGuardado()
   }
 
+  const titulo = !peca ? 'Nova peça' : soLeitura ? 'Peça' : 'Editar peça'
+
   return (
     <div style={c.overlay} onClick={onFechar}>
       <div style={c.modal} onClick={(e) => e.stopPropagation()}>
         <div style={c.modalCab}>
-          <h2 style={c.modalTitulo}>{peca ? 'Editar peça' : 'Nova peça'}</h2>
+          <h2 style={c.modalTitulo}>{titulo}</h2>
           <button onClick={onFechar} style={c.fechar} aria-label="Fechar">✕</button>
         </div>
+
+        {/* QR Code (peças existentes) */}
+        {peca && <QrPeca peca={peca} />}
 
         {erro && <div style={c.erro}>{erro}</div>}
 
         <label style={c.label}>Nome *</label>
-        <input style={c.inputModal} value={nome} onChange={(e) => setNome(e.target.value)} />
+        <input style={c.inputModal} value={nome} onChange={(e) => setNome(e.target.value)} disabled={soLeitura} />
 
         <div style={c.linha2}>
           <div>
             <label style={c.label}>Marca</label>
-            <input style={c.inputModal} value={marca} onChange={(e) => setMarca(e.target.value)} placeholder="Candela, AlmaLaser..." />
+            <input style={c.inputModal} value={marca} onChange={(e) => setMarca(e.target.value)} placeholder="Candela, AlmaLaser..." disabled={soLeitura} />
           </div>
           <div>
             <label style={c.label}>Grupo</label>
-            <input style={c.inputModal} value={grupo} onChange={(e) => setGrupo(e.target.value)} placeholder="Ex: Peças PRO" />
+            <input style={c.inputModal} value={grupo} onChange={(e) => setGrupo(e.target.value)} placeholder="Ex: Peças PRO" disabled={soLeitura} />
           </div>
         </div>
 
         <div style={c.linha2}>
           <div>
             <label style={c.label}>Referência</label>
-            <input style={c.inputModal} value={referencia} onChange={(e) => setReferencia(e.target.value)} />
+            <input style={c.inputModal} value={referencia} onChange={(e) => setReferencia(e.target.value)} disabled={soLeitura} />
           </div>
           <div>
             <label style={c.label}>Quantidade em stock</label>
-            <input style={c.inputModal} type="number" inputMode="numeric" value={quantidade} onChange={(e) => setQuantidade(e.target.value)} />
+            <input style={c.inputModal} type="number" inputMode="numeric" value={quantidade} onChange={(e) => setQuantidade(e.target.value)} disabled={soLeitura} />
           </div>
         </div>
 
         <label style={c.label}>Notas</label>
-        <textarea style={c.textarea} value={notas} onChange={(e) => setNotas(e.target.value)} />
+        <textarea style={c.textarea} value={notas} onChange={(e) => setNotas(e.target.value)} disabled={soLeitura} />
 
         <div style={c.modalAcoes}>
-          {peca && (
+          {peca && isAdmin && (
             <button onClick={apagar} disabled={aApagar} style={c.btnDanger}>
               {aApagar ? 'A apagar...' : 'Apagar'}
             </button>
           )}
-          <button onClick={onFechar} style={c.btnGhost}>Cancelar</button>
-          <button onClick={guardar} disabled={aGuardar} style={c.btnPrimario}>
-            {aGuardar ? 'A guardar...' : 'Guardar'}
-          </button>
+          <button onClick={onFechar} style={c.btnGhost}>{soLeitura ? 'Fechar' : 'Cancelar'}</button>
+          {isAdmin && (
+            <button onClick={guardar} disabled={aGuardar} style={c.btnPrimario}>
+              {aGuardar ? 'A guardar...' : 'Guardar'}
+            </button>
+          )}
         </div>
       </div>
     </div>
