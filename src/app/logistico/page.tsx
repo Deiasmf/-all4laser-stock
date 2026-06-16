@@ -25,6 +25,35 @@ function distintos(lista: Equipamento[], campo: keyof Equipamento) {
   )
 }
 
+// Persistência dos filtros entre navegações (sessionStorage = dura a sessão do separador)
+const CHAVE_FILTROS = 'stock:filtros'
+
+type FiltrosGuardados = {
+  pesquisa: string
+  marca: string[]
+  modelo: string[]
+  ano: string[]
+  status: string[]
+  origem: string[]
+  destino: string[]
+  recDe: string
+  recAte: string
+  envDe: string
+  envAte: string
+  soIncompletos: boolean
+}
+
+// Lê os filtros guardados (uma vez, no arranque). Tolerante a dados inválidos.
+function lerFiltrosGuardados(): Partial<FiltrosGuardados> {
+  if (typeof window === 'undefined') return {}
+  try {
+    const raw = sessionStorage.getItem(CHAVE_FILTROS)
+    return raw ? (JSON.parse(raw) as Partial<FiltrosGuardados>) : {}
+  } catch {
+    return {}
+  }
+}
+
 export default function Home() {
   const router = useRouter()
   const { isAdmin } = useAuth()
@@ -34,19 +63,21 @@ export default function Home() {
   const [erro, setErro] = useState<string | null>(null)
 
   // Filtros (todos combináveis). Os dropdowns aceitam várias opções (multi-seleção).
-  const [pesquisa, setPesquisa] = useState('')
-  const [marca, setMarca] = useState<string[]>([])
-  const [modelo, setModelo] = useState<string[]>([])
-  const [ano, setAno] = useState<string[]>([])
-  const [status, setStatus] = useState<string[]>([])
-  const [origem, setOrigem] = useState<string[]>([])
-  const [destino, setDestino] = useState<string[]>([])
+  // Valores iniciais restaurados do sessionStorage (lidos uma só vez no arranque).
+  const [guardados] = useState(lerFiltrosGuardados)
+  const [pesquisa, setPesquisa] = useState(guardados.pesquisa ?? '')
+  const [marca, setMarca] = useState<string[]>(guardados.marca ?? [])
+  const [modelo, setModelo] = useState<string[]>(guardados.modelo ?? [])
+  const [ano, setAno] = useState<string[]>(guardados.ano ?? [])
+  const [status, setStatus] = useState<string[]>(guardados.status ?? [])
+  const [origem, setOrigem] = useState<string[]>(guardados.origem ?? [])
+  const [destino, setDestino] = useState<string[]>(guardados.destino ?? [])
   // Intervalos de datas: receção (data_entrada) e envio (data_saida)
-  const [recDe, setRecDe] = useState('')
-  const [recAte, setRecAte] = useState('')
-  const [envDe, setEnvDe] = useState('')
-  const [envAte, setEnvAte] = useState('')
-  const [soIncompletos, setSoIncompletos] = useState(false)
+  const [recDe, setRecDe] = useState(guardados.recDe ?? '')
+  const [recAte, setRecAte] = useState(guardados.recAte ?? '')
+  const [envDe, setEnvDe] = useState(guardados.envDe ?? '')
+  const [envAte, setEnvAte] = useState(guardados.envAte ?? '')
+  const [soIncompletos, setSoIncompletos] = useState(guardados.soIncompletos ?? false)
 
   const [recolhidas, setRecolhidas] = useState<Set<string>>(new Set())
 
@@ -90,6 +121,19 @@ export default function Home() {
     }
     carregar()
   }, [])
+
+  // Guarda os filtros no sessionStorage sempre que algum muda (restaurados ao voltar)
+  useEffect(() => {
+    const dados: FiltrosGuardados = {
+      pesquisa, marca, modelo, ano, status, origem, destino,
+      recDe, recAte, envDe, envAte, soIncompletos,
+    }
+    try {
+      sessionStorage.setItem(CHAVE_FILTROS, JSON.stringify(dados))
+    } catch {
+      // sessionStorage indisponível (ex: modo privado) — ignora
+    }
+  }, [pesquisa, marca, modelo, ano, status, origem, destino, recDe, recAte, envDe, envAte, soIncompletos])
 
   // Opções dos dropdowns (a partir dos dados carregados)
   const opcoes = useMemo(() => {
