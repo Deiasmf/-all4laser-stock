@@ -19,6 +19,7 @@ const NAV: Seccao[] = [
       { href: '/admin-dept', label: 'Administrativo', icon: '🗂️' },
       { href: '/financeiro', label: 'Financeiro', icon: '💶' },
       { href: '/comercial', label: 'Comercial', icon: '🤝' },
+      { href: '/comercial/notas-encomenda', label: 'Notas de Encomenda', icon: '📋', subitem: true },
       { href: '/marketing', label: 'Marketing', icon: '📣' },
       { href: '/tecnico', label: 'Técnico', icon: '🔧' },
       { href: '/tecnico/folhas-obra', label: 'Folhas de Obra', subitem: true },
@@ -40,6 +41,7 @@ const NAV: Seccao[] = [
 const TITULOS: { prefixo: string; titulo: string }[] = [
   { prefixo: '/admin-dept', titulo: 'Administrativo' },
   { prefixo: '/financeiro', titulo: 'Financeiro' },
+  { prefixo: '/comercial/notas-encomenda', titulo: 'Notas de Encomenda' },
   { prefixo: '/comercial', titulo: 'Comercial' },
   { prefixo: '/marketing', titulo: 'Marketing' },
   { prefixo: '/tecnico', titulo: 'Técnico' },
