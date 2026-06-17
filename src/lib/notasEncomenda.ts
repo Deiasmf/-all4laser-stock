@@ -69,14 +69,13 @@ export async function guardarMateriais(notaId: string, itens: MaterialEscolhido[
 
 export type ClienteOpc = { id: string; nome: string; pais: string | null }
 
-export async function pesquisarClientes(q: string): Promise<ClienteOpc[]> {
-  if (q.trim().length < 1) return []
+// Lista completa de clientes (para escolher no formulário, navegável + filtrável).
+export async function listarClientes(): Promise<ClienteOpc[]> {
   const { data } = await supabase
     .from('clientes')
     .select('id, nome, pais')
-    .ilike('nome', `%${q.trim()}%`)
     .order('nome')
-    .limit(8)
+    .limit(2000)
   return (data as ClienteOpc[]) ?? []
 }
 
@@ -92,13 +91,14 @@ export type EquipStockOpc = {
 export async function pesquisarEquipamentosStock(q: string): Promise<EquipStockOpc[]> {
   if (q.trim().length < 2) return []
   const termo = q.trim()
+  // status insensível a maiúsculas: os dados têm "Em Stock" e "Em stock"
   const { data } = await supabase
     .from('equipamentos')
     .select('id, modelo, marca, serial_number, ano')
-    .eq('status', 'Em stock')
+    .ilike('status', 'em stock')
     .or(`serial_number.ilike.%${termo}%,modelo.ilike.%${termo}%`)
     .order('modelo')
-    .limit(8)
+    .limit(20)
   return (data as EquipStockOpc[]) ?? []
 }
 

@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  pesquisarClientes, pesquisarEquipamentosStock,
+  listarClientes, pesquisarEquipamentosStock,
   type ClienteOpc, type EquipStockOpc,
 } from '@/lib/notasEncomenda'
+import { PAISES } from '@/lib/paises'
 import { CATEGORIAS_MATERIAL, categoriasParaMarca } from '@/lib/material-notas-encomenda'
 import { CAPAS_OPCOES, type NotaEncomenda, type NotaMaterial, type NotaInput, type MaterialEscolhido, type CapasOpcao } from '@/types/notaEncomenda'
 
@@ -38,7 +39,8 @@ export default function NotaEncomendaForm({ inicial, materiaisIniciais, acoes, a
   // Pedido
   const [dataPedido, setDataPedido] = useState(inicial?.data_pedido ?? hoje())
 
-  // Cliente
+  // Cliente (lista completa carregada uma vez, para escolher/navegar)
+  const [clientes, setClientes] = useState<ClienteOpc[]>([])
   const [clienteId, setClienteId] = useState<string | null>(inicial?.cliente_id ?? null)
   const [clienteNome, setClienteNome] = useState(inicial?.cliente_nome ?? '')
   const [paisDestino, setPaisDestino] = useState(inicial?.pais_destino ?? '')
@@ -63,7 +65,34 @@ export default function NotaEncomendaForm({ inicial, materiaisIniciais, acoes, a
   const [capas, setCapas] = useState<CapasOpcao | ''>(inicial?.capas ?? '')
   const [observacoes, setObservacoes] = useState(inicial?.observacoes ?? '')
 
+  // Mostrar todas as categorias de material (não só as da marca do equipamento)
+  const [mostrarTodasCats, setMostrarTodasCats] = useState(false)
+
   const [erroLocal, setErroLocal] = useState<string | null>(null)
+
+  // Carrega a lista de clientes uma vez
+  useEffect(() => {
+    let activo = true
+    listarClientes().then((cs) => { if (activo) setClientes(cs) })
+    return () => { activo = false }
+  }, [])
+
+  // Pesquisa de clientes em memória (mostra todos ao focar; filtra ao escrever)
+  const buscarCliente = useCallback(
+    async (q: string): Promise<ClienteOpc[]> => {
+      const t = q.trim().toLowerCase()
+      const base = t ? clientes.filter((c) => c.nome.toLowerCase().includes(t)) : clientes
+      return base.slice(0, 50)
+    },
+    [clientes]
+  )
+
+  // Pesquisa de países a partir da lista curada
+  const buscarPais = useCallback(async (q: string): Promise<string[]> => {
+    const t = q.trim().toLowerCase()
+    const base = t ? PAISES.filter((p) => p.toLowerCase().includes(t)) : PAISES
+    return base.slice(0, 50)
+  }, [])
 
   function escolherCliente(c: ClienteOpc) {
     setClienteId(c.id)
@@ -79,14 +108,16 @@ export default function NotaEncomendaForm({ inicial, materiaisIniciais, acoes, a
     setMarca(e.marca ?? null)
   }
 
-  // Categorias a mostrar: as da marca + as que já têm itens selecionados (edição).
+  // Categorias a mostrar: todas (se o toggle estiver ligado) ou as da marca +
+  // as que já têm itens selecionados (edição).
   const categoriasVisiveis = useMemo(() => {
+    if (mostrarTodasCats) return CATEGORIAS_MATERIAL
     const daMarca = new Set(categoriasParaMarca(marca).map((c) => c.categoria))
     return CATEGORIAS_MATERIAL.filter((c) => {
       if (daMarca.has(c.categoria)) return true
       return c.itens.some((it) => selecionados.has(chave(c.categoria, it)))
     })
-  }, [marca, selecionados])
+  }, [mostrarTodasCats, marca, selecionados])
 
   function alternarItem(cat: string, item: string) {
     setSelecionados((prev) => {
@@ -157,15 +188,22 @@ export default function NotaEncomendaForm({ inicial, materiaisIniciais, acoes, a
           <Campo rotulo="Nome do cliente">
             <Autocomplete
               valor={clienteNome}
-              placeholder="Pesquisar ou escrever..."
-              buscar={pesquisarClientes}
+              placeholder="Escolher da lista ou escrever..."
+              buscar={buscarCliente}
               onChangeTexto={(v) => { setClienteNome(v); setClienteId(null) }}
               onEscolher={escolherCliente}
               render={(c) => `${c.nome}${c.pais ? ` · ${c.pais}` : ''}`}
             />
           </Campo>
           <Campo rotulo="País de destino">
-            <input value={paisDestino} onChange={(e) => setPaisDestino(e.target.value)} style={f.input} placeholder="Ex: Espanha" />
+            <Autocomplete
+              valor={paisDestino}
+              placeholder="Escolher da lista ou escrever..."
+              buscar={buscarPais}
+              onChangeTexto={(v) => setPaisDestino(v)}
+              onEscolher={(p) => setPaisDestino(p)}
+              render={(p) => p}
+            />
           </Campo>
         </div>
       </section>
@@ -206,9 +244,15 @@ export default function NotaEncomendaForm({ inicial, materiaisIniciais, acoes, a
 
       {/* 5. Material que acompanha */}
       <section style={f.seccao}>
-        <div style={f.seccaoTitulo}>Material que acompanha</div>
-        {!equipamentoId && (
-          <p style={f.ajuda}>Escolhe um equipamento para ver o material específico da marca. O material comum e os outros acessórios estão sempre disponíveis.</p>
+        <div style={f.seccaoTituloLinha}>
+          <span style={f.seccaoTitulo}>Material que acompanha</span>
+          <label style={f.checkLabel}>
+            <input type="checkbox" checked={mostrarTodasCats} onChange={(e) => setMostrarTodasCats(e.target.checked)} />
+            Mostrar todas as categorias
+          </label>
+        </div>
+        {!equipamentoId && !mostrarTodasCats && (
+          <p style={f.ajuda}>Escolhe um equipamento para ver o material da marca, ou liga &quot;Mostrar todas as categorias&quot; para adicionar material de qualquer marca. O material comum e os outros acessórios estão sempre disponíveis.</p>
         )}
         {categoriasVisiveis.map((cat) => (
           <div key={cat.categoria} style={f.catBloco}>
@@ -358,6 +402,8 @@ const f: Record<string, React.CSSProperties> = {
   form: { display: 'flex', flexDirection: 'column', gap: 16 },
   seccao: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 },
   seccaoTitulo: { fontSize: 14, fontWeight: 700, color: 'var(--primary)' },
+  seccaoTituloLinha: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
+  checkLabel: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--muted)', fontWeight: 600, cursor: 'pointer' },
   grid2: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 },
   grid3: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 },
   campo: { display: 'flex', flexDirection: 'column', gap: 6 },
