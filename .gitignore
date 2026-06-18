@@ -53,3 +53,6 @@ next-env.d.ts
 *.xlsx
 *.xls
 _pecas_*.*
+
+# Documentos de origem locais (não versionar)
+*.pdf
