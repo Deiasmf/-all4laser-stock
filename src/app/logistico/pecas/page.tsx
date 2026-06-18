@@ -4,8 +4,21 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import { listarPecas, criarPeca, atualizarPeca, eliminarPeca } from '@/lib/pecas'
+import { pecasComPedidoPendente } from '@/lib/compras'
+import { LOCALIZACOES_PECA } from '@/types/compras'
 import QrPeca from '@/components/QrPeca'
 import type { Peca } from '@/types/peca'
+
+// Badge de alerta de stock: vermelho se <= 10, amarelo se <= 20.
+function StockBadge({ q }: { q: number }) {
+  if (q > 20) return null
+  const baixo = q <= 10
+  return (
+    <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '1px 6px', color: '#fff', background: baixo ? '#DC2626' : '#D4820A' }}>
+      {baixo ? 'stock crítico' : 'stock baixo'}
+    </span>
+  )
+}
 
 export default function StockPecasPage() {
   const { isAdmin } = useAuth()
@@ -16,6 +29,7 @@ export default function StockPecasPage() {
   const [fGrupo, setFGrupo] = useState('')
   const [aberta, setAberta] = useState<Peca | null>(null)
   const [criar, setCriar] = useState(false)
+  const [pendentes, setPendentes] = useState<Set<string>>(new Set())
   // Id da peça vinda de um QR Code (?peca=<id>), lido uma única vez
   const qrPecaId = useRef<string | null>(
     typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('peca') : null
@@ -37,6 +51,7 @@ export default function StockPecasPage() {
     // setState só corre após o await, dentro de carregar()
     // eslint-disable-next-line react-hooks/set-state-in-effect
     carregar()
+    pecasComPedidoPendente().then(setPendentes)
   }, [])
 
   const marcas = useMemo(() => Array.from(new Set(pecas.map((p) => p.marca).filter(Boolean))) as string[], [pecas])
@@ -103,10 +118,12 @@ export default function StockPecasPage() {
               <span style={{ fontWeight: 600 }}>
                 {p.nome}
                 {p.marca && <span style={c.marcaTag}>{p.marca}</span>}
+                {pendentes.has(p.id) && <span title="Pedido de compra pendente" style={{ marginLeft: 6 }}>🛒</span>}
               </span>
               <span style={c.grupoCel}>{p.grupo ?? '—'}</span>
               <span style={{ textAlign: 'right', fontWeight: 700, color: p.quantidade <= 0 ? 'var(--danger, #c62828)' : 'inherit' }}>
                 {p.quantidade}
+                <StockBadge q={p.quantidade} />
               </span>
             </div>
           ))}
@@ -119,6 +136,7 @@ export default function StockPecasPage() {
         <ModalPeca
           peca={aberta}
           isAdmin={isAdmin}
+          pendente={aberta ? pendentes.has(aberta.id) : false}
           onFechar={() => { setAberta(null); setCriar(false) }}
           onGuardado={() => { setAberta(null); setCriar(false); carregar() }}
         />
@@ -128,10 +146,11 @@ export default function StockPecasPage() {
 }
 
 function ModalPeca({
-  peca, isAdmin, onFechar, onGuardado,
+  peca, isAdmin, pendente, onFechar, onGuardado,
 }: {
   peca: Peca | null
   isAdmin: boolean
+  pendente: boolean
   onFechar: () => void
   onGuardado: () => void
 }) {
@@ -140,6 +159,7 @@ function ModalPeca({
   const [grupo, setGrupo] = useState(peca?.grupo ?? '')
   const [referencia, setReferencia] = useState(peca?.referencia ?? '')
   const [quantidade, setQuantidade] = useState(peca?.quantidade != null ? String(peca.quantidade) : '0')
+  const [localizacao, setLocalizacao] = useState(peca?.localizacao ?? '')
   const [notas, setNotas] = useState(peca?.notas ?? '')
   const [aGuardar, setAGuardar] = useState(false)
   const [aApagar, setAApagar] = useState(false)
@@ -159,6 +179,7 @@ function ModalPeca({
       referencia: referencia.trim() || null,
       quantidade: Math.trunc(Number(quantidade)),
       notas: notas.trim() || null,
+      localizacao: localizacao.trim() || null,
     }
     const { error } = peca ? await atualizarPeca(peca.id, payload) : await criarPeca(payload)
     setAGuardar(false)
@@ -189,6 +210,12 @@ function ModalPeca({
         {/* QR Code (peças existentes) */}
         {peca && <QrPeca peca={peca} />}
 
+        {pendente && (
+          <div style={{ background: '#fdf2e3', border: '1px solid #D4820A', color: '#9a5b00', borderRadius: 8, padding: '8px 12px', marginTop: 8, fontSize: 13, fontWeight: 600 }}>
+            🛒 Pedido de compra pendente para esta peça
+          </div>
+        )}
+
         {erro && <div style={c.erro}>{erro}</div>}
 
         <label style={c.label}>Nome *</label>
@@ -215,6 +242,12 @@ function ModalPeca({
             <input style={c.inputModal} type="number" inputMode="numeric" value={quantidade} onChange={(e) => setQuantidade(e.target.value)} disabled={soLeitura} />
           </div>
         </div>
+
+        <label style={c.label}>Localização</label>
+        <select style={c.inputModal} value={localizacao} onChange={(e) => setLocalizacao(e.target.value)} disabled={soLeitura}>
+          <option value="">—</option>
+          {LOCALIZACOES_PECA.map((l) => <option key={l} value={l}>{l}</option>)}
+        </select>
 
         <label style={c.label}>Notas</label>
         <textarea style={c.textarea} value={notas} onChange={(e) => setNotas(e.target.value)} disabled={soLeitura} />

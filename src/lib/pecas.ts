@@ -30,6 +30,7 @@ export async function criarPeca(p: Partial<Peca>) {
     referencia: p.referencia ?? null,
     quantidade: p.quantidade ?? 0,
     notas: p.notas ?? null,
+    localizacao: p.localizacao ?? null,
   }).select().single()
 }
 
@@ -41,6 +42,7 @@ export async function atualizarPeca(id: string, p: Partial<Peca>) {
     referencia: p.referencia ?? null,
     quantidade: p.quantidade ?? 0,
     notas: p.notas ?? null,
+    localizacao: p.localizacao ?? null,
   }).eq('id', id).select().single()
 }
 

@@ -33,6 +33,7 @@ const NAV: Seccao[] = [
         filhos: [
           { href: '/tecnico/folhas-obra', label: 'Folhas de obra', icon: '📝' },
           { href: '/tecnico/preparacao', label: 'Em preparação', icon: '🔧' },
+          { href: '/tecnico/pecas-em-falta', label: 'Peças em falta', icon: '🔩' },
         ],
       },
       {
@@ -50,6 +51,13 @@ const NAV: Seccao[] = [
     ],
   },
   {
+    titulo: 'Compras',
+    itens: [
+      { href: '/compras', label: 'Pedidos de Compra', icon: '🛒' },
+      { href: '/compras/fornecedores', label: 'Fornecedores', icon: '🏭' },
+    ],
+  },
+  {
     titulo: 'Sistema',
     itens: [{ href: '/processos', label: 'Processos', icon: '📋' }],
   },
@@ -64,12 +72,15 @@ const TITULOS: { prefixo: string; titulo: string }[] = [
   { prefixo: '/comercial', titulo: 'Comercial' },
   { prefixo: '/marketing', titulo: 'Marketing' },
   { prefixo: '/tecnico/preparacao', titulo: 'Em Preparação Técnica' },
+  { prefixo: '/tecnico/pecas-em-falta', titulo: 'Peças em Falta' },
   { prefixo: '/tecnico', titulo: 'Técnico' },
   { prefixo: '/logistico/pecas', titulo: 'Stock de Peças' },
   { prefixo: '/logistico/preparacao', titulo: 'Em Preparação' },
   { prefixo: '/logistico/encaixotamento', titulo: 'Encaixotamento' },
   { prefixo: '/logistico', titulo: 'Stock (Logística)' },
   { prefixo: '/clinico', titulo: 'Clínico' },
+  { prefixo: '/compras/fornecedores', titulo: 'Fornecedores' },
+  { prefixo: '/compras', titulo: 'Pedidos de Compra' },
   { prefixo: '/alugueres', titulo: 'Alugueres' },
   { prefixo: '/projetos', titulo: 'Outros Projetos' },
   { prefixo: '/processos', titulo: 'Processos' },

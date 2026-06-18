@@ -10,6 +10,7 @@ import { camposEmFalta, ROTULO_OBRIGATORIO } from '@/types/equipamento'
 import type { FaturacaoEquip } from '@/types/aluguer'
 import MediaGaleria from '@/components/MediaGaleria'
 import QrEquipamento from '@/components/QrEquipamento'
+import EquipamentoPecasFalta from '@/components/EquipamentoPecasFalta'
 import styles from './detalhe.module.css'
 
 function formatarData(d: string | null) {
@@ -240,6 +241,8 @@ export default function DetalheEquipamento() {
           <Linha rotulo="Saída registada por" valor={eq.saida_por_nome} />
         </div>
       )}
+
+      <EquipamentoPecasFalta equipamentoId={eq.id} equipamentoSn={eq.serial_number} equipamentoModelo={eq.modelo} />
 
       <QrEquipamento equipamentoId={eq.id} modelo={eq.modelo} marca={eq.marca} serial={eq.serial_number} />
 

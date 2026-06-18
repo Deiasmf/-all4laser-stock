@@ -6,6 +6,9 @@ export type Peca = {
   referencia: string | null
   quantidade: number
   notas: string | null
+  localizacao: string | null
+  stock_minimo_alerta1: number | null
+  stock_minimo_alerta2: number | null
   created_at: string
   updated_at: string
 }
