@@ -6,7 +6,7 @@ import {
   type ClienteOpc, type EquipStockOpc,
 } from '@/lib/notasEncomenda'
 import { PAISES } from '@/lib/paises'
-import { CATEGORIAS_MATERIAL, categoriasParaMarca } from '@/lib/material-notas-encomenda'
+import { categoriasParaMarca, todasCategorias, subgruposDaCategoria, itensDaCategoria } from '@/lib/material-notas-encomenda'
 import { CAPAS_OPCOES, type NotaEncomenda, type NotaMaterial, type NotaInput, type MaterialEscolhido, type CapasOpcao } from '@/types/notaEncomenda'
 
 type Acao = { label: string; emitir: boolean; destaque?: boolean }
@@ -125,13 +125,15 @@ export default function NotaEncomendaForm({ inicial, materiaisIniciais, acoes, a
 
   // Categorias a mostrar: todas (se o toggle estiver ligado) ou as da marca +
   // as que já têm itens selecionados (edição).
-  const categoriasVisiveis = useMemo(() => {
-    if (mostrarTodasCats) return CATEGORIAS_MATERIAL
-    const daMarca = new Set(categoriasParaMarca(marca).map((c) => c.categoria))
-    return CATEGORIAS_MATERIAL.filter((c) => {
-      if (daMarca.has(c.categoria)) return true
-      return c.itens.some((it) => selecionados.has(chave(c.categoria, it)))
-    })
+  const categoriasVisiveis = useMemo<string[]>(() => {
+    if (mostrarTodasCats) return todasCategorias()
+    const visiveis = new Set(categoriasParaMarca(marca))
+    // Inclui categorias que já têm itens selecionados (modo edição)
+    for (const k of selecionados) {
+      const i = k.indexOf('__')
+      if (i > 0) visiveis.add(k.slice(0, i))
+    }
+    return todasCategorias().filter((c) => visiveis.has(c))
   }, [mostrarTodasCats, marca, selecionados])
 
   function alternarItem(cat: string, item: string) {
@@ -154,8 +156,8 @@ export default function NotaEncomendaForm({ inicial, materiaisIniciais, acoes, a
   function reunirMateriais(): MaterialEscolhido[] {
     const itens: MaterialEscolhido[] = []
     for (const cat of categoriasVisiveis) {
-      for (const it of cat.itens) {
-        if (selecionados.has(chave(cat.categoria, it))) itens.push({ categoria: cat.categoria, item: it })
+      for (const it of itensDaCategoria(cat)) {
+        if (selecionados.has(chave(cat, it.item))) itens.push({ categoria: cat, item: it.item })
       }
     }
     for (const o of outros) itens.push({ categoria: 'Outros acessórios', item: o })
@@ -276,45 +278,52 @@ export default function NotaEncomendaForm({ inicial, materiaisIniciais, acoes, a
           <p style={f.ajuda}>Escolhe um equipamento para ver o material da marca, ou liga &quot;Mostrar todas as categorias&quot; para adicionar material de qualquer marca. O material comum e os outros acessórios estão sempre disponíveis.</p>
         )}
         {categoriasVisiveis.map((cat) => (
-          <div key={cat.categoria} style={f.catBloco}>
-            <div style={f.catTitulo}>{cat.categoria}</div>
-            {cat.livre ? (
-              <div style={f.outrosWrap}>
-                <div style={f.chips}>
-                  {outros.map((o) => (
-                    <span key={o} style={f.chip}>
-                      {o}
-                      <button type="button" onClick={() => setOutros((prev) => prev.filter((x) => x !== o))} style={f.chipX} aria-label={`Remover ${o}`}>×</button>
-                    </span>
-                  ))}
-                  {outros.length === 0 && <span style={f.ajuda}>Sem acessórios adicionais.</span>}
-                </div>
-                <div style={f.outrosLinha}>
-                  <input
-                    value={novoOutro}
-                    onChange={(e) => setNovoOutro(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); adicionarOutro() } }}
-                    placeholder="Adicionar acessório..."
-                    style={{ ...f.input, flex: 1 }}
-                  />
-                  <button type="button" onClick={adicionarOutro} style={f.btnAdd}>Adicionar</button>
+          <div key={cat} style={f.catBloco}>
+            <div style={f.catTitulo}>{cat}</div>
+            {subgruposDaCategoria(cat).map((g, gi) => (
+              <div key={g.subcategoria ?? `g${gi}`} style={f.subBloco}>
+                {g.subcategoria && <div style={f.subTitulo}>{g.subcategoria}</div>}
+                <div style={f.checkGrid}>
+                  {g.itens.map((it) => {
+                    const k = chave(cat, it.item)
+                    return (
+                      <label key={it.item} style={f.checkItem}>
+                        <input type="checkbox" checked={selecionados.has(k)} onChange={() => alternarItem(cat, it.item)} />
+                        <span>{it.item}</span>
+                      </label>
+                    )
+                  })}
                 </div>
               </div>
-            ) : (
-              <div style={f.checkGrid}>
-                {cat.itens.map((it) => {
-                  const k = chave(cat.categoria, it)
-                  return (
-                    <label key={it} style={f.checkItem}>
-                      <input type="checkbox" checked={selecionados.has(k)} onChange={() => alternarItem(cat.categoria, it)} />
-                      <span>{it}</span>
-                    </label>
-                  )
-                })}
-              </div>
-            )}
+            ))}
           </div>
         ))}
+
+        {/* Outros acessórios (texto livre, sempre disponível) */}
+        <div style={f.catBloco}>
+          <div style={f.catTitulo}>Outros acessórios</div>
+          <div style={f.outrosWrap}>
+            <div style={f.chips}>
+              {outros.map((o) => (
+                <span key={o} style={f.chip}>
+                  {o}
+                  <button type="button" onClick={() => setOutros((prev) => prev.filter((x) => x !== o))} style={f.chipX} aria-label={`Remover ${o}`}>×</button>
+                </span>
+              ))}
+              {outros.length === 0 && <span style={f.ajuda}>Sem acessórios adicionais.</span>}
+            </div>
+            <div style={f.outrosLinha}>
+              <input
+                value={novoOutro}
+                onChange={(e) => setNovoOutro(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); adicionarOutro() } }}
+                placeholder="Adicionar acessório..."
+                style={{ ...f.input, flex: 1 }}
+              />
+              <button type="button" onClick={adicionarOutro} style={f.btnAdd}>Adicionar</button>
+            </div>
+          </div>
+        </div>
       </section>
 
       {/* 6. Capas */}
@@ -462,6 +471,8 @@ const f: Record<string, React.CSSProperties> = {
   ajuda: { fontSize: 13, color: 'var(--muted)', margin: 0 },
   catBloco: { display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4 },
   catTitulo: { fontSize: 13, fontWeight: 700, color: 'var(--foreground)', borderBottom: '1px solid var(--border)', paddingBottom: 4 },
+  subBloco: { display: 'flex', flexDirection: 'column', gap: 6 },
+  subTitulo: { fontSize: 12, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 2 },
   checkGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 6 },
   checkItem: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--foreground)', cursor: 'pointer' },
   outrosWrap: { display: 'flex', flexDirection: 'column', gap: 10 },
