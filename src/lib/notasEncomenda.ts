@@ -79,6 +79,20 @@ export async function listarClientes(): Promise<ClienteOpc[]> {
   return (data as ClienteOpc[]) ?? []
 }
 
+// Adiciona um cliente novo à lista (tabela clientes), para reutilizar em futuras
+// notas. Mesmo padrão usado no módulo de Alugueres. País é NOT NULL na BD
+// (default 'Portugal'); nacional deriva do país.
+export async function criarCliente(nome: string, pais: string): Promise<ClienteOpc | null> {
+  const paisFinal = pais.trim() || 'Portugal'
+  const { data, error } = await supabase
+    .from('clientes')
+    .insert({ nome: nome.trim(), pais: paisFinal, nacional: paisFinal.toLowerCase() === 'portugal' })
+    .select('id, nome, pais')
+    .single()
+  if (error || !data) return null
+  return data as ClienteOpc
+}
+
 export type EquipStockOpc = {
   id: string
   modelo: string | null

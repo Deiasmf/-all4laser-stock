@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  listarClientes, pesquisarEquipamentosStock,
+  listarClientes, criarCliente, pesquisarEquipamentosStock,
   type ClienteOpc, type EquipStockOpc,
 } from '@/lib/notasEncomenda'
 import { PAISES } from '@/lib/paises'
@@ -100,6 +100,21 @@ export default function NotaEncomendaForm({ inicial, materiaisIniciais, acoes, a
     if (c.pais) setPaisDestino(c.pais)
   }
 
+  // Adiciona um cliente novo (que não está na lista) à tabela de clientes, para
+  // ficar disponível em futuras notas. Usa o país já preenchido no formulário.
+  async function adicionarCliente(nome: string) {
+    setErroLocal(null)
+    // Se já existir um com o mesmo nome (ignora maiúsculas), reutiliza-o.
+    const existente = clientes.find((c) => c.nome.trim().toLowerCase() === nome.trim().toLowerCase())
+    if (existente) { escolherCliente(existente); return }
+    const novo = await criarCliente(nome, paisDestino)
+    if (!novo) { setErroLocal('Não foi possível adicionar o cliente à lista.'); return }
+    setClientes((prev) => [...prev, novo].sort((a, b) => a.nome.localeCompare(b.nome)))
+    setClienteId(novo.id)
+    setClienteNome(novo.nome)
+    if (novo.pais) setPaisDestino(novo.pais)
+  }
+
   function escolherEquipamento(e: EquipStockOpc) {
     setEquipamentoId(e.id)
     setEquipamentoModelo(e.modelo ?? '')
@@ -193,6 +208,9 @@ export default function NotaEncomendaForm({ inicial, materiaisIniciais, acoes, a
               onChangeTexto={(v) => { setClienteNome(v); setClienteId(null) }}
               onEscolher={escolherCliente}
               render={(c) => `${c.nome}${c.pais ? ` · ${c.pais}` : ''}`}
+              chaveTexto={(c) => c.nome}
+              onTextoNovo={adicionarCliente}
+              textoNovoRotulo={(t) => `➕ Adicionar «${t}» à lista de clientes`}
             />
           </Campo>
           <Campo rotulo="País de destino">
@@ -203,6 +221,9 @@ export default function NotaEncomendaForm({ inicial, materiaisIniciais, acoes, a
               onChangeTexto={(v) => setPaisDestino(v)}
               onEscolher={(p) => setPaisDestino(p)}
               render={(p) => p}
+              chaveTexto={(p) => p}
+              onTextoNovo={(t) => setPaisDestino(t)}
+              textoNovoRotulo={(t) => `➕ Usar «${t}»`}
             />
           </Campo>
         </div>
@@ -339,8 +360,12 @@ export default function NotaEncomendaForm({ inicial, materiaisIniciais, acoes, a
 }
 
 // ─── Autocomplete genérico (texto livre + sugestões) ────────────────────────
+// Suporta uma linha de "adicionar/usar" o que está escrito (onTextoNovo), que
+// aparece quando o texto não corresponde exatamente a nenhuma sugestão. Permite
+// registar um valor que não está na lista.
 function Autocomplete<T>({
   valor, placeholder, buscar, onChangeTexto, onEscolher, render,
+  chaveTexto, onTextoNovo, textoNovoRotulo,
 }: {
   valor: string
   placeholder?: string
@@ -348,6 +373,12 @@ function Autocomplete<T>({
   onChangeTexto: (v: string) => void
   onEscolher: (item: T) => void
   render: (item: T) => string
+  // Texto simples de um item, para detetar correspondência exata (ex.: c.nome).
+  chaveTexto?: (item: T) => string
+  // Chamado ao confirmar um valor escrito que não está na lista.
+  onTextoNovo?: (texto: string) => void
+  // Rótulo da linha de criar/usar (recebe o texto escrito).
+  textoNovoRotulo?: (texto: string) => string
 }) {
   const [resultados, setResultados] = useState<T[]>([])
   const [aberto, setAberto] = useState(false)
@@ -361,6 +392,15 @@ function Autocomplete<T>({
     return () => clearTimeout(t)
   }, [valor, buscar])
 
+  const textoTrim = valor.trim()
+  const correspExata = resultados.some(
+    (r) => (chaveTexto ? chaveTexto(r) : render(r)).trim().toLowerCase() === textoTrim.toLowerCase()
+  )
+  const rotuloCriar =
+    onTextoNovo && textoTrim && !correspExata
+      ? (textoNovoRotulo ? textoNovoRotulo(textoTrim) : `Usar «${textoTrim}»`)
+      : null
+
   return (
     <div style={{ position: 'relative' }}>
       <input
@@ -371,8 +411,17 @@ function Autocomplete<T>({
         onBlur={() => setTimeout(() => setAberto(false), 150)}
         style={f.input}
       />
-      {aberto && resultados.length > 0 && (
+      {aberto && (resultados.length > 0 || rotuloCriar) && (
         <div style={f.dropdown}>
+          {rotuloCriar && (
+            <button
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); onTextoNovo!(textoTrim); setAberto(false) }}
+              style={f.opcaoCriar}
+            >
+              {rotuloCriar}
+            </button>
+          )}
           {resultados.map((item, i) => (
             <button
               key={i}
@@ -426,6 +475,7 @@ const f: Record<string, React.CSSProperties> = {
   limparRadio: { background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 13, textDecoration: 'underline' },
   dropdown: { position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, marginTop: 4, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.12)', overflow: 'hidden' },
   opcao: { display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', background: 'transparent', border: 'none', borderBottom: '1px solid var(--border)', cursor: 'pointer', font: 'inherit', color: 'var(--foreground)' },
+  opcaoCriar: { display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', background: 'var(--background)', border: 'none', borderBottom: '1px solid var(--border)', cursor: 'pointer', font: 'inherit', color: 'var(--primary)', fontWeight: 600 },
   erro: { background: '#fbecea', color: 'var(--danger)', border: '1px solid var(--danger)', borderRadius: 8, padding: '10px 12px', fontSize: 14, fontWeight: 600 },
   acoes: { display: 'flex', gap: 10, flexWrap: 'wrap' },
   btnPrimario: { background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '12px 24px', fontWeight: 700, cursor: 'pointer', fontSize: 15 },
