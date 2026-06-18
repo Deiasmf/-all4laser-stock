@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth'
 import {
   criarNota, guardarMateriais, marcarEquipamentoEmPreparacao, notificarNovaNota,
 } from '@/lib/notasEncomenda'
+import { criarFluxoInicial } from '@/lib/neFluxo'
 import NotaEncomendaForm from '@/components/NotaEncomendaForm'
 import type { NotaInput, MaterialEscolhido, NotaEncomenda } from '@/types/notaEncomenda'
 
@@ -31,9 +32,11 @@ export default function NovaNotaPage() {
     // Material que acompanha (melhor esforço)
     await guardarMateriais(nota.id, materiais)
 
-    // Ao emitir: equipamento → Prep-Logística + comunicados para técnico/logística
-    if (emitir && nota.equipamento_id) {
-      await marcarEquipamentoEmPreparacao(nota.equipamento_id)
+    // Ao emitir: equipamento → Prep-Logística + comunicados + arranca o fluxo
+    // de preparação (1ª fase: logística em curso).
+    if (emitir) {
+      await criarFluxoInicial(nota.id)
+      if (nota.equipamento_id) await marcarEquipamentoEmPreparacao(nota.equipamento_id)
       await notificarNovaNota(nota)
     }
 
