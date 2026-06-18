@@ -1,6 +1,6 @@
 export type EstadoNota = 'emitida' | 'em_preparacao' | 'expedida' | 'cancelada'
 
-export type CapasOpcao = 'Originais' | 'Substituição' | 'Sem capas'
+export type CapasOpcao = 'Originais' | 'Pintadas' | 'Sem capas'
 
 export type NotaEncomenda = {
   id: string
@@ -50,7 +50,7 @@ export type NotaInput = {
 // Item de material escolhido (para gravar em notas_encomenda_material)
 export type MaterialEscolhido = { categoria: string; item: string }
 
-export const CAPAS_OPCOES: CapasOpcao[] = ['Originais', 'Substituição', 'Sem capas']
+export const CAPAS_OPCOES: CapasOpcao[] = ['Originais', 'Pintadas', 'Sem capas']
 
 export const ESTADO_NOTA_CONFIG: Record<EstadoNota, { label: string; color: string; bg: string }> = {
   emitida: { label: 'Emitida', color: '#2563EB', bg: '#e8f0fe' },
