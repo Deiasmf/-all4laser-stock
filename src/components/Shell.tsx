@@ -7,8 +7,10 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
 import { iniciais } from '@/lib/ui'
 
-// grupo: rótulo não clicável (cabeçalho de departamento); subitem: indentado por baixo
-type Item = { href?: string; label: string; icon?: string; badge?: 'leads'; grupo?: boolean; subitem?: boolean }
+// Departamentos podem ter sub-itens (filhos). Itens com filhos são grupos
+// recolhíveis (clicar no cabeçalho abre/fecha).
+type SubItem = { href: string; label: string; icon: string }
+type Item = { href?: string; label: string; icon?: string; badge?: 'leads'; filhos?: SubItem[] }
 type Seccao = { titulo: string; itens: Item[] }
 
 const NAV: Seccao[] = [
@@ -16,20 +18,32 @@ const NAV: Seccao[] = [
   {
     titulo: 'Departamentos',
     itens: [
-      { href: '/admin-dept', label: 'Administrativo', icon: '🗂️' },
-      { href: '/admin-dept/expedicao', label: 'Prontos a Enviar', icon: '✈️', subitem: true },
+      {
+        href: '/admin-dept', label: 'Administrativo', icon: '🗂️',
+        filhos: [{ href: '/admin-dept/expedicao', label: 'Prontos a enviar', icon: '✈️' }],
+      },
       { href: '/financeiro', label: 'Financeiro', icon: '💶' },
-      { href: '/comercial', label: 'Comercial', icon: '🤝' },
-      { href: '/comercial/notas-encomenda', label: 'Notas de Encomenda', icon: '📋', subitem: true },
+      {
+        href: '/comercial', label: 'Comercial', icon: '🤝',
+        filhos: [{ href: '/comercial/notas-encomenda', label: 'Notas de encomenda', icon: '📋' }],
+      },
       { href: '/marketing', label: 'Marketing', icon: '📣' },
-      { href: '/tecnico', label: 'Técnico', icon: '🔧' },
-      { href: '/tecnico/folhas-obra', label: 'Folhas de Obra', subitem: true },
-      { href: '/tecnico/preparacao', label: 'Em Preparação', icon: '🔧', subitem: true },
-      { label: 'Logística', icon: '📦', grupo: true },
-      { href: '/logistico', label: 'Stock', subitem: true },
-      { href: '/logistico/pecas', label: 'Stock de Peças', subitem: true },
-      { href: '/logistico/preparacao', label: 'Em Preparação', icon: '📦', subitem: true },
-      { href: '/logistico/encaixotamento', label: 'Encaixotamento', icon: '📫', subitem: true },
+      {
+        href: '/tecnico', label: 'Técnico', icon: '🔧',
+        filhos: [
+          { href: '/tecnico/folhas-obra', label: 'Folhas de obra', icon: '📝' },
+          { href: '/tecnico/preparacao', label: 'Em preparação', icon: '🔧' },
+        ],
+      },
+      {
+        label: 'Logística', icon: '📦',
+        filhos: [
+          { href: '/logistico', label: 'Stock', icon: '📦' },
+          { href: '/logistico/pecas', label: 'Stock de peças', icon: '🔩' },
+          { href: '/logistico/preparacao', label: 'Em preparação', icon: '🧰' },
+          { href: '/logistico/encaixotamento', label: 'Encaixotamento', icon: '📫' },
+        ],
+      },
       { href: '/clinico', label: 'Clínico', icon: '🩺' },
       { href: '/alugueres', label: 'Alugueres', icon: '🔄', badge: 'leads' },
       { href: '/projetos', label: 'Outros Projetos', icon: '🏗️' },
@@ -74,6 +88,8 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [leadsNovas, setLeadsNovas] = useState(0)
   const [menuAberto, setMenuAberto] = useState(false)
+  // Grupos recolhíveis: override manual por label (senão abre se contiver a rota ativa)
+  const [abertos, setAbertos] = useState<Record<string, boolean>>({})
 
   // Contagem de leads novas (badge). Se a tabela falhar, fica 0.
   useEffect(() => {
@@ -108,6 +124,11 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     return pathname === href || pathname.startsWith(href + '/')
   }
 
+  // Um grupo contém a rota ativa se a própria página ou algum filho estiver ativo.
+  function grupoTemAtivo(it: Item) {
+    return (!!it.href && ehAtivo(it.href)) || (it.filhos?.some((f) => ehAtivo(f.href)) ?? false)
+  }
+
   const nome = perfil?.nome ?? perfil?.email ?? 'Utilizador'
   const ini = iniciais(perfil?.nome, perfil?.email)
 
@@ -126,26 +147,48 @@ export default function Shell({ children }: { children: React.ReactNode }) {
           {NAV.map((sec) => (
             <div key={sec.titulo}>
               <div className="a4l-sb-section">{sec.titulo}</div>
-              {sec.itens.map((it) =>
-                it.grupo ? (
-                  <div key={it.label} className="a4l-sb-grupo">
-                    {it.icon && <span className="a4l-sb-icon">{it.icon}</span>}
-                    <span>{it.label}</span>
-                  </div>
-                ) : (
+              {sec.itens.map((it) => {
+                if (it.filhos) {
+                  const aberto = abertos[it.label] ?? grupoTemAtivo(it)
+                  return (
+                    <div key={it.label}>
+                      <button
+                        type="button"
+                        className="a4l-sb-grupo-btn"
+                        onClick={() => setAbertos((a) => ({ ...a, [it.label]: !aberto }))}
+                        aria-expanded={aberto}
+                      >
+                        {it.icon && <span className="a4l-sb-icon">{it.icon}</span>}
+                        <span>{it.label}</span>
+                        <span className={`a4l-sb-chevron${aberto ? ' aberto' : ''}`}>▸</span>
+                      </button>
+                      {aberto && it.filhos.map((f) => (
+                        <Link
+                          key={f.href}
+                          href={f.href}
+                          className={`a4l-sb-subitem${ehAtivo(f.href) ? ' ativo' : ''}`}
+                        >
+                          <span className="a4l-sb-subicon">{f.icon}</span>
+                          <span>{f.label}</span>
+                        </Link>
+                      ))}
+                    </div>
+                  )
+                }
+                return (
                   <Link
                     key={it.href}
                     href={it.href!}
-                    className={`a4l-sb-item${it.subitem ? ' a4l-sb-sub' : ''}${ehAtivo(it.href!) ? ' ativo' : ''}`}
+                    className={`a4l-sb-item${ehAtivo(it.href!) ? ' ativo' : ''}`}
                   >
-                    {!it.subitem && <span className="a4l-sb-icon">{it.icon}</span>}
+                    <span className="a4l-sb-icon">{it.icon}</span>
                     <span>{it.label}</span>
                     {it.badge === 'leads' && leadsNovas > 0 && (
                       <span className="a4l-sb-badge">{leadsNovas}</span>
                     )}
                   </Link>
                 )
-              )}
+              })}
             </div>
           ))}
         </nav>
