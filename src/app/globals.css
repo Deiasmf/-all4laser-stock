@@ -42,8 +42,8 @@ body {
   min-height: 100%;
   color: var(--foreground);
   background: var(--background);
-  /* Tipo de letra Aptos (marca All4laser); Nunito como alternativa próxima (carregada no layout) */
-  font-family: 'Aptos', 'Aptos Display', 'Nunito', 'Segoe UI', system-ui, -apple-system,
+  /* Tipo de letra Aptos (marca All4laser); Nunito como alternativa próxima (via next/font) */
+  font-family: 'Aptos', 'Aptos Display', var(--font-nunito), 'Nunito', 'Segoe UI', system-ui, -apple-system,
     'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

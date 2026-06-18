@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import { listarPecas, criarPeca, atualizarPeca, eliminarPeca } from '@/lib/pecas'
@@ -16,30 +16,28 @@ export default function StockPecasPage() {
   const [fGrupo, setFGrupo] = useState('')
   const [aberta, setAberta] = useState<Peca | null>(null)
   const [criar, setCriar] = useState(false)
-  const [urlPeca, setUrlPeca] = useState<string | null>(null)
+  // Id da peça vinda de um QR Code (?peca=<id>), lido uma única vez
+  const qrPecaId = useRef<string | null>(
+    typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('peca') : null
+  )
 
   async function carregar() {
-    setPecas(await listarPecas())
+    const lista = await listarPecas()
+    setPecas(lista)
     setCarregando(false)
+    // Abrir automaticamente a peça vinda de um QR Code, já depois do await
+    if (qrPecaId.current) {
+      const f = lista.find((p) => p.id === qrPecaId.current)
+      if (f) setAberta(f)
+      qrPecaId.current = null
+    }
   }
 
   useEffect(() => {
-    // setPecas só corre após o await, dentro de carregar()
+    // setState só corre após o await, dentro de carregar()
     // eslint-disable-next-line react-hooks/set-state-in-effect
     carregar()
-    // Abrir automaticamente uma peça vinda de um QR Code (?peca=<id>)
-    const p = new URLSearchParams(window.location.search).get('peca')
-    if (p) setUrlPeca(p)
   }, [])
-
-  // Quando as peças carregam, abre a que veio do QR
-  useEffect(() => {
-    if (urlPeca && pecas.length) {
-      const f = pecas.find((p) => p.id === urlPeca)
-      if (f) setAberta(f)
-      setUrlPeca(null)
-    }
-  }, [urlPeca, pecas])
 
   const marcas = useMemo(() => Array.from(new Set(pecas.map((p) => p.marca).filter(Boolean))) as string[], [pecas])
   const grupos = useMemo(
