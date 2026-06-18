@@ -7,9 +7,10 @@ export default function TecnicoPreparacaoPage() {
     <NeFaseSimples
       fase="tecnico_preparacao"
       titulo="Equipamentos em Preparação Técnica"
-      botaoLabel="Concluir Preparação Técnica"
+      botaoLabel="Concluir — Devolver à Logística"
       voltarHref="/tecnico"
       voltarLabel="Técnico"
+      exigeFolhaObra
     />
   )
 }

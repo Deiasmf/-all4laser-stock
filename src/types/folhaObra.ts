@@ -38,6 +38,7 @@ export type FolhaObra = {
   assinatura_cliente_at: string | null
   token_assinatura_cliente: string
   pdf_url: string | null
+  nota_encomenda_id: string | null
   criado_por: string | null
   created_at: string
   updated_at: string

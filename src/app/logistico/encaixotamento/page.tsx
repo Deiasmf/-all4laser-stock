@@ -9,6 +9,7 @@ import {
   uploadFicheiro, BUCKET_ENCAIX, type EncaixFoto,
 } from '@/lib/neFluxo'
 import { CAIXAS_STANDARD } from '@/lib/caixas-standard'
+import NotaDetalhe from '@/components/NotaDetalhe'
 import type { NotaEncomenda } from '@/types/notaEncomenda'
 
 function formatarData(d: string | null) {
@@ -25,11 +26,10 @@ export default function EncaixotamentoPage() {
   const [carregando, setCarregando] = useState(true)
   const [aberta, setAberta] = useState<NotaEncomenda | null>(null)
 
-  // Formulário
+  // Formulário (só medidas exteriores + peso total)
   const [caixa, setCaixa] = useState('')
-  const [iC, setIC] = useState(''); const [iL, setIL] = useState(''); const [iA, setIA] = useState('')
   const [eC, setEC] = useState(''); const [eL, setEL] = useState(''); const [eA, setEA] = useState('')
-  const [pBruto, setPBruto] = useState(''); const [pLiquido, setPLiquido] = useState('')
+  const [pTotal, setPTotal] = useState('')
   const [obs, setObs] = useState('')
   const [fotos, setFotos] = useState<EncaixFoto[]>([])
   const [aCarregar, setACarregar] = useState(false)
@@ -48,16 +48,14 @@ export default function EncaixotamentoPage() {
 
   async function abrir(n: NotaEncomenda) {
     setAberta(n)
-    setCaixa(''); setIC(''); setIL(''); setIA(''); setEC(''); setEL(''); setEA('')
-    setPBruto(''); setPLiquido(''); setObs('')
+    setCaixa(''); setEC(''); setEL(''); setEA(''); setPTotal(''); setObs('')
     setFotos(await listarFotosEncaix(n.id))
   }
 
   function escolherCaixa(nome: string) {
     setCaixa(nome)
     const cx = CAIXAS_STANDARD.find((c) => c.nome === nome)
-    if (!cx || cx.custom) { setIC(''); setIL(''); setIA(''); setEC(''); setEL(''); setEA(''); return }
-    setIC(cx.interior ? String(cx.interior.c) : ''); setIL(cx.interior ? String(cx.interior.l) : ''); setIA(cx.interior ? String(cx.interior.a) : '')
+    if (!cx || cx.custom) { setEC(''); setEL(''); setEA(''); return }
     setEC(cx.exterior ? String(cx.exterior.c) : ''); setEL(cx.exterior ? String(cx.exterior.l) : ''); setEA(cx.exterior ? String(cx.exterior.a) : '')
   }
 
@@ -92,9 +90,9 @@ export default function EncaixotamentoPage() {
     setAGuardar(true)
     await guardarEncaixotamento(aberta.id, {
       caixa_tipo: caixa || null,
-      interior_comprimento: num(iC), interior_largura: num(iL), interior_altura: num(iA),
+      interior_comprimento: null, interior_largura: null, interior_altura: null,
       exterior_comprimento: num(eC), exterior_largura: num(eL), exterior_altura: num(eA),
-      peso_bruto: num(pBruto), peso_liquido: num(pLiquido),
+      peso_bruto: num(pTotal), peso_liquido: null,
       notas: obs.trim() || null,
     })
     const nome = perfil?.nome ?? perfil?.email ?? null
@@ -152,6 +150,8 @@ export default function EncaixotamentoPage() {
               <button onClick={() => setAberta(null)} style={c.fechar} aria-label="Fechar">×</button>
             </div>
 
+            <NotaDetalhe nota={aberta} />
+
             <label style={c.campo}>
               <span style={c.rot}>Caixa</span>
               <select value={caixa} onChange={(e) => escolherCaixa(e.target.value)} style={c.input}>
@@ -161,15 +161,7 @@ export default function EncaixotamentoPage() {
             </label>
 
             <div style={c.medidasBloco}>
-              <span style={c.rot}>Interior (cm){!ehCustom && caixa ? ' — automático' : ''}</span>
-              <div style={c.grid3}>
-                <input placeholder="Comp." value={iC} onChange={(e) => setIC(e.target.value)} style={c.input} inputMode="decimal" />
-                <input placeholder="Larg." value={iL} onChange={(e) => setIL(e.target.value)} style={c.input} inputMode="decimal" />
-                <input placeholder="Alt." value={iA} onChange={(e) => setIA(e.target.value)} style={c.input} inputMode="decimal" />
-              </div>
-            </div>
-            <div style={c.medidasBloco}>
-              <span style={c.rot}>Exterior (cm){!ehCustom && caixa ? ' — automático' : ''}</span>
+              <span style={c.rot}>Medidas exteriores (cm){!ehCustom && caixa ? ' — automático' : ''}</span>
               <div style={c.grid3}>
                 <input placeholder="Comp." value={eC} onChange={(e) => setEC(e.target.value)} style={c.input} inputMode="decimal" />
                 <input placeholder="Larg." value={eL} onChange={(e) => setEL(e.target.value)} style={c.input} inputMode="decimal" />
@@ -177,12 +169,8 @@ export default function EncaixotamentoPage() {
               </div>
             </div>
 
-            <div style={c.grid2}>
-              <label style={c.campo}><span style={c.rot}>Peso bruto (kg)</span>
-                <input value={pBruto} onChange={(e) => setPBruto(e.target.value)} style={c.input} inputMode="decimal" /></label>
-              <label style={c.campo}><span style={c.rot}>Peso líquido (kg)</span>
-                <input value={pLiquido} onChange={(e) => setPLiquido(e.target.value)} style={c.input} inputMode="decimal" /></label>
-            </div>
+            <label style={c.campo}><span style={c.rot}>Peso total (kg)</span>
+              <input value={pTotal} onChange={(e) => setPTotal(e.target.value)} style={c.input} inputMode="decimal" /></label>
 
             <div style={c.campo}>
               <span style={c.rot}>Fotos {numFotos > 0 && `(${numFotos})`} — mínimo 1</span>

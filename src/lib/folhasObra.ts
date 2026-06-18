@@ -16,12 +16,36 @@ export async function obterFolha(id: string) {
   return supabase.from('folhas_obra').select('*').eq('id', id).single()
 }
 
-export async function criarFolha(input: FolhaInput, criadoPor: string | null) {
+export async function criarFolha(
+  input: FolhaInput,
+  criadoPor: string | null,
+  notaEncomendaId?: string | null
+) {
   return supabase
     .from('folhas_obra')
-    .insert({ ...input, criado_por: criadoPor })
+    .insert({ ...input, criado_por: criadoPor, nota_encomenda_id: notaEncomendaId ?? null })
     .select()
     .single()
+}
+
+// Folhas de obra ligadas a uma nota de encomenda (fase técnica do fluxo).
+export async function folhasDaNota(notaId: string): Promise<FolhaObra[]> {
+  const { data } = await supabase
+    .from('folhas_obra')
+    .select('*')
+    .eq('nota_encomenda_id', notaId)
+    .order('created_at', { ascending: false })
+  return (data as FolhaObra[]) ?? []
+}
+
+// Existe pelo menos uma folha CONCLUÍDA ligada a esta nota?
+export async function temFolhaConcluida(notaId: string): Promise<boolean> {
+  const { count } = await supabase
+    .from('folhas_obra')
+    .select('id', { count: 'exact', head: true })
+    .eq('nota_encomenda_id', notaId)
+    .eq('estado', 'concluida')
+  return (count ?? 0) > 0
 }
 
 export async function atualizarFolha(id: string, input: Partial<FolhaInput>) {

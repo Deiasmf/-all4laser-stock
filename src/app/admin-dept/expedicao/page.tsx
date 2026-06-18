@@ -8,6 +8,7 @@ import {
   uploadFicheiro, BUCKET_EXPED,
 } from '@/lib/neFluxo'
 import { TRANSPORTADORES } from '@/lib/transportadores'
+import NotaDetalhe from '@/components/NotaDetalhe'
 import type { NotaEncomenda } from '@/types/notaEncomenda'
 
 function formatarData(d: string | null) {
@@ -134,6 +135,8 @@ export default function ExpedicaoPage() {
               <strong>{aberta.numero} · {aberta.equipamento_modelo ?? '—'} (SN {aberta.equipamento_sn ?? '—'})</strong>
               <button onClick={() => setAberta(null)} style={c.fechar} aria-label="Fechar">×</button>
             </div>
+
+            <NotaDetalhe nota={aberta} />
 
             <label style={c.campo}>
               <span style={c.rot}>Transportador *</span>
