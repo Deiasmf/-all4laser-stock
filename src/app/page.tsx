@@ -1,8 +1,10 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
+import { contarFluxoNotas, type FluxoContagem } from '@/lib/neFluxo'
 import { iniciais, saudacao, dataPorExtenso, tempoRelativo } from '@/lib/ui'
 import {
   carregarMetricas,
@@ -37,6 +39,9 @@ export default function Home() {
 
       {/* 2. Métricas */}
       <Metricas />
+
+      {/* 2b. Fluxo das Notas de Encomenda */}
+      <FluxoNotas />
 
       {/* 3. Grid principal */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 14, marginTop: 14 }}>
@@ -80,6 +85,54 @@ function Metricas() {
           </div>
         </div>
       ))}
+    </div>
+  )
+}
+
+// ───────────────────────────────────────── Fluxo das Notas de Encomenda
+function FluxoNotas() {
+  const [c, setC] = useState<FluxoContagem | null>(null)
+
+  useEffect(() => {
+    contarFluxoNotas().then(setC)
+  }, [])
+
+  const etapas = [
+    { label: 'Notas de Encomenda', valor: c?.notas ?? 0, href: '/comercial/notas-encomenda' },
+    { label: 'Prep. Logística', valor: c?.prepLogistica ?? 0, href: '/logistico/preparacao' },
+    { label: 'Prep. Técnica', valor: c?.prepTecnica ?? 0, href: '/tecnico/preparacao' },
+    { label: 'Para encaixotar', valor: c?.encaixotar ?? 0, href: '/logistico/encaixotamento' },
+    { label: 'Para expedir', valor: c?.expedir ?? 0, href: '/admin-dept/expedicao' },
+    { label: 'Expedidas', valor: c?.expedida ?? 0, href: '/comercial/notas-encomenda' },
+  ]
+
+  return (
+    <div className="a4l-card" style={{ marginTop: 14 }}>
+      <CardHead titulo="Fluxo das Notas de Encomenda" />
+      <div style={{ display: 'flex', alignItems: 'stretch', gap: 6, overflowX: 'auto', paddingBottom: 4 }}>
+        {etapas.map((e, i) => (
+          <div key={e.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Link
+              href={e.href}
+              style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                minWidth: 120, padding: '14px 12px', borderRadius: 12, textDecoration: 'none',
+                background: '#F7F6FF', border: '0.5px solid var(--a4l-border)',
+              }}
+            >
+              <span className="a4l-gradient-text" style={{ fontSize: 28, fontWeight: 800, lineHeight: 1.1 }}>
+                {e.valor}
+              </span>
+              <span style={{ color: 'var(--a4l-text-light)', fontSize: 12, fontWeight: 600, marginTop: 4, textAlign: 'center' }}>
+                {e.label}
+              </span>
+            </Link>
+            {i < etapas.length - 1 && (
+              <span style={{ color: 'var(--a4l-text-light)', fontSize: 20, fontWeight: 700 }}>›</span>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

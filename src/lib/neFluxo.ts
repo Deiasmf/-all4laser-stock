@@ -87,6 +87,34 @@ export async function listarNotasNaFase(fase: Fase): Promise<NotaEncomenda[]> {
     .sort((a, b) => (a.data_pedido < b.data_pedido ? 1 : -1))
 }
 
+// Contagem por etapa do fluxo, para o painel de evolução no Dashboard.
+export type FluxoContagem = {
+  notas: number
+  prepLogistica: number
+  prepTecnica: number
+  encaixotar: number
+  expedir: number
+  expedida: number
+}
+
+export async function contarFluxoNotas(): Promise<FluxoContagem> {
+  const [notasRes, expedidaRes, fluxoRes] = await Promise.all([
+    supabase.from('notas_encomenda').select('id', { count: 'exact', head: true }),
+    supabase.from('notas_encomenda').select('id', { count: 'exact', head: true }).eq('estado', 'expedida'),
+    supabase.from('ne_fluxo').select('fase').eq('estado', 'em_curso'),
+  ])
+  const fases = ((fluxoRes.data as { fase: Fase }[] | null) ?? [])
+  const cont = (f: Fase) => fases.filter((x) => x.fase === f).length
+  return {
+    notas: notasRes.count ?? 0,
+    prepLogistica: cont('logistica_preparacao'),
+    prepTecnica: cont('tecnico_preparacao'),
+    encaixotar: cont('logistica_encaixotamento'),
+    expedir: cont('admin_expedicao'),
+    expedida: expedidaRes.count ?? 0,
+  }
+}
+
 // Todas as fases de uma nota, pela ordem do fluxo.
 export async function obterFluxo(notaId: string): Promise<FluxoFase[]> {
   const { data } = await supabase.from('ne_fluxo').select('*').eq('nota_id', notaId)
