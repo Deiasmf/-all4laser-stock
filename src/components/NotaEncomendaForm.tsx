@@ -473,7 +473,7 @@ const f: Record<string, React.CSSProperties> = {
   catTitulo: { fontSize: 13, fontWeight: 700, color: 'var(--foreground)', borderBottom: '1px solid var(--border)', paddingBottom: 4 },
   subBloco: { display: 'flex', flexDirection: 'column', gap: 6 },
   subTitulo: { fontSize: 12, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 2 },
-  checkGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 6 },
+  checkGrid: { display: 'flex', flexDirection: 'column', gap: 6 },
   checkItem: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--foreground)', cursor: 'pointer' },
   outrosWrap: { display: 'flex', flexDirection: 'column', gap: 10 },
   chips: { display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' },
