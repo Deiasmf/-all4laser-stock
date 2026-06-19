@@ -8,6 +8,7 @@ const LINKS = [
   { href: '/alugueres/leads', label: 'Leads' },
   { href: '/alugueres/disponibilidade', label: 'Disponibilidade' },
   { href: '/alugueres/reservas', label: 'Reservas' },
+  { href: '/alugueres/contratos', label: 'Contratos' },
   { href: '/alugueres', label: 'Registar' },
   { href: '/alugueres/dashboard', label: 'Dashboard' },
   { href: '/alugueres/equipamento', label: 'Por equipamento' },

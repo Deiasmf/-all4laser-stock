@@ -27,6 +27,29 @@ export type Aluguer = {
   updated_at: string
 }
 
+export type ContratoFicheiro = {
+  id: string
+  contrato_id: string
+  url: string | null
+  caminho: string | null
+  nome: string | null
+  created_at: string
+}
+
+export type ContratoAluguer = {
+  id: string
+  nacional: boolean
+  titulo: string
+  cliente_nome: string | null
+  serial_number: string | null
+  notas: string | null
+  criado_por: string | null
+  criado_por_nome: string | null
+  created_at: string
+  // Preenchido pelo select com embed (contratos_aluguer_ficheiros)
+  ficheiros?: ContratoFicheiro[]
+}
+
 export type FaturacaoEquip = {
   id: string
   serial_number: string
