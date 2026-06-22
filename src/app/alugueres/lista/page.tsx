@@ -33,6 +33,7 @@ export default function ListaAlugueres() {
   const [pesquisa, setPesquisa] = useState('')
   const [carregando, setCarregando] = useState(true)
   const [editar, setEditar] = useState<Aluguer | null>(null)
+  const [enviarFatura, setEnviarFatura] = useState<Aluguer | null>(null)
 
   useEffect(() => {
     supabase
@@ -72,6 +73,18 @@ export default function ListaAlugueres() {
       .update({ ...patch, updated_at: new Date().toISOString() })
       .eq('id', id)
     if (error) alert('Erro a guardar: ' + error.message)
+  }
+
+  // Após enviar a fatura com sucesso: marca como enviada e guarda o email no cliente
+  async function aoEnviadaFatura(aluguer: Aluguer, email: string) {
+    await atualizarFaturacao(aluguer.id, {
+      fatura_enviada_em: new Date().toISOString(),
+      fatura_enviada_para: email,
+    })
+    if (aluguer.cliente_id) {
+      await supabase.from('clientes').update({ email }).eq('id', aluguer.cliente_id)
+    }
+    setEnviarFatura(null)
   }
 
   function aoGuardar(atualizado: Aluguer) {
@@ -151,7 +164,7 @@ export default function ListaAlugueres() {
                 <CelulaFaturar aluguer={a} podeEditar={isAdmin} onChange={atualizarFaturacao} />
               </span>
               <span style={c.celula} onClick={(e) => e.stopPropagation()}>
-                <CelulaFatura aluguer={a} podeEditar={isAdmin} onChange={atualizarFaturacao} />
+                <CelulaFatura aluguer={a} podeEditar={isAdmin} onChange={atualizarFaturacao} onEnviar={setEnviarFatura} />
               </span>
             </div>
           ))}
@@ -166,6 +179,14 @@ export default function ListaAlugueres() {
           onFechar={() => setEditar(null)}
           onGuardado={aoGuardar}
           onEliminado={aoEliminar}
+        />
+      )}
+
+      {enviarFatura && (
+        <ModalEnviarFatura
+          aluguer={enviarFatura}
+          onFechar={() => setEnviarFatura(null)}
+          onEnviada={aoEnviadaFatura}
         />
       )}
     </main>
@@ -262,11 +283,12 @@ function CelulaFaturar({
 
 // ------------------------------------------------------------- CÉLULA: FATURA
 function CelulaFatura({
-  aluguer, podeEditar, onChange,
+  aluguer, podeEditar, onChange, onEnviar,
 }: {
   aluguer: Aluguer
   podeEditar: boolean
   onChange: (id: string, patch: Partial<Aluguer>) => void
+  onEnviar: (a: Aluguer) => void
 }) {
   const [aCarregar, setACarregar] = useState(false)
   const temFatura = !!aluguer.fatura_url
@@ -292,11 +314,25 @@ function CelulaFatura({
   }
 
   if (temFatura) {
+    const enviada = !!aluguer.fatura_enviada_em
     return (
       <span style={c.faturaLinha}>
         <a href={aluguer.fatura_url!} target="_blank" rel="noopener noreferrer" style={c.faturaLink}>
           📄 {aluguer.fatura_nome ?? 'fatura'}
         </a>
+        {podeEditar && (
+          <button
+            style={enviada ? c.btnEnviada : c.btnEnviar}
+            onClick={() => onEnviar(aluguer)}
+            title={
+              enviada
+                ? `Enviada em ${formatarData(aluguer.fatura_enviada_em)}${aluguer.fatura_enviada_para ? ' para ' + aluguer.fatura_enviada_para : ''} — clica para reenviar`
+                : 'Enviar fatura ao cliente por email'
+            }
+          >
+            {enviada ? '✓ Enviada' : '✉️ Enviar'}
+          </button>
+        )}
         {podeEditar && (
           <button style={c.chipApagar} onClick={remover} title="Remover fatura">×</button>
         )}
@@ -320,6 +356,110 @@ function CelulaFatura({
         }}
       />
     </label>
+  )
+}
+
+// ------------------------------------------------------ ENVIAR FATURA (EMAIL)
+function ModalEnviarFatura({
+  aluguer, onFechar, onEnviada,
+}: {
+  aluguer: Aluguer
+  onFechar: () => void
+  onEnviada: (aluguer: Aluguer, email: string) => void
+}) {
+  const [email, setEmail] = useState(aluguer.fatura_enviada_para ?? '')
+  const [aCarregar, setACarregar] = useState(true)
+  const [aEnviar, setAEnviar] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  // Pré-preencher com o email guardado no cliente (se houver)
+  useEffect(() => {
+    let ativo = true
+    async function buscar() {
+      if (aluguer.cliente_id && !aluguer.fatura_enviada_para) {
+        const { data } = await supabase
+          .from('clientes')
+          .select('email')
+          .eq('id', aluguer.cliente_id)
+          .single()
+        if (ativo && data?.email) setEmail(data.email as string)
+      }
+      if (ativo) setACarregar(false)
+    }
+    buscar()
+    return () => { ativo = false }
+  }, [aluguer.cliente_id, aluguer.fatura_enviada_para])
+
+  async function enviar() {
+    setErro(null)
+    const para = email.trim()
+    if (!para.includes('@')) return setErro('Indica um email válido.')
+
+    setAEnviar(true)
+    try {
+      const r = await fetch('/api/alugueres/enviar-fatura', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          para,
+          clienteNome: aluguer.cliente_nome ?? 'cliente',
+          faturaUrl: aluguer.fatura_url,
+          faturaNome: aluguer.fatura_nome ?? 'fatura',
+        }),
+      })
+      const dados = await r.json().catch(() => ({}))
+      setAEnviar(false)
+      if (!r.ok || !dados.enviado) {
+        return setErro(dados.motivo ?? 'Não foi possível enviar a fatura.')
+      }
+      onEnviada(aluguer, para)
+    } catch {
+      setAEnviar(false)
+      setErro('Erro de rede ao enviar.')
+    }
+  }
+
+  return (
+    <div style={c.overlay} onClick={onFechar}>
+      <div style={c.modal} onClick={(e) => e.stopPropagation()}>
+        <div style={c.modalCab}>
+          <h2 style={c.modalTitulo}>Enviar fatura por email</h2>
+          <button onClick={onFechar} style={c.fechar} aria-label="Fechar">✕</button>
+        </div>
+
+        {erro && <div style={c.erro}>{erro}</div>}
+
+        <p style={c.envInfo}>
+          <strong>Cliente:</strong> {aluguer.cliente_nome ?? '—'}<br />
+          <strong>Ficheiro:</strong> {aluguer.fatura_nome ?? 'fatura'} (em anexo)
+        </p>
+
+        <label style={c.label}>Email do cliente</label>
+        <input
+          style={c.input}
+          type="email"
+          inputMode="email"
+          placeholder={aCarregar ? 'A carregar...' : 'cliente@exemplo.com'}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <span style={c.envNota}>O email fica guardado no cliente para a próxima vez.</span>
+
+        {aluguer.fatura_enviada_em && (
+          <span style={c.envNota}>
+            Já enviada em {formatarData(aluguer.fatura_enviada_em)}
+            {aluguer.fatura_enviada_para ? ` para ${aluguer.fatura_enviada_para}` : ''}.
+          </span>
+        )}
+
+        <div style={c.modalAcoes}>
+          <button onClick={onFechar} style={c.btnGhost}>Cancelar</button>
+          <button onClick={enviar} disabled={aEnviar} style={c.btnPrimario}>
+            {aEnviar ? 'A enviar...' : 'Enviar'}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -508,7 +648,7 @@ const c: Record<string, React.CSSProperties> = {
 
   estado: { color: 'var(--muted)', padding: 8 },
   tabela: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 8, overflowX: 'auto' },
-  linha: { display: 'grid', gridTemplateColumns: '1.6fr 1fr 1fr 0.9fr 1.7fr 1.5fr', gap: 8, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center', minWidth: 720 },
+  linha: { display: 'grid', gridTemplateColumns: '1.5fr 0.9fr 0.9fr 0.8fr 1.6fr 2.1fr', gap: 8, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center', minWidth: 820 },
   linhaClicavel: { cursor: 'pointer' },
   cab: { fontWeight: 700, color: 'var(--muted)', fontSize: 12, borderBottom: '2px solid var(--border)' },
   intl: { marginLeft: 6, fontSize: 10, fontWeight: 700, color: '#fff', background: 'var(--accent, #3552eb)', borderRadius: 999, padding: '1px 6px' },
@@ -527,9 +667,13 @@ const c: Record<string, React.CSSProperties> = {
 
   // Célula "Fatura"
   faturaLinha: { display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0, maxWidth: '100%' },
-  faturaLink: { fontSize: 13, color: 'var(--foreground)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 140 },
+  faturaLink: { fontSize: 13, color: 'var(--foreground)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120 },
   chipApagar: { width: 20, height: 20, borderRadius: 999, border: 'none', background: 'rgba(0,0,0,0.12)', color: 'var(--danger, #c62828)', fontSize: 14, lineHeight: 1, cursor: 'pointer', flexShrink: 0 },
   btnAnexar: { background: '#fff', color: 'var(--primary)', border: '1px solid var(--primary)', borderRadius: 6, padding: '4px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' },
+  btnEnviar: { background: '#fff', color: 'var(--primary)', border: '1px solid var(--primary)', borderRadius: 6, padding: '4px 8px', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 },
+  btnEnviada: { background: '#e8f5ec', color: '#1b873f', border: '1px solid #1b873f', borderRadius: 6, padding: '4px 8px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 },
+  envInfo: { fontSize: 14, color: 'var(--foreground)', marginTop: 8, lineHeight: 1.6 },
+  envNota: { fontSize: 12, color: 'var(--muted)', marginTop: 4, display: 'block' },
 
   // Modal de edição
   overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 16, overflowY: 'auto', zIndex: 100 },

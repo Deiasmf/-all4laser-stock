@@ -3,6 +3,7 @@ export type Cliente = {
   nome: string
   pais: string
   nacional: boolean
+  email: string | null
   created_at: string
 }
 
@@ -31,6 +32,8 @@ export type Aluguer = {
   fatura_url: string | null
   fatura_caminho: string | null
   fatura_nome: string | null
+  fatura_enviada_em: string | null
+  fatura_enviada_para: string | null
 }
 
 export type ContratoFicheiro = {
