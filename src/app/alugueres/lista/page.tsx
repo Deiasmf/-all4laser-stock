@@ -180,80 +180,82 @@ function CelulaFaturar({
   podeEditar: boolean
   onChange: (id: string, patch: Partial<Aluguer>) => void
 }) {
-  const [editando, setEditando] = useState(false)
-  const [manual, setManual] = useState('')
-
   const definido = aluguer.valor_a_faturar != null
   const naoFaturar = !!aluguer.nao_faturar
+  const valorTotal = aluguer.valor ?? 0
 
-  function aplicar(patch: Partial<Aluguer>) {
-    onChange(aluguer.id, patch)
-    setEditando(false)
-    setManual('')
+  // Modo atual a partir dos dados guardados
+  let modo: '' | 'total' | '50' | 'outro' | 'nao' = ''
+  if (naoFaturar) modo = 'nao'
+  else if (definido) {
+    if (aluguer.valor_a_faturar === valorTotal) modo = 'total'
+    else if (aluguer.valor_a_faturar === 50) modo = '50'
+    else modo = 'outro'
   }
 
-  function aplicarManual() {
-    const v = manual.trim()
-    if (v === '' || isNaN(Number(v))) return
-    aplicar({ valor_a_faturar: Number(v), nao_faturar: false })
-  }
+  const [editarOutro, setEditarOutro] = useState(false)
+  const [manual, setManual] = useState(definido ? String(aluguer.valor_a_faturar) : '')
 
-  // Viewers só veem o resultado, sem botões
+  const mostrarInput = modo === 'outro' || editarOutro
+
+  // Viewers só veem o resultado, sem controlos
   if (!podeEditar) {
     if (naoFaturar) return <span style={c.badgeCinza}>Não faturar</span>
     if (definido) return <span style={c.valorVerde}>{formatarEuro(aluguer.valor_a_faturar!)}</span>
     return <span style={c.semDef}>—</span>
   }
 
-  if (naoFaturar && !editando) {
-    return (
-      <span style={c.faturarLinha}>
-        <span style={c.badgeCinza}>Não faturar</span>
-        <button style={c.btnEditarMini} onClick={() => setEditando(true)} title="Alterar">✎</button>
-      </span>
-    )
+  function aplicar(patch: Partial<Aluguer>) {
+    onChange(aluguer.id, patch)
+    setEditarOutro(false)
   }
 
-  if (definido && !editando) {
-    return (
-      <span style={c.faturarLinha}>
-        <span style={c.valorVerde}>{formatarEuro(aluguer.valor_a_faturar!)}</span>
-        <button style={c.btnEditarMini} onClick={() => setEditando(true)} title="Alterar">✎</button>
-      </span>
-    )
+  function aoMudar(v: string) {
+    if (v === 'outro') {
+      setManual(definido ? String(aluguer.valor_a_faturar) : '')
+      setEditarOutro(true)
+      return
+    }
+    if (v === 'total') return aplicar({ valor_a_faturar: valorTotal, nao_faturar: false })
+    if (v === '50') return aplicar({ valor_a_faturar: 50, nao_faturar: false })
+    if (v === 'nao') return aplicar({ valor_a_faturar: null, nao_faturar: true })
+    aplicar({ valor_a_faturar: null, nao_faturar: false }) // "— definir —"
   }
 
-  // Por definir (ou a editar) → botões rápidos + input manual
+  function guardarManual() {
+    const v = manual.trim()
+    if (v === '' || isNaN(Number(v))) { setEditarOutro(false); return }
+    aplicar({ valor_a_faturar: Number(v), nao_faturar: false })
+  }
+
+  const estiloSelect = naoFaturar ? c.selectCinza : definido ? c.selectVerde : c.selectFaturar
+
   return (
     <span style={c.faturarLinha}>
-      <button
-        style={c.btnRapido}
-        onClick={() => aplicar({ valor_a_faturar: aluguer.valor ?? 0, nao_faturar: false })}
+      <select
+        style={estiloSelect}
+        value={mostrarInput ? 'outro' : modo}
+        onChange={(e) => aoMudar(e.target.value)}
       >
-        Valor total
-      </button>
-      <button
-        style={c.btnRapido}
-        onClick={() => aplicar({ valor_a_faturar: 50, nao_faturar: false })}
-      >
-        50€
-      </button>
-      <button
-        style={c.btnNaoFaturar}
-        onClick={() => aplicar({ valor_a_faturar: null, nao_faturar: true })}
-      >
-        Não faturar
-      </button>
-      <input
-        style={c.inputManual}
-        type="number"
-        inputMode="decimal"
-        placeholder="€"
-        value={manual}
-        onChange={(e) => setManual(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Enter') aplicarManual() }}
-        onBlur={aplicarManual}
-      />
+        <option value="">— definir —</option>
+        <option value="total">Valor total ({formatarEuro(valorTotal)})</option>
+        <option value="50">50 €</option>
+        <option value="outro">Outro valor…</option>
+        <option value="nao">Não faturar</option>
+      </select>
+      {mostrarInput && (
+        <input
+          style={c.inputManual}
+          type="number"
+          inputMode="decimal"
+          placeholder="€"
+          autoFocus
+          value={manual}
+          onChange={(e) => setManual(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') guardarManual() }}
+          onBlur={guardarManual}
+        />
+      )}
     </span>
   )
 }
@@ -506,7 +508,7 @@ const c: Record<string, React.CSSProperties> = {
 
   estado: { color: 'var(--muted)', padding: 8 },
   tabela: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 8, overflowX: 'auto' },
-  linha: { display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 0.9fr 2.2fr 1.6fr', gap: 8, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center', minWidth: 760 },
+  linha: { display: 'grid', gridTemplateColumns: '1.6fr 1fr 1fr 0.9fr 1.7fr 1.5fr', gap: 8, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center', minWidth: 720 },
   linhaClicavel: { cursor: 'pointer' },
   cab: { fontWeight: 700, color: 'var(--muted)', fontSize: 12, borderBottom: '2px solid var(--border)' },
   intl: { marginLeft: 6, fontSize: 10, fontWeight: 700, color: '#fff', background: 'var(--accent, #3552eb)', borderRadius: 999, padding: '1px 6px' },
@@ -514,14 +516,14 @@ const c: Record<string, React.CSSProperties> = {
 
   // Célula "Valor a Faturar"
   celula: { display: 'flex', alignItems: 'center', minWidth: 0 },
-  faturarLinha: { display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' },
-  btnRapido: { background: '#fff', color: 'var(--primary)', border: '1px solid var(--primary)', borderRadius: 6, padding: '4px 8px', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' },
-  btnNaoFaturar: { background: '#fff', color: 'var(--muted)', border: '1px solid #ccc', borderRadius: 6, padding: '4px 8px', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' },
-  inputManual: { width: 64, padding: '4px 6px', border: '1px solid #ccc', borderRadius: 6, fontSize: 13 },
+  faturarLinha: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+  selectFaturar: { padding: '5px 8px', border: '1px solid #ccc', borderRadius: 6, fontSize: 13, background: '#fff', color: 'var(--muted)', cursor: 'pointer', maxWidth: '100%' },
+  selectVerde: { padding: '5px 8px', border: '1px solid #1b873f', borderRadius: 6, fontSize: 13, background: '#fff', color: '#1b873f', fontWeight: 700, cursor: 'pointer', maxWidth: '100%' },
+  selectCinza: { padding: '5px 8px', border: '1px solid #ccc', borderRadius: 6, fontSize: 13, background: '#f3f3f3', color: 'var(--muted)', fontWeight: 600, cursor: 'pointer', maxWidth: '100%' },
+  inputManual: { width: 72, padding: '5px 6px', border: '1px solid #ccc', borderRadius: 6, fontSize: 13 },
   valorVerde: { color: '#1b873f', fontWeight: 700, fontSize: 14 },
   badgeCinza: { background: '#eee', color: 'var(--muted)', borderRadius: 999, padding: '2px 10px', fontSize: 12, fontWeight: 600 },
   semDef: { color: 'var(--muted)' },
-  btnEditarMini: { background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--muted)', padding: 2 },
 
   // Célula "Fatura"
   faturaLinha: { display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0, maxWidth: '100%' },
