@@ -13,10 +13,17 @@ import {
   type Aluguer,
 } from '@/types/aluguer'
 
+const BUCKET_FATURAS = 'faturas-alugueres'
+
 function formatarData(d: string | null) {
   if (!d) return '—'
   const dt = new Date(d)
   return isNaN(dt.getTime()) ? d : dt.toLocaleDateString('pt-PT')
+}
+
+// Limpa o nome do ficheiro (só letras, números, ponto e traço)
+function nomeSeguro(nome: string) {
+  return nome.normalize('NFD').replace(/[^\w.\-]/g, '_')
 }
 
 export default function ListaAlugueres() {
@@ -52,6 +59,21 @@ export default function ListaAlugueres() {
 
   const total = somar(filtrados, (a) => a.valor)
 
+  // Resumo de faturação do mês mostrado
+  const totalFaturar = somar(filtrados, (a) => (a.nao_faturar ? 0 : a.valor_a_faturar))
+  const numNaoFaturar = filtrados.filter((a) => a.nao_faturar).length
+  const numPorDefinir = filtrados.filter((a) => a.valor_a_faturar == null && !a.nao_faturar).length
+
+  // Atualiza a faturação de um aluguer (otimista + persistência imediata)
+  async function atualizarFaturacao(id: string, patch: Partial<Aluguer>) {
+    setAlugueres((prev) => prev.map((a) => (a.id === id ? { ...a, ...patch } : a)))
+    const { error } = await supabase
+      .from('alugueres')
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', id)
+    if (error) alert('Erro a guardar: ' + error.message)
+  }
+
   function aoGuardar(atualizado: Aluguer) {
     setAlugueres((prev) => prev.map((a) => (a.id === atualizado.id ? atualizado : a)))
     setEditar(null)
@@ -85,6 +107,18 @@ export default function ListaAlugueres() {
         <span>{filtrados.length} aluguer(es) · <strong>{formatarEuro(total)}</strong></span>
       </div>
 
+      <div style={c.resumoFaturar}>
+        <div style={c.resumoFaturarTopo}>
+          <span style={c.resumoFaturarLabel}>Total a faturar este mês</span>
+          <span style={c.resumoFaturarValor}>{formatarEuro(totalFaturar)}</span>
+        </div>
+        <div style={c.resumoFaturarLinha}>
+          <span>Nº de alugueres: <strong>{filtrados.length}</strong></span>
+          <span>Não faturar: <strong>{numNaoFaturar}</strong></span>
+          <span>Por definir: <strong>{numPorDefinir}</strong></span>
+        </div>
+      </div>
+
       {carregando ? (
         <p style={c.estado}>A carregar...</p>
       ) : filtrados.length === 0 ? (
@@ -96,6 +130,8 @@ export default function ListaAlugueres() {
             <span>Data</span>
             <span>Método</span>
             <span style={{ textAlign: 'right' }}>Valor</span>
+            <span>Valor a Faturar</span>
+            <span>Fatura</span>
           </div>
           {filtrados.map((a) => (
             <div
@@ -111,6 +147,12 @@ export default function ListaAlugueres() {
               <span>{formatarData(a.data_entrega)}</span>
               <span>{a.metodo_pagamento ?? '—'}</span>
               <span style={{ textAlign: 'right', fontWeight: 700 }}>{formatarEuro(a.valor || 0)}</span>
+              <span style={c.celula} onClick={(e) => e.stopPropagation()}>
+                <CelulaFaturar aluguer={a} podeEditar={isAdmin} onChange={atualizarFaturacao} />
+              </span>
+              <span style={c.celula} onClick={(e) => e.stopPropagation()}>
+                <CelulaFatura aluguer={a} podeEditar={isAdmin} onChange={atualizarFaturacao} />
+              </span>
             </div>
           ))}
         </div>
@@ -127,6 +169,155 @@ export default function ListaAlugueres() {
         />
       )}
     </main>
+  )
+}
+
+// ------------------------------------------------------ CÉLULA: VALOR A FATURAR
+function CelulaFaturar({
+  aluguer, podeEditar, onChange,
+}: {
+  aluguer: Aluguer
+  podeEditar: boolean
+  onChange: (id: string, patch: Partial<Aluguer>) => void
+}) {
+  const [editando, setEditando] = useState(false)
+  const [manual, setManual] = useState('')
+
+  const definido = aluguer.valor_a_faturar != null
+  const naoFaturar = !!aluguer.nao_faturar
+
+  function aplicar(patch: Partial<Aluguer>) {
+    onChange(aluguer.id, patch)
+    setEditando(false)
+    setManual('')
+  }
+
+  function aplicarManual() {
+    const v = manual.trim()
+    if (v === '' || isNaN(Number(v))) return
+    aplicar({ valor_a_faturar: Number(v), nao_faturar: false })
+  }
+
+  // Viewers só veem o resultado, sem botões
+  if (!podeEditar) {
+    if (naoFaturar) return <span style={c.badgeCinza}>Não faturar</span>
+    if (definido) return <span style={c.valorVerde}>{formatarEuro(aluguer.valor_a_faturar!)}</span>
+    return <span style={c.semDef}>—</span>
+  }
+
+  if (naoFaturar && !editando) {
+    return (
+      <span style={c.faturarLinha}>
+        <span style={c.badgeCinza}>Não faturar</span>
+        <button style={c.btnEditarMini} onClick={() => setEditando(true)} title="Alterar">✎</button>
+      </span>
+    )
+  }
+
+  if (definido && !editando) {
+    return (
+      <span style={c.faturarLinha}>
+        <span style={c.valorVerde}>{formatarEuro(aluguer.valor_a_faturar!)}</span>
+        <button style={c.btnEditarMini} onClick={() => setEditando(true)} title="Alterar">✎</button>
+      </span>
+    )
+  }
+
+  // Por definir (ou a editar) → botões rápidos + input manual
+  return (
+    <span style={c.faturarLinha}>
+      <button
+        style={c.btnRapido}
+        onClick={() => aplicar({ valor_a_faturar: aluguer.valor ?? 0, nao_faturar: false })}
+      >
+        Valor total
+      </button>
+      <button
+        style={c.btnRapido}
+        onClick={() => aplicar({ valor_a_faturar: 50, nao_faturar: false })}
+      >
+        50€
+      </button>
+      <button
+        style={c.btnNaoFaturar}
+        onClick={() => aplicar({ valor_a_faturar: null, nao_faturar: true })}
+      >
+        Não faturar
+      </button>
+      <input
+        style={c.inputManual}
+        type="number"
+        inputMode="decimal"
+        placeholder="€"
+        value={manual}
+        onChange={(e) => setManual(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') aplicarManual() }}
+        onBlur={aplicarManual}
+      />
+    </span>
+  )
+}
+
+// ------------------------------------------------------------- CÉLULA: FATURA
+function CelulaFatura({
+  aluguer, podeEditar, onChange,
+}: {
+  aluguer: Aluguer
+  podeEditar: boolean
+  onChange: (id: string, patch: Partial<Aluguer>) => void
+}) {
+  const [aCarregar, setACarregar] = useState(false)
+  const temFatura = !!aluguer.fatura_url
+
+  async function carregar(file: File) {
+    setACarregar(true)
+    const caminho = `${aluguer.id}/${Date.now()}-${nomeSeguro(file.name)}`
+    const { error: erroUp } = await supabase.storage.from(BUCKET_FATURAS).upload(caminho, file)
+    if (erroUp) {
+      setACarregar(false)
+      alert('Erro a carregar a fatura: ' + erroUp.message)
+      return
+    }
+    const { data: pub } = supabase.storage.from(BUCKET_FATURAS).getPublicUrl(caminho)
+    onChange(aluguer.id, { fatura_url: pub.publicUrl, fatura_caminho: caminho, fatura_nome: file.name })
+    setACarregar(false)
+  }
+
+  async function remover() {
+    if (!window.confirm(`Remover a fatura “${aluguer.fatura_nome ?? ''}”?`)) return
+    if (aluguer.fatura_caminho) await supabase.storage.from(BUCKET_FATURAS).remove([aluguer.fatura_caminho])
+    onChange(aluguer.id, { fatura_url: null, fatura_caminho: null, fatura_nome: null })
+  }
+
+  if (temFatura) {
+    return (
+      <span style={c.faturaLinha}>
+        <a href={aluguer.fatura_url!} target="_blank" rel="noopener noreferrer" style={c.faturaLink}>
+          📄 {aluguer.fatura_nome ?? 'fatura'}
+        </a>
+        {podeEditar && (
+          <button style={c.chipApagar} onClick={remover} title="Remover fatura">×</button>
+        )}
+      </span>
+    )
+  }
+
+  if (!podeEditar) return <span style={c.semDef}>—</span>
+
+  return (
+    <label style={c.btnAnexar}>
+      {aCarregar ? '...' : '📎 Anexar'}
+      <input
+        type="file"
+        accept="application/pdf,image/*"
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          if (f) carregar(f)
+          e.target.value = ''
+        }}
+      />
+    </label>
   )
 }
 
@@ -305,13 +496,38 @@ const c: Record<string, React.CSSProperties> = {
   inputMes: { padding: 10, border: '1px solid #ccc', borderRadius: 8, fontSize: 15 },
   inputPesq: { flex: 1, minWidth: 160, padding: 10, border: '1px solid #ccc', borderRadius: 8, fontSize: 15 },
   resumo: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--accent-bg, #eef1f6)', borderRadius: 10, padding: '10px 14px', marginBottom: 14, flexWrap: 'wrap', gap: 8 },
+
+  // Resumo de faturação do mês
+  resumoFaturar: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 16px', marginBottom: 14, display: 'flex', flexDirection: 'column', gap: 8 },
+  resumoFaturarTopo: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' },
+  resumoFaturarLabel: { fontSize: 14, fontWeight: 600, color: 'var(--muted)' },
+  resumoFaturarValor: { fontSize: 22, fontWeight: 800, color: '#1b873f' },
+  resumoFaturarLinha: { display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 13, color: 'var(--muted)' },
+
   estado: { color: 'var(--muted)', padding: 8 },
-  tabela: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 8 },
-  linha: { display: 'grid', gridTemplateColumns: '2fr 1.2fr 1.3fr 1fr', gap: 8, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center' },
+  tabela: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 8, overflowX: 'auto' },
+  linha: { display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 0.9fr 2.2fr 1.6fr', gap: 8, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center', minWidth: 760 },
   linhaClicavel: { cursor: 'pointer' },
   cab: { fontWeight: 700, color: 'var(--muted)', fontSize: 12, borderBottom: '2px solid var(--border)' },
   intl: { marginLeft: 6, fontSize: 10, fontWeight: 700, color: '#fff', background: 'var(--accent, #3552eb)', borderRadius: 999, padding: '1px 6px' },
   dica: { color: 'var(--muted)', fontSize: 13, marginTop: 10, textAlign: 'center' },
+
+  // Célula "Valor a Faturar"
+  celula: { display: 'flex', alignItems: 'center', minWidth: 0 },
+  faturarLinha: { display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' },
+  btnRapido: { background: '#fff', color: 'var(--primary)', border: '1px solid var(--primary)', borderRadius: 6, padding: '4px 8px', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' },
+  btnNaoFaturar: { background: '#fff', color: 'var(--muted)', border: '1px solid #ccc', borderRadius: 6, padding: '4px 8px', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' },
+  inputManual: { width: 64, padding: '4px 6px', border: '1px solid #ccc', borderRadius: 6, fontSize: 13 },
+  valorVerde: { color: '#1b873f', fontWeight: 700, fontSize: 14 },
+  badgeCinza: { background: '#eee', color: 'var(--muted)', borderRadius: 999, padding: '2px 10px', fontSize: 12, fontWeight: 600 },
+  semDef: { color: 'var(--muted)' },
+  btnEditarMini: { background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--muted)', padding: 2 },
+
+  // Célula "Fatura"
+  faturaLinha: { display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0, maxWidth: '100%' },
+  faturaLink: { fontSize: 13, color: 'var(--foreground)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 140 },
+  chipApagar: { width: 20, height: 20, borderRadius: 999, border: 'none', background: 'rgba(0,0,0,0.12)', color: 'var(--danger, #c62828)', fontSize: 14, lineHeight: 1, cursor: 'pointer', flexShrink: 0 },
+  btnAnexar: { background: '#fff', color: 'var(--primary)', border: '1px solid var(--primary)', borderRadius: 6, padding: '4px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' },
 
   // Modal de edição
   overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 16, overflowY: 'auto', zIndex: 100 },

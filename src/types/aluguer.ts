@@ -25,6 +25,12 @@ export type Aluguer = {
   criado_por_nome: string | null
   created_at: string
   updated_at: string
+  // Faturação (tabela mensal)
+  valor_a_faturar: number | null
+  nao_faturar: boolean | null
+  fatura_url: string | null
+  fatura_caminho: string | null
+  fatura_nome: string | null
 }
 
 export type ContratoFicheiro = {
