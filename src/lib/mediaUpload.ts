@@ -2,10 +2,10 @@ import { supabase } from './supabase'
 
 export const BUCKET_MEDIA = 'equipamentos-media'
 
-// Limite de tamanho por ficheiro. O plano gratuito do Supabase impõe 50 MB.
-// >>> Depois de mudar para o plano Pro, subir este valor (e o limite do
-// bucket no Supabase) é o único sítio a alterar. <<<
-export const LIMITE_FICHEIRO_MB = 50
+// Limite de tamanho por ficheiro. Plano Pro do Supabase.
+// Tem de coincidir com: (1) o limite do bucket `equipamentos-media` e
+// (2) o limite GLOBAL de upload do projeto (Definições de Storage no painel).
+export const LIMITE_FICHEIRO_MB = 500
 
 function nomeSeguro(nome: string) {
   return nome.normalize('NFD').replace(/[^\w.\-]/g, '_')
