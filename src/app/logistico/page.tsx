@@ -9,6 +9,7 @@ import type { Equipamento } from '@/types/equipamento'
 import { camposEmFalta } from '@/types/equipamento'
 import FiltroMulti from '@/components/FiltroMulti'
 import FiltroData from '@/components/FiltroData'
+import StatusEquipamento from '@/components/StatusEquipamento'
 import styles from './page.module.css'
 
 const TAMANHO_LOTE = 1000 // o Supabase devolve no máximo 1000 por pedido
@@ -265,7 +266,7 @@ export default function Home() {
         <tr key={e.id} className={styles.linhaEquip} onClick={() => router.push(`/equipamentos/${e.id}`)}>
           <td className={styles.serialCell}>{e.serial_number ?? '—'}</td>
           <td>{e.ano ?? '—'}</td>
-          <td>{e.status ? <span className={styles.statusTag}>{e.status}</span> : '—'}</td>
+          <td>{e.status ? <StatusEquipamento status={e.status} /> : '—'}</td>
           <td>{formatarEuro(e.valor_compra)}</td>
           <td>{falta.length > 0 && <span className={styles.badgeFalta}>{falta.length} em falta</span>}</td>
         </tr>
@@ -311,7 +312,7 @@ export default function Home() {
             {falta.length > 0 && <span className={styles.badgeFalta}>{falta.length} em falta</span>}
           </div>
           <div className={styles.cardLinha}>
-            {e.status ? <span className={styles.statusTag}>{e.status}</span> : 'Sem status'}
+            {e.status ? <StatusEquipamento status={e.status} /> : 'Sem status'}
             {e.ano ? ` · ${e.ano}` : ''}
           </div>
           <div className={styles.cardLinha}>Compra: {formatarEuro(e.valor_compra)}</div>

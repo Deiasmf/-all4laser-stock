@@ -11,6 +11,7 @@ import type { FaturacaoEquip } from '@/types/aluguer'
 import MediaGaleria from '@/components/MediaGaleria'
 import QrEquipamento from '@/components/QrEquipamento'
 import EquipamentoPecasFalta from '@/components/EquipamentoPecasFalta'
+import StatusEquipamento from '@/components/StatusEquipamento'
 import styles from './detalhe.module.css'
 
 function formatarData(d: string | null) {
@@ -167,7 +168,7 @@ export default function DetalheEquipamento() {
         <Linha rotulo="Ano" valor={eq.ano} />
         <Linha
           rotulo="Status"
-          valor={eq.status ? <span className={styles.statusTag}>{eq.status}</span> : null}
+          valor={eq.status ? <StatusEquipamento status={eq.status} /> : null}
         />
         <Linha rotulo="Acessórios" valor={eq.acessorios} />
         {eq.modelo?.toLowerCase().replace(/\s/g, '').includes('pro-u') && (
