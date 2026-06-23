@@ -2,9 +2,11 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import {
+  BUCKET_MEDIA, LIMITE_FICHEIRO_MB,
+  carregarMediaEquipamento, resumoUpload, houveProblemas,
+} from '@/lib/mediaUpload'
 import styles from './mediaGaleria.module.css'
-
-const BUCKET = 'equipamentos-media'
 
 type Media = {
   id: string
@@ -14,15 +16,12 @@ type Media = {
   nome: string | null
 }
 
-// Limpa o nome do ficheiro (só letras, números, ponto e traço)
-function nomeSeguro(nome: string) {
-  return nome.normalize('NFD').replace(/[^\w.\-]/g, '_')
-}
-
 export default function MediaGaleria({ equipamentoId }: { equipamentoId: string }) {
   const [media, setMedia] = useState<Media[]>([])
   const [aCarregar, setACarregar] = useState(false)
   const [progresso, setProgresso] = useState('')
+  const [mensagem, setMensagem] = useState<string | null>(null)
+  const [mensagemErro, setMensagemErro] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   async function carregarMedia() {
@@ -45,45 +44,25 @@ export default function MediaGaleria({ equipamentoId }: { equipamentoId: string 
     const ficheiros = Array.from(e.target.files ?? [])
     if (ficheiros.length === 0) return
 
+    setMensagem(null)
     setACarregar(true)
-    let feitos = 0
 
-    for (const ficheiro of ficheiros) {
-      feitos++
-      setProgresso(`A carregar ${feitos} de ${ficheiros.length}...`)
-
-      const caminho = `${equipamentoId}/${Date.now()}-${nomeSeguro(ficheiro.name)}`
-      const { error: erroUpload } = await supabase.storage
-        .from(BUCKET)
-        .upload(caminho, ficheiro)
-
-      if (erroUpload) {
-        alert(`Erro a carregar ${ficheiro.name}: ${erroUpload.message}`)
-        continue
-      }
-
-      const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(caminho)
-      const tipo = ficheiro.type.startsWith('video') ? 'video' : 'foto'
-
-      await supabase.from('media').insert({
-        equipamento_id: equipamentoId,
-        url: pub.publicUrl,
-        caminho,
-        tipo,
-        nome: ficheiro.name,
-      })
-    }
+    const resultado = await carregarMediaEquipamento(equipamentoId, ficheiros, (feitos, total) =>
+      setProgresso(`A carregar ${feitos} de ${total}...`),
+    )
 
     setProgresso('')
     setACarregar(false)
     if (inputRef.current) inputRef.current.value = ''
+    setMensagem(resumoUpload(resultado))
+    setMensagemErro(houveProblemas(resultado))
     carregarMedia()
   }
 
   async function apagar(m: Media) {
     if (!window.confirm('Apagar este ficheiro?')) return
     if (m.caminho) {
-      await supabase.storage.from(BUCKET).remove([m.caminho])
+      await supabase.storage.from(BUCKET_MEDIA).remove([m.caminho])
     }
     await supabase.from('media').delete().eq('id', m.id)
     carregarMedia()
@@ -112,7 +91,30 @@ export default function MediaGaleria({ equipamentoId }: { equipamentoId: string 
         </label>
       </div>
 
+      <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>
+        Várias fotos e vídeos de uma vez · máx. {LIMITE_FICHEIRO_MB} MB por ficheiro
+      </div>
+
       {progresso && <div className={styles.progresso}>{progresso}</div>}
+
+      {mensagem && (
+        <div
+          style={{
+            whiteSpace: 'pre-line',
+            fontSize: 13,
+            fontWeight: 600,
+            borderRadius: 8,
+            padding: '10px 12px',
+            marginBottom: 10,
+            border: '1px solid',
+            ...(mensagemErro
+              ? { background: '#fff7e6', color: '#9a6700', borderColor: '#f0c36d' }
+              : { background: '#e6f7f1', color: '#00875f', borderColor: '#00A87A' }),
+          }}
+        >
+          {mensagem}
+        </div>
+      )}
 
       {media.length === 0 && !aCarregar ? (
         <div className={styles.vazio}>Ainda não há fotos nem vídeos. Clica em “+ Carregar”.</div>

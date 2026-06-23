@@ -3,8 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import {
+  LIMITE_FICHEIRO_MB, carregarMediaEquipamento, resumoUpload, houveProblemas,
+  type ResultadoUpload,
+} from '@/lib/mediaUpload'
 
-const BUCKET = 'equipamentos-media'
 const CACHE_PARTILHA = 'partilha-temp'
 
 type EquipamentoResumo = {
@@ -12,10 +15,6 @@ type EquipamentoResumo = {
   modelo: string | null
   marca: string | null
   serial_number: string | null
-}
-
-function nomeSeguro(nome: string) {
-  return nome.normalize('NFD').replace(/[^\w.\-]/g, '_')
 }
 
 // Lê os ficheiros que o service worker guardou ao receber a partilha do WhatsApp
@@ -50,6 +49,8 @@ export default function PartilharPage() {
   const [aCarregar, setACarregar] = useState(false)
   const [progresso, setProgresso] = useState('')
   const [concluido, setConcluido] = useState(false)
+  const [resultado, setResultado] = useState<ResultadoUpload | null>(null)
+  const [mensagem, setMensagem] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Carregar os ficheiros partilhados (se vierem do WhatsApp)
@@ -85,40 +86,48 @@ export default function PartilharPage() {
   async function carregar() {
     if (!escolhido || ficheiros.length === 0) return
     setACarregar(true)
-    let feitos = 0
-    for (const ficheiro of ficheiros) {
-      feitos++
-      setProgresso(`A carregar ${feitos} de ${ficheiros.length}...`)
-      const caminho = `${escolhido.id}/${Date.now()}-${nomeSeguro(ficheiro.name)}`
-      const { error } = await supabase.storage.from(BUCKET).upload(caminho, ficheiro)
-      if (error) {
-        alert(`Erro a carregar ${ficheiro.name}: ${error.message}`)
-        continue
-      }
-      const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(caminho)
-      const tipo = ficheiro.type.startsWith('video') ? 'video' : 'foto'
-      await supabase.from('media').insert({
-        equipamento_id: escolhido.id,
-        url: pub.publicUrl,
-        caminho,
-        tipo,
-        nome: ficheiro.name,
-      })
-    }
+    setMensagem(null)
+
+    const r = await carregarMediaEquipamento(escolhido.id, ficheiros, (feitos, total) =>
+      setProgresso(`A carregar ${feitos} de ${total}...`),
+    )
+
     setProgresso('')
     setACarregar(false)
-    setConcluido(true)
-    await limparPartilha()
+    setResultado(r)
+
+    if (r.carregados > 0) {
+      // Pelo menos um ficheiro entrou: ir para o ecrã de conclusão.
+      setConcluido(true)
+      await limparPartilha()
+    } else {
+      // Nada carregou (ex.: todos demasiado grandes): ficar e explicar porquê.
+      setMensagem(resumoUpload(r))
+    }
   }
 
   const rotulo = (e: EquipamentoResumo) =>
     [e.modelo, e.marca, e.serial_number ? `(${e.serial_number})` : null].filter(Boolean).join(' ')
 
   if (concluido && escolhido) {
+    const r = resultado
+    const problemas = r && houveProblemas(r)
     return (
       <main style={estilos.page}>
         <h1 style={estilos.titulo}>Fotos carregadas ✅</h1>
-        <p>{ficheiros.length} ficheiro(s) adicionados a <strong>{rotulo(escolhido)}</strong>.</p>
+        <p>
+          {r?.carregados ?? ficheiros.length} ficheiro(s) adicionados a <strong>{rotulo(escolhido)}</strong>.
+        </p>
+        {problemas && (
+          <div style={estilos.avisoResumo}>
+            {r!.grandes.length > 0 && (
+              <div>⚠ {r!.grandes.length} ficheiro(s) demasiado grande(s) (máx. {LIMITE_FICHEIRO_MB} MB): {r!.grandes.join(', ')}</div>
+            )}
+            {r!.falhas.length > 0 && (
+              <div>⚠ {r!.falhas.length} com erro: {r!.falhas.map((f) => f.nome).join(', ')}</div>
+            )}
+          </div>
+        )}
         <Link href={`/equipamentos/${escolhido.id}`} style={estilos.botaoLink}>
           Ver equipamento
         </Link>
@@ -153,7 +162,9 @@ export default function PartilharPage() {
       )}
 
       {ficheiros.length > 0 && (
-        <p style={estilos.contador}>{ficheiros.length} ficheiro(s) prontos a carregar.</p>
+        <p style={estilos.contador}>
+          {ficheiros.length} ficheiro(s) prontos a carregar · máx. {LIMITE_FICHEIRO_MB} MB cada
+        </p>
       )}
 
       <label style={estilos.label}>Escolher o equipamento</label>
@@ -186,6 +197,8 @@ export default function PartilharPage() {
       )}
 
       {progresso && <div style={estilos.progresso}>{progresso}</div>}
+
+      {mensagem && <div style={estilos.avisoResumo}>{mensagem}</div>}
 
       <button
         style={{
@@ -236,6 +249,7 @@ const estilos: Record<string, React.CSSProperties> = {
   escolhido: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 12, border: '1px solid var(--primary)', borderRadius: 8, background: 'var(--accent-bg, #eef1f6)' },
   trocar: { background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 600, cursor: 'pointer' },
   progresso: { marginTop: 12, color: 'var(--primary)', fontWeight: 600 },
+  avisoResumo: { whiteSpace: 'pre-line', marginTop: 12, padding: '10px 12px', borderRadius: 8, background: '#fff7e6', color: '#9a6700', border: '1px solid #f0c36d', fontSize: 13, fontWeight: 600 },
   botaoGuardar: { width: '100%', marginTop: 20, padding: 14, background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 16, fontWeight: 700, cursor: 'pointer' },
   botaoLink: { display: 'inline-block', marginTop: 16, padding: '12px 20px', background: 'var(--primary)', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 700 },
   voltar: { display: 'block', marginTop: 20, color: 'var(--muted)', textDecoration: 'none' },
