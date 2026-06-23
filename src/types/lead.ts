@@ -1,4 +1,4 @@
-export type CanalLead = 'website' | 'email' | 'facebook' | 'instagram'
+export type CanalLead = 'website' | 'email' | 'facebook' | 'instagram' | 'bimedis'
 export type EstadoLead = 'nova' | 'contactada' | 'proposta_enviada' | 'convertida' | 'perdida'
 
 export type Lead = {
@@ -23,6 +23,7 @@ export const CANAL_CONFIG: Record<CanalLead, { label: string; icone: string }> =
   email: { label: 'Email', icone: '✉️' },
   facebook: { label: 'Facebook', icone: '📘' },
   instagram: { label: 'Instagram', icone: '📸' },
+  bimedis: { label: 'Bimedis', icone: '🩺' },
 }
 
 export const ESTADO_CONFIG: Record<EstadoLead, { label: string; color: string; bg: string }> = {

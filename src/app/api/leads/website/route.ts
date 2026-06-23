@@ -4,7 +4,7 @@ import { enviarEmail } from '@/lib/email'
 // Endpoint público para o formulário do website submeter novas leads.
 // Usa a SERVICE ROLE no servidor (ignora a RLS) — a chave nunca vai para o browser.
 
-const CANAIS = ['website', 'email', 'facebook', 'instagram']
+const CANAIS = ['website', 'email', 'facebook', 'instagram', 'bimedis']
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': process.env.LEADS_ALLOW_ORIGIN ?? '*',
