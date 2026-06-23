@@ -25,7 +25,10 @@ const NAV: Seccao[] = [
       { href: '/financeiro', label: 'Financeiro', icon: '💶' },
       {
         href: '/comercial', label: 'Comercial', icon: '🤝',
-        filhos: [{ href: '/comercial/notas-encomenda', label: 'Notas de encomenda', icon: '📋' }],
+        filhos: [
+          { href: '/comercial/clientes', label: 'Clientes', icon: '👥' },
+          { href: '/comercial/notas-encomenda', label: 'Notas de encomenda', icon: '📋' },
+        ],
       },
       { href: '/marketing', label: 'Marketing', icon: '📣' },
       {
@@ -69,6 +72,7 @@ const TITULOS: { prefixo: string; titulo: string }[] = [
   { prefixo: '/admin-dept', titulo: 'Administrativo' },
   { prefixo: '/financeiro', titulo: 'Financeiro' },
   { prefixo: '/comercial/notas-encomenda', titulo: 'Notas de Encomenda' },
+  { prefixo: '/comercial/clientes', titulo: 'Clientes' },
   { prefixo: '/comercial', titulo: 'Comercial' },
   { prefixo: '/marketing', titulo: 'Marketing' },
   { prefixo: '/tecnico/preparacao', titulo: 'Em Preparação Técnica' },
