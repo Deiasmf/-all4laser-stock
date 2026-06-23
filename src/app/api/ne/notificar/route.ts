@@ -1,7 +1,9 @@
 // Envia o email de mudança de fase de uma Nota de Encomenda aos responsáveis
-// da fase seguinte. Só envia se o Resend estiver configurado (RESEND_API_KEY);
+// da fase seguinte. Só envia se o email estiver configurado (SENDGRID_API_KEY);
 // caso contrário responde ok sem enviar. As notificações in-app (comunicados)
 // são criadas no cliente e não dependem disto.
+
+import { enviarEmail } from '@/lib/email'
 
 export async function POST(req: Request) {
   let corpo: Record<string, unknown>
@@ -20,10 +22,6 @@ export async function POST(req: Request) {
 
   if (para.length === 0) return Response.json({ ok: true, enviado: false })
 
-  const key = process.env.RESEND_API_KEY
-  if (!key) return Response.json({ ok: true, enviado: false }) // email desligado até a chave existir
-
-  const from = process.env.RESEND_FROM ?? 'All4laser <noreply@all4laser.com>'
   const base = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.all4laser.com'
   const link = `${base}${pagina}`
 
@@ -35,14 +33,6 @@ export async function POST(req: Request) {
     <p><a href="${link}">Abrir na plataforma</a></p>
   `
 
-  try {
-    const r = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from, to: para, subject: `NE ${numero} — ${faseLabel}`, html }),
-    })
-    return Response.json({ ok: r.ok, enviado: r.ok })
-  } catch {
-    return Response.json({ ok: false, enviado: false }, { status: 500 })
-  }
+  const resultado = await enviarEmail({ para, assunto: `NE ${numero} — ${faseLabel}`, html })
+  return Response.json({ ok: resultado.ok || !resultado.configurado, enviado: resultado.ok })
 }

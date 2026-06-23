@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { enviarEmail } from '@/lib/email'
 
 // Endpoint público para o formulário do website submeter novas leads.
 // Usa a SERVICE ROLE no servidor (ignora a RLS) — a chave nunca vai para o browser.
@@ -91,12 +92,8 @@ async function notificarEquipa(lead: {
   canal: string; modelo_interesse: string | null; mensagem: string | null
   data_inicio: string | null; data_fim: string | null
 }) {
-  const key = process.env.RESEND_API_KEY
-  if (!key) return // email desligado até a chave existir
-
   const to = (process.env.LEADS_NOTIFY_EMAILS ?? 'andreia.fernandes@all4laser.com,eduardo.esteves@all4laser.com')
     .split(',').map((s) => s.trim()).filter(Boolean)
-  const from = process.env.RESEND_FROM ?? 'All4laser <leads@all4laser.com>'
 
   const linha = (rotulo: string, v: string | null) => (v ? `<p><strong>${rotulo}:</strong> ${v}</p>` : '')
   const html = `
@@ -110,9 +107,6 @@ async function notificarEquipa(lead: {
     ${linha('Mensagem', lead.mensagem)}
   `
 
-  await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from, to, subject: `Nova lead: ${lead.nome}`, html }),
-  })
+  // Só envia se o email estiver configurado (SENDGRID_API_KEY); senão não faz nada.
+  await enviarEmail({ para: to, assunto: `Nova lead: ${lead.nome}`, html })
 }
