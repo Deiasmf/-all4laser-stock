@@ -24,7 +24,9 @@ export async function POST(req: Request) {
     return Response.json({ ok: false, erro: 'JSON inválido' }, { status: 400, headers: corsHeaders })
   }
 
-  const nome = String(corpo.nome ?? '').trim()
+  // Aceita nomes de campo em português OU inglês (o formulário do site usa
+  // name/phone/message; mantemos nome/telefone/mensagem por compatibilidade).
+  const nome = String(corpo.nome ?? corpo.name ?? '').trim()
   if (!nome) {
     return Response.json({ ok: false, erro: 'O nome é obrigatório.' }, { status: 400, headers: corsHeaders })
   }
@@ -32,6 +34,11 @@ export async function POST(req: Request) {
   const texto = (v: unknown) => {
     const s = typeof v === 'string' ? v.trim() : ''
     return s ? s : null
+  }
+  // Primeiro valor não-vazio de uma lista de chaves possíveis.
+  const campo = (...chaves: string[]) => {
+    for (const k of chaves) { const v = texto(corpo[k]); if (v) return v }
+    return null
   }
   const canalBruto = String(corpo.canal ?? 'website').toLowerCase()
   const canal = CANAIS.includes(canalBruto) ? canalBruto : 'website'
@@ -46,16 +53,16 @@ export async function POST(req: Request) {
     modalidade ? `Modalidade: ${modalidade}` : null,
     datas ? `Datas pretendidas: ${datas}` : null,
   ].filter(Boolean)
-  const mensagem = [texto(corpo.mensagem), ...extras].filter(Boolean).join('\n') || null
+  const mensagem = [campo('mensagem', 'message'), ...extras].filter(Boolean).join('\n') || null
 
   const lead = {
     nome,
-    email: texto(corpo.email),
-    telefone: texto(corpo.telefone),
-    cidade: texto(corpo.cidade),
+    email: campo('email'),
+    telefone: campo('telefone', 'phone'),
+    cidade: campo('cidade', 'city'),
     mensagem,
     canal,
-    modelo_interesse: texto(corpo.equipamento) ?? texto(corpo.modelo_interesse),
+    modelo_interesse: campo('equipamento', 'modelo_interesse'),
     data_inicio: texto(corpo.data_inicio),
     data_fim: texto(corpo.data_fim),
     estado: 'nova',
