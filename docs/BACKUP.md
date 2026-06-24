@@ -2,9 +2,10 @@
 
 A base de dados (Supabase) é copiada **todos os dias às 03:00 UTC** para uma pasta no
 Google Drive, através de uma GitHub Action. Cada cópia é um ficheiro comprimido
-`backup-AAAA-MM-DD.sql.gz`.
+`backup-AAAA-MM-DD.dump.gz` (formato **custom** do `pg_dump` — restaura-se com
+`pg_restore`, não com `psql`).
 
-- **O que faz:** `pg_dump` → `gzip` → upload para o Google Drive (via Service Account).
+- **O que faz:** `pg_dump --format=custom` → `gzip` → upload para o Google Drive (via Service Account).
 - **Se falhar:** envia um email de aviso para o endereço configurado.
 - **Onde está definido:** `.github/workflows/backup.yml`, `scripts/backup.sh`,
   `scripts/drive-upload.mjs`, `scripts/notify-failure.sh`.
@@ -95,29 +96,36 @@ workflow**. Em 1-2 minutos deve aparecer o ficheiro na pasta do Drive.
 
 ## 5. Restaurar um backup (emergência)
 
+> O backup é em **formato custom** do `pg_dump`, por isso restaura-se com **`pg_restore`**
+> (não com `psql`). Precisas do `pg_restore`/`pg_dump` da versão 17 (vem com o
+> `postgresql-client-17`).
+
 1. Vai à pasta **Backups All4laser** no Drive e descarrega o ficheiro do dia pretendido,
-   ex.: `backup-2026-06-24.sql.gz`.
+   ex.: `backup-2026-06-24.dump.gz`.
 2. Descomprime:
    ```bash
-   gunzip backup-2026-06-24.sql.gz
-   # fica: backup-2026-06-24.sql
+   gunzip backup-2026-06-24.dump.gz
+   # fica: backup-2026-06-24.dump  (ficheiro binário, formato custom)
    ```
 3. Restaura para uma base de dados Supabase. **Em regra restaura-se para um projeto
    NOVO/vazio** (restaurar por cima de dados existentes pode dar conflitos):
    ```bash
-   psql "postgresql://postgres.<ref>:<PASSWORD>@aws-0-<regiao>.pooler.supabase.com:5432/postgres" \
-     -f backup-2026-06-24.sql
+   pg_restore --no-owner --no-acl --clean --if-exists \
+     -d "postgresql://postgres.<ref>:<PASSWORD>@aws-0-<regiao>.pooler.supabase.com:5432/postgres" \
+     backup-2026-06-24.dump
    ```
-   - Precisas do `psql` (vem com o `postgresql-client`).
    - Usa a connection string do projeto **para onde** queres restaurar.
+   - `--clean --if-exists` apaga e recria os objetos antes de repor (útil ao restaurar
+     por cima de algo existente); omite-os se o destino estiver mesmo vazio.
 4. Avisos:
    - O dump inclui todo o conteúdo do `public` (equipamentos, peças, alugueres, etc.) e
      as contas de utilizador (`auth.users`).
    - Algumas mensagens de erro sobre extensões/papéis já existentes são normais ao
      restaurar no Supabase e podem ser ignoradas — o que interessa é que as tabelas e os
      dados fiquem repostos.
-   - Se só precisares dos dados de uma tabela, podes abrir o `.sql` e copiar apenas a
-     secção dessa tabela.
+   - Para restaurar **só uma tabela**, usa o `pg_restore` seletivo, ex.:
+     `pg_restore -t equipamentos -d "<connection-string>" backup-2026-06-24.dump`.
+     (Para ver o que o ficheiro contém: `pg_restore --list backup-2026-06-24.dump`.)
 
 > Dica: de vez em quando, descarrega um backup e confirma que abre e tem tamanho
 > razoável. Um backup nunca testado não é um backup de confiança.

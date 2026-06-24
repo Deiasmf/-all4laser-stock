@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Backup da base de dados Supabase -> ficheiro .sql.gz -> Google Drive.
+# Backup da base de dados Supabase -> ficheiro .dump.gz (formato custom) -> Google Drive.
 #
 # Requisitos (instalados pela GitHub Action):
 #   - pg_dump (postgresql-client-17, para corresponder ao Postgres 17 do Supabase)
@@ -20,7 +20,7 @@ set -euo pipefail
 : "${GOOGLE_DRIVE_FOLDER_ID:?Falta a variavel GOOGLE_DRIVE_FOLDER_ID}"
 
 DATA=$(date -u +%F)            # YYYY-MM-DD em UTC
-FICHEIRO="backup-${DATA}.sql.gz"
+FICHEIRO="backup-${DATA}.dump.gz"   # formato custom do pg_dump, comprimido
 
 echo "==> [1/3] Dump da base de dados ($DATA, UTC)..."
 # Formato "custom" (-Fc): restaura-se com pg_restore (nao com psql).
