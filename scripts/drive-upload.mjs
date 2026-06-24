@@ -47,6 +47,70 @@ const auth = new google.auth.GoogleAuth({
 })
 const drive = google.drive({ version: 'v3', auth })
 
+// Quantos dias guardar os backups antes de os apagar automaticamente.
+const RETENCAO_DIAS = 30
+
+// Apaga da pasta os backups com mais de RETENCAO_DIAS dias.
+// Por seguranca so mexe em ficheiros com nome de backup (backup-*.dump.gz / .sql.gz)
+// e nunca falha o processo (o backup do dia ja foi enviado com sucesso).
+async function limparBackupsAntigos() {
+  try {
+    const limite = Date.now() - RETENCAO_DIAS * 24 * 60 * 60 * 1000
+
+    // 1) Lista todos os ficheiros da pasta (ignora a lixeira), mais antigos primeiro.
+    const ficheiros = []
+    let pageToken
+    do {
+      const r = await drive.files.list({
+        q: `'${pastaId}' in parents and trashed = false`,
+        fields: 'nextPageToken, files(id, name, createdTime, mimeType)',
+        orderBy: 'createdTime', // mais antigos primeiro
+        pageSize: 1000,
+        pageToken,
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+      })
+      ficheiros.push(...(r.data.files ?? []))
+      pageToken = r.data.nextPageToken
+    } while (pageToken)
+
+    // So consideramos ficheiros de backup (nao pastas nem outros ficheiros).
+    const backups = ficheiros.filter(
+      (f) =>
+        f.mimeType !== 'application/vnd.google-apps.folder' &&
+        /^backup-.*\.(dump|sql)\.gz$/.test(f.name)
+    )
+
+    // 2/3) Apaga os que tem mais de RETENCAO_DIAS dias.
+    const antigos = backups.filter((f) => new Date(f.createdTime).getTime() < limite)
+    if (antigos.length === 0) {
+      console.log(
+        `Limpeza: 0 backups com mais de ${RETENCAO_DIAS} dias (${backups.length} no total, todos mantidos).`
+      )
+      return
+    }
+
+    console.log(`Limpeza: ${antigos.length} backup(s) com mais de ${RETENCAO_DIAS} dias a apagar...`)
+    let apagados = 0
+    for (const f of antigos) {
+      try {
+        await drive.files.delete({ fileId: f.id, supportsAllDrives: true })
+        console.log(`  - apagado: ${f.name} (criado em ${f.createdTime})`)
+        apagados++
+      } catch (e) {
+        console.warn(`  ! falha a apagar ${f.name}: ${e?.message ?? e}`)
+      }
+    }
+    // 4) Resumo.
+    console.log(
+      `Limpeza concluida: ${apagados} de ${antigos.length} ficheiro(s) apagado(s); ${backups.length - apagados} mantido(s).`
+    )
+  } catch (e) {
+    // Nunca rebenta o backup por causa da limpeza.
+    console.warn(`Aviso: a limpeza de backups antigos falhou (o backup do dia esta seguro): ${e?.message ?? e}`)
+  }
+}
+
 const nome = path.basename(ficheiro)
 
 console.log(`A enviar "${nome}" para a pasta do Drive (GOOGLE_DRIVE_FOLDER_ID=${pastaId})...`)
@@ -68,6 +132,9 @@ try {
   console.log(
     `Upload concluido: ${res.data.name} (id=${res.data.id}, ${tamanho}, parents=${JSON.stringify(res.data.parents)})`
   )
+
+  // Limpeza automatica dos backups antigos (so apos o upload ter corrido bem).
+  await limparBackupsAntigos()
 } catch (e) {
   // Log detalhado do erro do Google para facilitar o debug
   console.error('=== Erro no upload para o Google Drive ===')
