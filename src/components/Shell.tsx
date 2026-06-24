@@ -129,8 +129,8 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     setMenuAberto(false)
   }
 
-  // Sem sessão, no login ou no link público de assinatura: só o conteúdo, sem sidebar.
-  if (!session || pathname === '/login' || pathname.startsWith('/assinar')) {
+  // Sem sessão, no login, na redefinição de password ou no link público de assinatura: só o conteúdo, sem sidebar.
+  if (!session || pathname === '/login' || pathname === '/redefinir-password' || pathname.startsWith('/assinar')) {
     return <>{children}</>
   }
 
