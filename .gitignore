@@ -40,6 +40,16 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# segredos / chaves / credenciais (nunca versionar)
+*.key
+*.p12
+*.pfx
+*.keystore
+*-service-account*.json
+*serviceAccount*.json
+secrets.json
+credentials.json
+
 # vercel
 .vercel
 
