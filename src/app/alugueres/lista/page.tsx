@@ -26,11 +26,15 @@ function nomeSeguro(nome: string) {
   return nome.normalize('NFD').replace(/[^\w.\-]/g, '_')
 }
 
+// Opções de ordenação da lista
+type Ordenacao = 'cliente-asc' | 'cliente-desc' | 'valor-desc' | 'valor-asc' | 'data-desc' | 'data-asc'
+
 export default function ListaAlugueres() {
   const { isAdmin } = useAuth()
   const [alugueres, setAlugueres] = useState<Aluguer[]>([])
   const [mes, setMes] = useState(mesAtual())
   const [pesquisa, setPesquisa] = useState('')
+  const [ordenar, setOrdenar] = useState<Ordenacao>('cliente-asc')
   const [carregando, setCarregando] = useState(true)
   const [editar, setEditar] = useState<Aluguer | null>(null)
   const [enviarFatura, setEnviarFatura] = useState<Aluguer | null>(null)
@@ -52,11 +56,29 @@ export default function ListaAlugueres() {
 
   const filtrados = useMemo(() => {
     const q = pesquisa.trim().toLowerCase()
-    return alugueres
+    const lista = alugueres
       .filter((a) => (a.data_entrega ?? '').startsWith(mes))
       .filter((a) => !q || (a.cliente_nome ?? '').toLowerCase().includes(q))
-      .sort((a, b) => (a.cliente_nome ?? '').localeCompare(b.cliente_nome ?? '', 'pt'))
-  }, [alugueres, mes, pesquisa])
+
+    return [...lista].sort((a, b) => {
+      switch (ordenar) {
+        case 'cliente-asc':
+          return (a.cliente_nome ?? '').localeCompare(b.cliente_nome ?? '', 'pt')
+        case 'cliente-desc':
+          return (b.cliente_nome ?? '').localeCompare(a.cliente_nome ?? '', 'pt')
+        case 'valor-desc':
+          return (b.valor ?? 0) - (a.valor ?? 0)
+        case 'valor-asc':
+          return (a.valor ?? 0) - (b.valor ?? 0)
+        case 'data-desc':
+          return (b.data_entrega ?? '').localeCompare(a.data_entrega ?? '')
+        case 'data-asc':
+          return (a.data_entrega ?? '').localeCompare(b.data_entrega ?? '')
+        default:
+          return 0
+      }
+    })
+  }, [alugueres, mes, pesquisa, ordenar])
 
   const total = somar(filtrados, (a) => a.valor)
 
@@ -113,6 +135,19 @@ export default function ListaAlugueres() {
           onChange={(e) => setPesquisa(e.target.value)}
           style={c.inputPesq}
         />
+        <select
+          value={ordenar}
+          onChange={(e) => setOrdenar(e.target.value as Ordenacao)}
+          style={c.inputOrden}
+          title="Ordenar a lista"
+        >
+          <option value="cliente-asc">Cliente (A → Z)</option>
+          <option value="cliente-desc">Cliente (Z → A)</option>
+          <option value="valor-desc">Valor (maior → menor)</option>
+          <option value="valor-asc">Valor (menor → maior)</option>
+          <option value="data-desc">Data (mais recente)</option>
+          <option value="data-asc">Data (mais antiga)</option>
+        </select>
       </div>
 
       <div style={c.resumo}>
@@ -637,6 +672,7 @@ const c: Record<string, React.CSSProperties> = {
   filtros: { display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' },
   inputMes: { padding: 10, border: '1px solid #ccc', borderRadius: 8, fontSize: 15 },
   inputPesq: { flex: 1, minWidth: 160, padding: 10, border: '1px solid #ccc', borderRadius: 8, fontSize: 15 },
+  inputOrden: { padding: 10, border: '1px solid #ccc', borderRadius: 8, fontSize: 15, background: '#fff', cursor: 'pointer' },
   resumo: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--accent-bg, #eef1f6)', borderRadius: 10, padding: '10px 14px', marginBottom: 14, flexWrap: 'wrap', gap: 8 },
 
   // Resumo de faturação do mês
