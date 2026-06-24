@@ -7,6 +7,7 @@ import { listarPecas, criarPeca, atualizarPeca, eliminarPeca } from '@/lib/pecas
 import { pecasComPedidoPendente } from '@/lib/compras'
 import { LOCALIZACOES_PECA } from '@/types/compras'
 import QrPeca from '@/components/QrPeca'
+import { imprimirEtiquetas } from '@/lib/etiquetas'
 import type { Peca } from '@/types/peca'
 
 // Badge de alerta de stock: vermelho se <= 10, amarelo se <= 20.
@@ -92,6 +93,21 @@ export default function StockPecasPage() {
           <option value="">Todos os grupos</option>
           {grupos.map((g) => <option key={g} value={g}>{g}</option>)}
         </select>
+        <button
+          style={c.btnGhost}
+          onClick={() =>
+            imprimirEtiquetas(
+              filtradas.map((p) => ({
+                url: `${window.location.origin}/logistico/pecas?peca=${p.id}`,
+                titulo: p.nome,
+                sub1: [p.marca, p.grupo].filter(Boolean).join(' · ') || undefined,
+                sub2: p.referencia ? `Ref: ${p.referencia}` : undefined,
+              }))
+            )
+          }
+        >
+          🖨 Etiquetas
+        </button>
         {isAdmin && (
           <button style={c.btnPrimario} onClick={() => setCriar(true)}>+ Nova peça</button>
         )}

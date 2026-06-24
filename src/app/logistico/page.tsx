@@ -10,6 +10,7 @@ import { camposEmFalta } from '@/types/equipamento'
 import FiltroMulti from '@/components/FiltroMulti'
 import FiltroData from '@/components/FiltroData'
 import StatusEquipamento from '@/components/StatusEquipamento'
+import { imprimirEtiquetas } from '@/lib/etiquetas'
 import styles from './page.module.css'
 
 const TAMANHO_LOTE = 1000 // o Supabase devolve no máximo 1000 por pedido
@@ -328,6 +329,21 @@ export default function Home() {
         <span className={styles.title}>Stock de equipamentos</span>
         <div className={styles.headerDireita}>
           <Link href="/dashboard" className={styles.btnSecundario}>Dashboard</Link>
+          <button
+            className={styles.btnSecundario}
+            onClick={() =>
+              imprimirEtiquetas(
+                equipamentos.map((e) => ({
+                  url: `${window.location.origin}/equipamentos/${e.id}`,
+                  titulo: [e.marca, e.modelo].filter(Boolean).join(' ') || 'Equipamento',
+                  sub1: `S/N: ${e.serial_number ?? '—'}`,
+                  sub2: e.ano ? `Ano: ${e.ano}` : undefined,
+                }))
+              )
+            }
+          >
+            🖨 Etiquetas
+          </button>
           <span className={styles.count}>{equipamentos.length} de {todos.length}</span>
           {isAdmin && (
             <Link href="/equipamentos/novo" className={styles.btnAdicionar}>
