@@ -1,0 +1,5 @@
+# Garantir fins de linha LF nos scripts que correm em Linux (GitHub Actions).
+# Sem isto, um commit feito no Windows poderia gravar CRLF e partir o backup
+# com erros do tipo "bash\r: No such file or directory".
+*.sh text eol=lf
+scripts/*.mjs text eol=lf
