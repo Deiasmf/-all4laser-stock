@@ -23,9 +23,15 @@ DATA=$(date -u +%F)            # YYYY-MM-DD em UTC
 FICHEIRO="backup-${DATA}.sql.gz"
 
 echo "==> [1/3] Dump da base de dados ($DATA, UTC)..."
-# --no-owner/--no-privileges tornam o restauro mais simples noutro projeto.
+# Formato "custom" (-Fc): restaura-se com pg_restore (nao com psql).
+# --no-owner/--no-acl tornam o restauro mais simples noutro projeto.
 # O pipefail garante que uma falha do pg_dump faz o script falhar.
-pg_dump "$SUPABASE_DB_URL" --no-owner --no-privileges | gzip -9 > "$FICHEIRO"
+/usr/lib/postgresql/17/bin/pg_dump "$SUPABASE_DB_URL" \
+  --no-password \
+  --format=custom \
+  --no-acl \
+  --no-owner \
+  | gzip > "$FICHEIRO"
 
 # Sanidade: um dump valido nunca e minusculo. Evita enviar um ficheiro vazio.
 TAMANHO_BYTES=$(wc -c < "$FICHEIRO")
