@@ -49,17 +49,38 @@ const drive = google.drive({ version: 'v3', auth })
 
 const nome = path.basename(ficheiro)
 
+console.log(`A enviar "${nome}" para a pasta do Drive (GOOGLE_DRIVE_FOLDER_ID=${pastaId})...`)
+
 try {
   const res = await drive.files.create({
-    requestBody: { name: nome, parents: [pastaId] },
+    requestBody: {
+      name: nome,
+      // Coloca o ficheiro dentro da pasta indicada por GOOGLE_DRIVE_FOLDER_ID
+      parents: [pastaId],
+    },
     media: { mimeType: 'application/gzip', body: fs.createReadStream(ficheiro) },
-    fields: 'id, name, size',
+    fields: 'id, name, size, parents',
+    // Necessario para suportar Shared Drives / Team Drives
     supportsAllDrives: true,
+    supportsTeamDrives: true,
   })
   const tamanho = res.data.size ? `${Math.round(Number(res.data.size) / 1024)} KB` : '?'
-  console.log(`Upload concluido: ${res.data.name} (id=${res.data.id}, ${tamanho})`)
+  console.log(
+    `Upload concluido: ${res.data.name} (id=${res.data.id}, ${tamanho}, parents=${JSON.stringify(res.data.parents)})`
+  )
 } catch (e) {
-  console.error('Erro no upload para o Google Drive:')
-  console.error(e?.errors ?? e?.message ?? e)
+  // Log detalhado do erro do Google para facilitar o debug
+  console.error('=== Erro no upload para o Google Drive ===')
+  console.error(`Mensagem: ${e?.message ?? '(sem mensagem)'}`)
+  if (e?.code) console.error(`Codigo HTTP: ${e.code}`)
+  // A API do Google devolve os detalhes em e.response.data.error e/ou e.errors
+  const detalhe = e?.response?.data?.error ?? e?.errors
+  if (detalhe) {
+    console.error('Detalhe do Google:')
+    console.error(JSON.stringify(detalhe, null, 2))
+  }
+  // Como ultimo recurso, despeja o objeto de erro inteiro
+  console.error('Erro completo:')
+  console.error(JSON.stringify(e, Object.getOwnPropertyNames(e ?? {}), 2))
   process.exit(1)
 }
