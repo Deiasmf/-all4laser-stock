@@ -4,6 +4,7 @@ export type Peca = {
   marca: string | null
   grupo: string | null
   serial_number: string | null
+  status: string | null
   referencia: string | null
   quantidade: number
   notas: string | null
@@ -13,6 +14,9 @@ export type Peca = {
   created_at: string
   updated_at: string
 }
+
+// Estados possíveis de uma peça (usado no seletor e no filtro do stock de peças)
+export const STATUS_PECA = ['Stock', 'Em Reparação', 'Avariado'] as const
 
 // Linha de material (peça) usada numa folha de obra
 export type FolhaMaterial = {

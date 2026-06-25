@@ -9,14 +9,29 @@ import { LOCALIZACOES_PECA } from '@/types/compras'
 import QrPeca from '@/components/QrPeca'
 import { imprimirEtiquetas } from '@/lib/etiquetas'
 import type { Peca } from '@/types/peca'
+import { STATUS_PECA } from '@/types/peca'
 
-// Badge de alerta de stock: vermelho se <= 10, amarelo se <= 20.
-function StockBadge({ q }: { q: number }) {
-  if (q > 20) return null
-  const baixo = q <= 10
+// Badge de estado da peça (só aparece quando não está em "Stock")
+function StatusPecaBadge({ status }: { status: string | null }) {
+  if (!status || status === 'Stock') return null
+  const cor = status === 'Avariado' ? '#DC2626' : '#D4820A'
   return (
-    <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '1px 6px', color: '#fff', background: baixo ? '#DC2626' : '#D4820A' }}>
-      {baixo ? 'stock crítico' : 'stock baixo'}
+    <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '1px 6px', color: '#fff', background: cor }}>
+      {status}
+    </span>
+  )
+}
+
+// Badge de alerta de stock — só para peças GENÉRICAS (sem serial).
+// Peças com serial são unidades únicas (quantidade 1), por isso não têm alerta.
+// Genéricas: <= 5 = stock crítico (vermelho), <= 10 = stock baixo (laranja).
+function StockBadge({ q, temSerial }: { q: number; temSerial: boolean }) {
+  if (temSerial) return null
+  if (q > 10) return null
+  const critico = q <= 5
+  return (
+    <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '1px 6px', color: '#fff', background: critico ? '#DC2626' : '#D4820A' }}>
+      {critico ? 'stock crítico' : 'stock baixo'}
     </span>
   )
 }
@@ -28,6 +43,7 @@ export default function StockPecasPage() {
   const [pesquisa, setPesquisa] = useState('')
   const [fMarca, setFMarca] = useState('')
   const [fGrupo, setFGrupo] = useState('')
+  const [fStatus, setFStatus] = useState('')
   const [aberta, setAberta] = useState<Peca | null>(null)
   const [criar, setCriar] = useState(false)
   const [pendentes, setPendentes] = useState<Set<string>>(new Set())
@@ -66,8 +82,14 @@ export default function StockPecasPage() {
     return pecas
       .filter((p) => !fMarca || p.marca === fMarca)
       .filter((p) => !fGrupo || p.grupo === fGrupo)
-      .filter((p) => !q || p.nome.toLowerCase().includes(q) || (p.grupo ?? '').toLowerCase().includes(q))
-  }, [pecas, pesquisa, fMarca, fGrupo])
+      .filter((p) => !fStatus || p.status === fStatus)
+      .filter((p) =>
+        !q ||
+        p.nome.toLowerCase().includes(q) ||
+        (p.grupo ?? '').toLowerCase().includes(q) ||
+        (p.serial_number ?? '').toLowerCase().includes(q)
+      )
+  }, [pecas, pesquisa, fMarca, fGrupo, fStatus])
 
   const totalUnidades = filtradas.reduce((a, p) => a + (p.quantidade || 0), 0)
 
@@ -92,6 +114,10 @@ export default function StockPecasPage() {
         <select value={fGrupo} onChange={(e) => setFGrupo(e.target.value)} style={c.select}>
           <option value="">Todos os grupos</option>
           {grupos.map((g) => <option key={g} value={g}>{g}</option>)}
+        </select>
+        <select value={fStatus} onChange={(e) => setFStatus(e.target.value)} style={c.select}>
+          <option value="">Todos os estados</option>
+          {STATUS_PECA.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
         <button
           style={c.btnGhost}
@@ -135,12 +161,13 @@ export default function StockPecasPage() {
                 {p.nome}
                 {p.marca && <span style={c.marcaTag}>{p.marca}</span>}
                 {pendentes.has(p.id) && <span title="Pedido de compra pendente" style={{ marginLeft: 6 }}>🛒</span>}
+                <StatusPecaBadge status={p.status} />
                 {p.serial_number && <span style={c.serialTag}>S/N: {p.serial_number}</span>}
               </span>
               <span style={c.grupoCel}>{p.grupo ?? '—'}</span>
               <span style={{ textAlign: 'right', fontWeight: 700, color: p.quantidade <= 0 ? 'var(--danger, #c62828)' : 'inherit' }}>
                 {p.quantidade}
-                <StockBadge q={p.quantidade} />
+                <StockBadge q={p.quantidade} temSerial={!!p.serial_number} />
               </span>
             </div>
           ))}
@@ -175,6 +202,7 @@ function ModalPeca({
   const [marca, setMarca] = useState(peca?.marca ?? '')
   const [grupo, setGrupo] = useState(peca?.grupo ?? '')
   const [serialNumber, setSerialNumber] = useState(peca?.serial_number ?? '')
+  const [status, setStatus] = useState(peca?.status ?? '')
   const [referencia, setReferencia] = useState(peca?.referencia ?? '')
   const [quantidade, setQuantidade] = useState(peca?.quantidade != null ? String(peca.quantidade) : '0')
   const [localizacao, setLocalizacao] = useState(peca?.localizacao ?? '')
@@ -195,6 +223,7 @@ function ModalPeca({
       marca: marca.trim() || null,
       grupo: grupo.trim() || null,
       serial_number: serialNumber.trim() || null,
+      status: status.trim() || null,
       referencia: referencia.trim() || null,
       quantidade: Math.trunc(Number(quantidade)),
       notas: notas.trim() || null,
@@ -251,8 +280,19 @@ function ModalPeca({
           </div>
         </div>
 
-        <label style={c.label}>Serial Number</label>
-        <input style={c.inputModal} value={serialNumber} onChange={(e) => setSerialNumber(e.target.value)} placeholder="Deixa vazio se a peça não tiver serial" disabled={soLeitura} />
+        <div style={c.linha2}>
+          <div>
+            <label style={c.label}>Serial Number</label>
+            <input style={c.inputModal} value={serialNumber} onChange={(e) => setSerialNumber(e.target.value)} placeholder="Vazio se não tiver serial" disabled={soLeitura} />
+          </div>
+          <div>
+            <label style={c.label}>Status</label>
+            <select style={c.inputModal} value={status} onChange={(e) => setStatus(e.target.value)} disabled={soLeitura}>
+              <option value="">—</option>
+              {STATUS_PECA.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+        </div>
 
         <div style={c.linha2}>
           <div>
