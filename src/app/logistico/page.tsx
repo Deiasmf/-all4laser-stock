@@ -7,6 +7,8 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
 import type { Equipamento } from '@/types/equipamento'
 import { camposEmFalta } from '@/types/equipamento'
+import { nomeModeloStock } from '@/lib/modelos'
+import { nomeClienteStock } from '@/lib/clientesStock'
 import FiltroMulti from '@/components/FiltroMulti'
 import FiltroData from '@/components/FiltroData'
 import StatusEquipamento from '@/components/StatusEquipamento'
@@ -25,6 +27,21 @@ function distintos(lista: Equipamento[], campo: keyof Equipamento) {
   return Array.from(
     new Set(lista.map((e) => e[campo] as string).filter(Boolean))
   )
+}
+
+// Nome do modelo já normalizado para o Stock (unifica variantes, separa por serial)
+function modeloDe(e: Equipamento) {
+  return nomeModeloStock(e.modelo, e.serial_number)
+}
+
+// Valores distintos de modelo (canónicos), ordenados
+function modelosDistintos(lista: Equipamento[]) {
+  return Array.from(new Set(lista.map(modeloDe).filter(Boolean)))
+}
+
+// Nome do cliente (destino) já normalizado para o Stock
+function clienteDe(e: Equipamento) {
+  return nomeClienteStock(e.destino)
 }
 
 // Persistência dos filtros entre navegações (sessionStorage = dura a sessão do separador)
@@ -142,14 +159,13 @@ export default function Home() {
     return {
       marcas: distintos(todos, 'marca').sort((a, b) => a.localeCompare(b, 'pt')),
       // Modelos: se houver marca(s) escolhida(s), só os dessas marcas
-      modelos: distintos(
-        marca.length ? todos.filter((e) => marca.includes(e.marca as string)) : todos,
-        'modelo'
+      modelos: modelosDistintos(
+        marca.length ? todos.filter((e) => marca.includes(e.marca as string)) : todos
       ).sort((a, b) => a.localeCompare(b, 'pt')),
       anos: distintos(todos, 'ano').sort((a, b) => b.localeCompare(a)),
       status: distintos(todos, 'status').sort((a, b) => a.localeCompare(b, 'pt')),
       origens: distintos(todos, 'origem').sort((a, b) => a.localeCompare(b, 'pt')),
-      destinos: distintos(todos, 'destino').sort((a, b) => a.localeCompare(b, 'pt')),
+      destinos: Array.from(new Set(todos.map(clienteDe).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'pt')),
     }
   }, [todos, marca])
 
@@ -166,22 +182,32 @@ export default function Home() {
       if (ate && valor > ate) return false
       return true
     }
-    return todos.filter((e) => {
-      if (!incluido(marca, e.marca)) return false
-      if (!incluido(modelo, e.modelo)) return false
-      if (!incluido(ano, e.ano)) return false
-      if (!incluido(status, e.status)) return false
-      if (!incluido(origem, e.origem)) return false
-      if (!incluido(destino, e.destino)) return false
-      if (!noIntervalo(e.data_entrada, recDe, recAte)) return false
-      if (!noIntervalo(e.data_saida, envDe, envAte)) return false
-      if (soIncompletos && camposEmFalta(e).length === 0) return false
-      if (q) {
-        const alvo = `${e.marca ?? ''} ${e.modelo ?? ''} ${e.serial_number ?? ''} ${e.destino ?? ''}`.toLowerCase()
-        if (!alvo.includes(q)) return false
-      }
-      return true
-    })
+    return todos
+      .filter((e) => {
+        if (!incluido(marca, e.marca)) return false
+        if (!incluido(modelo, modeloDe(e))) return false
+        if (!incluido(ano, e.ano)) return false
+        if (!incluido(status, e.status)) return false
+        if (!incluido(origem, e.origem)) return false
+        if (!incluido(destino, clienteDe(e))) return false
+        if (!noIntervalo(e.data_entrada, recDe, recAte)) return false
+        if (!noIntervalo(e.data_saida, envDe, envAte)) return false
+        if (soIncompletos && camposEmFalta(e).length === 0) return false
+        if (q) {
+          const alvo = `${e.marca ?? ''} ${e.modelo ?? ''} ${modeloDe(e)} ${e.serial_number ?? ''} ${e.destino ?? ''} ${clienteDe(e)}`.toLowerCase()
+          if (!alvo.includes(q)) return false
+        }
+        return true
+      })
+      // Reordena por marca → modelo canónico → serial, para os grupos ficarem
+      // contíguos (a ordem da BD usa o modelo original, não o normalizado)
+      .sort((a, b) => {
+        const ma = (a.marca ?? '').localeCompare(b.marca ?? '', 'pt')
+        if (ma !== 0) return ma
+        const mo = modeloDe(a).localeCompare(modeloDe(b), 'pt')
+        if (mo !== 0) return mo
+        return (a.serial_number ?? '').localeCompare(b.serial_number ?? '', 'pt')
+      })
   }, [todos, pesquisa, marca, modelo, ano, status, origem, destino, recDe, recAte, envDe, envAte, soIncompletos])
 
   const totalIncompletos = useMemo(
@@ -193,9 +219,8 @@ export default function Home() {
   function mudarMarca(novasMarcas: string[]) {
     setMarca(novasMarcas)
     const modelosValidos = new Set(
-      distintos(
-        novasMarcas.length ? todos.filter((e) => novasMarcas.includes(e.marca as string)) : todos,
-        'modelo'
+      modelosDistintos(
+        novasMarcas.length ? todos.filter((e) => novasMarcas.includes(e.marca as string)) : todos
       )
     )
     setModelo((atual) => atual.filter((m) => modelosValidos.has(m)))
@@ -235,7 +260,7 @@ export default function Home() {
 
     for (const e of equipamentos) {
       const m = e.marca || 'Sem marca'
-      const mod = e.modelo || 'Sem modelo'
+      const mod = modeloDe(e) || 'Sem modelo'
 
       if (m !== ultimaMarca) {
         const recolhida = recolhidas.has(m)
@@ -284,7 +309,7 @@ export default function Home() {
 
     for (const e of equipamentos) {
       const m = e.marca || 'Sem marca'
-      const mod = e.modelo || 'Sem modelo'
+      const mod = modeloDe(e) || 'Sem modelo'
 
       if (m !== ultimaMarca) {
         const recolhida = recolhidas.has(m)
@@ -335,7 +360,7 @@ export default function Home() {
               imprimirEtiquetas(
                 equipamentos.map((e) => ({
                   url: `${window.location.origin}/equipamentos/${e.id}`,
-                  titulo: [e.marca, e.modelo].filter(Boolean).join(' ') || 'Equipamento',
+                  titulo: [e.marca, modeloDe(e)].filter(Boolean).join(' ') || 'Equipamento',
                   sub1: `S/N: ${e.serial_number ?? '—'}`,
                   sub2: e.ano ? `Ano: ${e.ano}` : undefined,
                 }))
