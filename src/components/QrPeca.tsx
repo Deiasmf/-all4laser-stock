@@ -36,6 +36,7 @@ export default function QrPeca({ peca }: { peca: Peca }) {
           <img src="${dataUrl}" alt="QR" />
           <h2>${peca.nome}</h2>
           ${sub ? `<p>${sub}</p>` : ''}
+          ${peca.serial_number ? `<p>S/N: ${peca.serial_number}</p>` : ''}
           ${peca.referencia ? `<p>Ref: ${peca.referencia}</p>` : ''}
           <p>All4laser</p>
           <script>window.onload = function(){ window.print(); }</script>

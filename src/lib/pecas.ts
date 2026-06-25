@@ -17,7 +17,7 @@ export async function listarPecas(): Promise<Peca[]> {
 export async function pesquisarPecas(q: string): Promise<Peca[]> {
   const termo = q.trim()
   let query = supabase.from('pecas').select('*').order('nome').limit(20)
-  if (termo) query = query.or(`nome.ilike.%${termo}%,grupo.ilike.%${termo}%,marca.ilike.%${termo}%`)
+  if (termo) query = query.or(`nome.ilike.%${termo}%,grupo.ilike.%${termo}%,marca.ilike.%${termo}%,serial_number.ilike.%${termo}%`)
   const { data } = await query
   return (data as Peca[]) ?? []
 }
@@ -27,6 +27,7 @@ export async function criarPeca(p: Partial<Peca>) {
     nome: p.nome,
     marca: p.marca ?? null,
     grupo: p.grupo ?? null,
+    serial_number: p.serial_number ?? null,
     referencia: p.referencia ?? null,
     quantidade: p.quantidade ?? 0,
     notas: p.notas ?? null,
@@ -39,6 +40,7 @@ export async function atualizarPeca(id: string, p: Partial<Peca>) {
     nome: p.nome,
     marca: p.marca ?? null,
     grupo: p.grupo ?? null,
+    serial_number: p.serial_number ?? null,
     referencia: p.referencia ?? null,
     quantidade: p.quantidade ?? 0,
     notas: p.notas ?? null,

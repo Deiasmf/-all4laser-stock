@@ -3,6 +3,7 @@ export type Peca = {
   nome: string
   marca: string | null
   grupo: string | null
+  serial_number: string | null
   referencia: string | null
   quantidade: number
   notas: string | null

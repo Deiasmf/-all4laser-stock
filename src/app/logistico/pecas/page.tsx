@@ -101,7 +101,7 @@ export default function StockPecasPage() {
                 url: `${window.location.origin}/logistico/pecas?peca=${p.id}`,
                 titulo: p.nome,
                 sub1: [p.marca, p.grupo].filter(Boolean).join(' · ') || undefined,
-                sub2: p.referencia ? `Ref: ${p.referencia}` : undefined,
+                sub2: p.serial_number ? `S/N: ${p.serial_number}` : p.referencia ? `Ref: ${p.referencia}` : undefined,
               }))
             )
           }
@@ -135,6 +135,7 @@ export default function StockPecasPage() {
                 {p.nome}
                 {p.marca && <span style={c.marcaTag}>{p.marca}</span>}
                 {pendentes.has(p.id) && <span title="Pedido de compra pendente" style={{ marginLeft: 6 }}>🛒</span>}
+                {p.serial_number && <span style={c.serialTag}>S/N: {p.serial_number}</span>}
               </span>
               <span style={c.grupoCel}>{p.grupo ?? '—'}</span>
               <span style={{ textAlign: 'right', fontWeight: 700, color: p.quantidade <= 0 ? 'var(--danger, #c62828)' : 'inherit' }}>
@@ -173,6 +174,7 @@ function ModalPeca({
   const [nome, setNome] = useState(peca?.nome ?? '')
   const [marca, setMarca] = useState(peca?.marca ?? '')
   const [grupo, setGrupo] = useState(peca?.grupo ?? '')
+  const [serialNumber, setSerialNumber] = useState(peca?.serial_number ?? '')
   const [referencia, setReferencia] = useState(peca?.referencia ?? '')
   const [quantidade, setQuantidade] = useState(peca?.quantidade != null ? String(peca.quantidade) : '0')
   const [localizacao, setLocalizacao] = useState(peca?.localizacao ?? '')
@@ -192,6 +194,7 @@ function ModalPeca({
       nome: nome.trim(),
       marca: marca.trim() || null,
       grupo: grupo.trim() || null,
+      serial_number: serialNumber.trim() || null,
       referencia: referencia.trim() || null,
       quantidade: Math.trunc(Number(quantidade)),
       notas: notas.trim() || null,
@@ -248,6 +251,9 @@ function ModalPeca({
           </div>
         </div>
 
+        <label style={c.label}>Serial Number</label>
+        <input style={c.inputModal} value={serialNumber} onChange={(e) => setSerialNumber(e.target.value)} placeholder="Deixa vazio se a peça não tiver serial" disabled={soLeitura} />
+
         <div style={c.linha2}>
           <div>
             <label style={c.label}>Referência</label>
@@ -301,6 +307,7 @@ const c: Record<string, React.CSSProperties> = {
   clicavel: { cursor: 'pointer' },
   cab: { fontWeight: 700, color: 'var(--muted)', fontSize: 12, borderBottom: '2px solid var(--border)' },
   marcaTag: { marginLeft: 6, fontSize: 10, fontWeight: 700, color: 'var(--primary)', background: 'var(--accent-bg, #eef1f6)', borderRadius: 999, padding: '1px 6px' },
+  serialTag: { marginLeft: 6, fontSize: 11, fontWeight: 500, color: 'var(--muted)' },
   grupoCel: { color: 'var(--muted)', fontSize: 13 },
   dica: { color: 'var(--muted)', fontSize: 13, marginTop: 10, textAlign: 'center' },
 
