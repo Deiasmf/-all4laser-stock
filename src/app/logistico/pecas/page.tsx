@@ -232,6 +232,7 @@ function ModalPeca({
   const [serialNumber, setSerialNumber] = useState(peca?.serial_number ?? '')
   const [status, setStatus] = useState(peca?.status ?? '')
   const [referencia, setReferencia] = useState(peca?.referencia ?? '')
+  const [precoVenda, setPrecoVenda] = useState(peca?.preco_venda != null ? String(peca.preco_venda) : '')
   const [quantidade, setQuantidade] = useState(peca?.quantidade != null ? String(peca.quantidade) : '0')
   const [localizacao, setLocalizacao] = useState(peca?.localizacao ?? '')
   const [notas, setNotas] = useState(peca?.notas ?? '')
@@ -253,6 +254,7 @@ function ModalPeca({
       serial_number: serialNumber.trim() || null,
       status: status.trim() || null,
       referencia: referencia.trim() || null,
+      preco_venda: precoVenda.trim() === '' ? 0 : Number(precoVenda),
       quantidade: Math.trunc(Number(quantidade)),
       notas: notas.trim() || null,
       localizacao: localizacao.trim() || null,
@@ -332,6 +334,9 @@ function ModalPeca({
             <input style={c.inputModal} type="number" inputMode="numeric" value={quantidade} onChange={(e) => setQuantidade(e.target.value)} disabled={soLeitura} />
           </div>
         </div>
+
+        <label style={c.label}>Preço de venda (€)</label>
+        <input style={c.inputModal} type="number" inputMode="decimal" step="0.01" value={precoVenda} onChange={(e) => setPrecoVenda(e.target.value)} placeholder="0" disabled={soLeitura} />
 
         <label style={c.label}>Localização</label>
         <select style={c.inputModal} value={localizacao} onChange={(e) => setLocalizacao(e.target.value)} disabled={soLeitura}>

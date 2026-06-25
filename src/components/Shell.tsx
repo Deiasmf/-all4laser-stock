@@ -20,7 +20,10 @@ const NAV: Seccao[] = [
     itens: [
       {
         href: '/admin-dept', label: 'Administrativo', icon: '🗂️',
-        filhos: [{ href: '/admin-dept/expedicao', label: 'Prontos a enviar', icon: '✈️' }],
+        filhos: [
+          { href: '/admin-dept/expedicao', label: 'Prontos a enviar', icon: '✈️' },
+          { href: '/admin-dept/envios-pecas', label: 'Envios de Encomendas', icon: '📬' },
+        ],
       },
       { href: '/financeiro', label: 'Financeiro', icon: '💶' },
       {
@@ -44,6 +47,7 @@ const NAV: Seccao[] = [
         filhos: [
           { href: '/logistico', label: 'Stock', icon: '📦' },
           { href: '/logistico/pecas', label: 'Stock de peças', icon: '🔩' },
+          { href: '/logistico/envios-pecas', label: 'Envios de Encomendas', icon: '📬' },
           { href: '/logistico/preparacao', label: 'Em preparação', icon: '🧰' },
           { href: '/logistico/encaixotamento', label: 'Encaixotamento', icon: '📫' },
         ],
@@ -69,6 +73,7 @@ const NAV: Seccao[] = [
 // Título da página a partir da rota (mais específico primeiro).
 const TITULOS: { prefixo: string; titulo: string }[] = [
   { prefixo: '/admin-dept/expedicao', titulo: 'Prontos a Enviar' },
+  { prefixo: '/admin-dept/envios-pecas', titulo: 'Envios de Encomendas' },
   { prefixo: '/admin-dept', titulo: 'Administrativo' },
   { prefixo: '/financeiro', titulo: 'Financeiro' },
   { prefixo: '/comercial/notas-encomenda', titulo: 'Notas de Encomenda' },
@@ -79,6 +84,7 @@ const TITULOS: { prefixo: string; titulo: string }[] = [
   { prefixo: '/tecnico/pecas-em-falta', titulo: 'Peças em Falta' },
   { prefixo: '/tecnico', titulo: 'Técnico' },
   { prefixo: '/logistico/pecas', titulo: 'Stock de Peças' },
+  { prefixo: '/logistico/envios-pecas', titulo: 'Envios de Encomendas' },
   { prefixo: '/logistico/preparacao', titulo: 'Em Preparação' },
   { prefixo: '/logistico/encaixotamento', titulo: 'Encaixotamento' },
   { prefixo: '/logistico', titulo: 'Stock (Logística)' },

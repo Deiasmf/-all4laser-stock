@@ -6,6 +6,7 @@ export type Peca = {
   serial_number: string | null
   status: string | null
   referencia: string | null
+  preco_venda: number | null
   quantidade: number
   notas: string | null
   localizacao: string | null
