@@ -93,6 +93,50 @@ export default function StockPecasPage() {
 
   const totalUnidades = filtradas.reduce((a, p) => a + (p.quantidade || 0), 0)
 
+  // Constrói as linhas agrupadas por Marca → Equipamento (grupo)
+  function linhasAgrupadas() {
+    const ordenadas = [...filtradas].sort(
+      (a, b) =>
+        (a.marca ?? 'zzz').localeCompare(b.marca ?? 'zzz', 'pt') ||
+        (a.grupo ?? 'zzz').localeCompare(b.grupo ?? 'zzz', 'pt') ||
+        a.nome.localeCompare(b.nome, 'pt')
+    )
+    const linhas: React.ReactElement[] = []
+    let ultimaMarca: string | null = null
+    let ultimoGrupo: string | null = null
+
+    for (const p of ordenadas) {
+      const marca = p.marca || 'Sem marca'
+      const grupo = p.grupo || 'Sem equipamento'
+
+      if (marca !== ultimaMarca) {
+        linhas.push(<div key={`m-${marca}`} style={c.grupoMarca}>{marca}</div>)
+        ultimaMarca = marca
+        ultimoGrupo = null
+      }
+      if (grupo !== ultimoGrupo) {
+        linhas.push(<div key={`g-${marca}-${grupo}`} style={c.grupoEquip}>{grupo}</div>)
+        ultimoGrupo = grupo
+      }
+
+      linhas.push(
+        <div key={p.id} style={{ ...c.linha2col, ...c.clicavel }} onClick={() => setAberta(p)}>
+          <span style={{ fontWeight: 600 }}>
+            {p.nome}
+            {pendentes.has(p.id) && <span title="Pedido de compra pendente" style={{ marginLeft: 6 }}>🛒</span>}
+            <StatusPecaBadge status={p.status} />
+            {p.serial_number && <span style={c.serialTag}>S/N: {p.serial_number}</span>}
+          </span>
+          <span style={{ textAlign: 'right', fontWeight: 700, color: p.quantidade <= 0 ? 'var(--danger, #c62828)' : 'inherit' }}>
+            {p.quantidade}
+            <StockBadge q={p.quantidade} temSerial={!!p.serial_number} />
+          </span>
+        </div>
+      )
+    }
+    return linhas
+  }
+
   return (
     <main style={c.page}>
       <div style={c.cabecalho}>
@@ -150,27 +194,11 @@ export default function StockPecasPage() {
         <p style={c.estado}>Sem peças.</p>
       ) : (
         <div style={c.tabela}>
-          <div style={{ ...c.linha, ...c.cab }}>
+          <div style={{ ...c.linha2col, ...c.cab }}>
             <span>Peça</span>
-            <span>Grupo</span>
             <span style={{ textAlign: 'right' }}>Stock</span>
           </div>
-          {filtradas.map((p) => (
-            <div key={p.id} style={{ ...c.linha, ...c.clicavel }} onClick={() => setAberta(p)}>
-              <span style={{ fontWeight: 600 }}>
-                {p.nome}
-                {p.marca && <span style={c.marcaTag}>{p.marca}</span>}
-                {pendentes.has(p.id) && <span title="Pedido de compra pendente" style={{ marginLeft: 6 }}>🛒</span>}
-                <StatusPecaBadge status={p.status} />
-                {p.serial_number && <span style={c.serialTag}>S/N: {p.serial_number}</span>}
-              </span>
-              <span style={c.grupoCel}>{p.grupo ?? '—'}</span>
-              <span style={{ textAlign: 'right', fontWeight: 700, color: p.quantidade <= 0 ? 'var(--danger, #c62828)' : 'inherit' }}>
-                {p.quantidade}
-                <StockBadge q={p.quantidade} temSerial={!!p.serial_number} />
-              </span>
-            </div>
-          ))}
+          {linhasAgrupadas()}
         </div>
       )}
 
@@ -343,12 +371,12 @@ const c: Record<string, React.CSSProperties> = {
   resumo: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--accent-bg, #eef1f6)', borderRadius: 10, padding: '10px 14px', marginBottom: 14, flexWrap: 'wrap', gap: 8 },
   estado: { color: 'var(--muted)', padding: 8 },
   tabela: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 8 },
-  linha: { display: 'grid', gridTemplateColumns: '2fr 1.4fr 0.8fr', gap: 8, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center' },
+  linha2col: { display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center' },
   clicavel: { cursor: 'pointer' },
   cab: { fontWeight: 700, color: 'var(--muted)', fontSize: 12, borderBottom: '2px solid var(--border)' },
-  marcaTag: { marginLeft: 6, fontSize: 10, fontWeight: 700, color: 'var(--primary)', background: 'var(--accent-bg, #eef1f6)', borderRadius: 999, padding: '1px 6px' },
+  grupoMarca: { fontWeight: 800, fontSize: 14, color: 'var(--primary)', background: 'var(--accent-bg, #eef1f6)', borderRadius: 6, padding: '8px', marginTop: 8 },
+  grupoEquip: { fontWeight: 700, fontSize: 12.5, color: 'var(--muted)', padding: '8px 8px 2px 10px' },
   serialTag: { marginLeft: 6, fontSize: 11, fontWeight: 500, color: 'var(--muted)' },
-  grupoCel: { color: 'var(--muted)', fontSize: 13 },
   dica: { color: 'var(--muted)', fontSize: 13, marginTop: 10, textAlign: 'center' },
 
   overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 16, overflowY: 'auto', zIndex: 100 },
