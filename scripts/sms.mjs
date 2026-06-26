@@ -19,10 +19,11 @@ export function smsConfigurado() {
   return Boolean(getCliente())
 }
 
-// Lê uma lista de números E.164 separados por vírgula a partir de uma env.
+// Lê uma lista de números E.164 a partir de uma env.
+// Tolera vírgula, ponto-e-vírgula, barra, espaços ou quebras de linha como separador.
 export function numerosDe(envVar = 'SMS_DEST') {
   return (process.env[envVar] || '')
-    .split(',')
+    .split(/[\s,;/]+/)
     .map((n) => n.trim())
     .filter(Boolean)
 }
