@@ -23,10 +23,17 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Instalar dependencias
+        run: npm ci
+
       - name: Enviar lembretes
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           APP_URL: ${{ secrets.APP_URL }}
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_SENDER_ID: ${{ secrets.TWILIO_SENDER_ID }}
+          SMS_DEST: ${{ secrets.SMS_DEST }}
         run: node scripts/lembretes-envios.mjs

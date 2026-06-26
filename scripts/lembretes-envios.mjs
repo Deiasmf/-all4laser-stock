@@ -2,12 +2,14 @@
 // Corre de hora a hora (GitHub Action). Lê a BD via psql ($SUPABASE_DB_URL) e
 // envia email pela API do SendGrid ($SENDGRID_API_KEY / $EMAIL_FROM).
 import { execFileSync } from 'node:child_process'
+import { enviarSms, smsConfigurado, numerosDe } from './sms.mjs'
 
 const DB = process.env.SUPABASE_DB_URL
 const KEY = process.env.SENDGRID_API_KEY
 const FROM = process.env.EMAIL_FROM || 'All4laser <noreply@all4laser.com>'
 const APP = (process.env.APP_URL || 'https://app.all4laser.com').replace(/\/$/, '')
 const DEST = ['sara.evaristo@all4laser.com', 'rafael.santana@all4laser.com', 'andreia.fernandes@all4laser.com']
+const SMS_DEST = numerosDe('SMS_DEST') // números E.164 da equipa (ex: +3519...)
 
 if (!DB) { console.error('Falta SUPABASE_DB_URL'); process.exit(1) }
 
@@ -59,7 +61,18 @@ function parseFrom(s) {
   return m ? { email: m[2].trim(), name: m[1] || undefined } : { email: s.trim() }
 }
 
+// SMS curto para a equipa (sem link — Alphanumeric Sender ID é unidirecional).
+async function enviarSmsEquipa(envio) {
+  const corpo = `All4laser: envio ${envio.numero} (${envio.cliente_nome ?? 's/ cliente'}) em aberto ha ${envio.marco}.`
+  for (const num of SMS_DEST) await enviarSms(num, corpo)
+}
+
 const envios = consultar()
 console.log(`${envios.length} envio(s) a lembrar.`)
-if (!KEY) { console.error('Falta SENDGRID_API_KEY — nada enviado.'); process.exit(envios.length ? 1 : 0) }
-for (const e of envios) await enviar(e)
+if (!KEY) console.error('Falta SENDGRID_API_KEY — emails não enviados.')
+if (!smsConfigurado()) console.error('Twilio não configurado — SMS não enviados.')
+else if (SMS_DEST.length === 0) console.error('SMS_DEST vazio — nenhum número para SMS.')
+for (const e of envios) {
+  if (KEY) await enviar(e)
+  if (smsConfigurado() && SMS_DEST.length) await enviarSmsEquipa(e)
+}
