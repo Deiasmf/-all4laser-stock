@@ -31,6 +31,7 @@ const NAV: Seccao[] = [
         filhos: [
           { href: '/comercial/clientes', label: 'Clientes', icon: '👥' },
           { href: '/comercial/notas-encomenda', label: 'Notas de encomenda', icon: '📋' },
+          { href: '/comercial/reservas-portal', label: 'Reservas Portal', icon: '📅' },
         ],
       },
       { href: '/marketing', label: 'Marketing', icon: '📣' },
@@ -78,6 +79,7 @@ const TITULOS: { prefixo: string; titulo: string }[] = [
   { prefixo: '/financeiro', titulo: 'Financeiro' },
   { prefixo: '/comercial/notas-encomenda', titulo: 'Notas de Encomenda' },
   { prefixo: '/comercial/clientes', titulo: 'Clientes' },
+  { prefixo: '/comercial/reservas-portal', titulo: 'Reservas Portal' },
   { prefixo: '/comercial', titulo: 'Comercial' },
   { prefixo: '/marketing', titulo: 'Marketing' },
   { prefixo: '/tecnico/preparacao', titulo: 'Em Preparação Técnica' },
@@ -135,8 +137,15 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     setMenuAberto(false)
   }
 
-  // Sem sessão, no login, na redefinição de password ou no link público de assinatura: só o conteúdo, sem sidebar.
-  if (!session || pathname === '/login' || pathname === '/redefinir-password' || pathname.startsWith('/assinar')) {
+  // Sem sessão, no login, na redefinição de password, no link público de assinatura
+  // ou no portal de reservas (/reservas/*): só o conteúdo, sem a sidebar interna.
+  if (
+    !session ||
+    pathname === '/login' ||
+    pathname === '/redefinir-password' ||
+    pathname.startsWith('/assinar') ||
+    pathname.startsWith('/reservas')
+  ) {
     return <>{children}</>
   }
 
