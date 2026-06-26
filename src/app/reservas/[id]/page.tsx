@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import {
   obterReserva, cancelarReserva, estadoInfo, modalidadeLabel, formatarData,
-  CONTACTO_ALL4LASER, type ReservaPortal,
+  CONTACTOS_ALL4LASER, type ReservaPortal,
 } from '@/lib/reservasPortal'
 import s from '../portal.module.css'
 
@@ -95,7 +95,13 @@ function DetalheReserva() {
             {reserva.motivo_rejeicao ? ` Motivo: ${reserva.motivo_rejeicao}` : ''}
           </div>
           <p className={s.subtitulo} style={{ marginBottom: 0 }}>
-            Contacta-nos para alternativas: <a href={`tel:${CONTACTO_ALL4LASER.replace(/\s/g, '')}`} className={s.link}>{CONTACTO_ALL4LASER}</a>
+            Contacta-nos para alternativas:{' '}
+            {CONTACTOS_ALL4LASER.map((c, i) => (
+              <span key={c.numero}>
+                {i > 0 && ' · '}
+                <a href={`tel:${c.numero}`} className={s.link}>{c.display}</a>
+              </span>
+            ))}
           </p>
         </div>
       )}

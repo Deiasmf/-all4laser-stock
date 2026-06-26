@@ -2,15 +2,21 @@
 // Usado pelas páginas do cliente (/reservas) e pela gestão interna (/comercial/reservas-portal).
 import { supabase } from './supabase'
 
-// ── Contacto mostrado às clientes (SMS e páginas). Ajustar ao número real. ──
-export const CONTACTO_ALL4LASER = '+351 220 000 000'
+// ── Contactos mostrados às clientes (rodapé, mensagens, SMS). ──
+// Ambos fazem gestão de clientes, por isso aparecem os dois.
+export const CONTACTOS_ALL4LASER = [
+  { nome: 'Dinis Águeda', numero: '+351965155500', display: '+351 965 155 500' },
+  { nome: 'Eduardo Esteves', numero: '+351963260883', display: '+351 963 260 883' },
+]
 
-// ── Quem pode validar reservas (confirmar/rejeitar). Admins também podem sempre.
-//    TODO: confirmar os emails reais de Dinis e Eduardo. ──
+// Versão em texto para SMS / mensagens curtas.
+export const CONTACTO_ALL4LASER = CONTACTOS_ALL4LASER.map((c) => c.display).join(' / ')
+
+// ── Quem pode validar reservas (confirmar/rejeitar). Admins também podem sempre. ──
 export const VALIDADORES_EMAILS = [
   'andreia.fernandes@all4laser.com',
-  'dinis@all4laser.com',
-  'eduardo@all4laser.com',
+  'dinis.agueda@all4laser.com',
+  'eduardo.esteves@all4laser.com',
 ]
 
 export function podeValidar(email: string | null | undefined, isAdmin: boolean): boolean {

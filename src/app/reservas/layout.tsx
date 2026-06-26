@@ -4,7 +4,7 @@ import { useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { PortalAuthProvider, usePortalAuth } from '@/lib/portalAuth'
-import { CONTACTO_ALL4LASER } from '@/lib/reservasPortal'
+import { CONTACTOS_ALL4LASER } from '@/lib/reservasPortal'
 import s from './portal.module.css'
 
 // Rotas do portal acessíveis sem sessão de cliente.
@@ -63,8 +63,13 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         </div>
         <footer className={s.footer}>
           All4laser · Reservas de equipamento<br />
-          <a href={`tel:${CONTACTO_ALL4LASER.replace(/\s/g, '')}`}>{CONTACTO_ALL4LASER}</a>
-          {' · '}
+          {CONTACTOS_ALL4LASER.map((c, i) => (
+            <span key={c.numero}>
+              {i > 0 && ' · '}
+              <a href={`tel:${c.numero}`}>{c.nome}: {c.display}</a>
+            </span>
+          ))}
+          <br />
           <a href="mailto:geral@all4laser.com">geral@all4laser.com</a>
         </footer>
       </div>
