@@ -37,7 +37,11 @@ export default function PortalRegistoPage() {
 
     if (error) {
       setAProcessar(false)
-      setErro(error.message)
+      setErro(
+        /autoriz/i.test(error.message)
+          ? 'Este email não está autorizado. O acesso ao portal é só para clientes registados pela All4laser — contacta-nos para ativarem o teu acesso.'
+          : error.message,
+      )
       return
     }
 
@@ -59,7 +63,10 @@ export default function PortalRegistoPage() {
   return (
     <div className={s.cartao}>
       <h1 className={s.titulo}>Criar conta</h1>
-      <p className={s.subtitulo}>Regista-te para pedir reservas de equipamento.</p>
+      <p className={s.subtitulo}>
+        Regista-te para pedir reservas de equipamento. Usa o email que indicaste à All4laser —
+        o acesso é só para clientes registados por nós.
+      </p>
 
       {erro && <div className={s.erro}>{erro}</div>}
       {sucesso && <div className={s.sucesso}>{sucesso}</div>}
