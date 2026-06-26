@@ -11,8 +11,13 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter()
 
   const ehLogin = pathname === '/login'
-  // Rotas públicas (sem sessão): login, redefinição de password e o link de assinatura do cliente.
-  const ehPublico = ehLogin || pathname === '/redefinir-password' || pathname.startsWith('/assinar')
+  // Rotas públicas (sem sessão): login, redefinição de password, o link de assinatura
+  // do cliente e TODO o portal de reservas (/reservas/*), que tem a sua própria guarda.
+  const ehPublico =
+    ehLogin ||
+    pathname === '/redefinir-password' ||
+    pathname.startsWith('/assinar') ||
+    pathname.startsWith('/reservas')
 
   useEffect(() => {
     if (carregando) return

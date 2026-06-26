@@ -135,8 +135,15 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     setMenuAberto(false)
   }
 
-  // Sem sessão, no login, na redefinição de password ou no link público de assinatura: só o conteúdo, sem sidebar.
-  if (!session || pathname === '/login' || pathname === '/redefinir-password' || pathname.startsWith('/assinar')) {
+  // Sem sessão, no login, na redefinição de password, no link público de assinatura
+  // ou no portal de reservas (/reservas/*): só o conteúdo, sem a sidebar interna.
+  if (
+    !session ||
+    pathname === '/login' ||
+    pathname === '/redefinir-password' ||
+    pathname.startsWith('/assinar') ||
+    pathname.startsWith('/reservas')
+  ) {
     return <>{children}</>
   }
 
