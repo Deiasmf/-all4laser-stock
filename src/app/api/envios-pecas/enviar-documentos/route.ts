@@ -23,6 +23,16 @@ async function anexoDeUrl(url: string, nomeBase: string) {
   return { filename: `${nomeBase}.${ext}`, contentBase64: buf.toString('base64'), type }
 }
 
+// Lê o claim "role" de um JWT do Supabase (anon vs service_role) sem expor o valor.
+function roleDoJwt(jwt: string): string {
+  try {
+    const payload = JSON.parse(Buffer.from(jwt.split('.')[1] ?? '', 'base64').toString('utf8'))
+    return String(payload.role ?? 'desconhecido')
+  } catch {
+    return 'inválida'
+  }
+}
+
 export async function POST(req: Request) {
   let id: string
   try {
@@ -38,13 +48,26 @@ export async function POST(req: Request) {
     return Response.json({ ok: false, erro: 'Servidor não configurado (SUPABASE_SERVICE_ROLE_KEY).' }, { status: 500 })
   }
 
+  // Diagnóstico: confirma que a chave configurada é mesmo a service_role.
+  const roleChave = roleDoJwt(serviceKey)
+  if (roleChave !== 'service_role') {
+    console.error(`[enviar-documentos] SUPABASE_SERVICE_ROLE_KEY tem role="${roleChave}" (devia ser "service_role")`)
+  }
+
   const supabase = createClient(url, serviceKey, { auth: { persistSession: false } })
   const { data, error } = await supabase
     .from('envios_pecas')
     .select('numero, cliente_nome, cliente_email, valor_a_faturar, fatura_url, carta_porte_url')
     .eq('id', id)
     .single()
-  if (error || !data) return Response.json({ ok: false, erro: 'Envio não encontrado.' }, { status: 404 })
+  if (error || !data) {
+    console.error(`[enviar-documentos] envio ${id} não obtido. roleChave=${roleChave} erro=${error?.code ?? ''} ${error?.message ?? ''}`)
+    const dica =
+      roleChave !== 'service_role'
+        ? ` (a chave de servidor tem role "${roleChave}", não "service_role" — corrige a SUPABASE_SERVICE_ROLE_KEY no Vercel)`
+        : ''
+    return Response.json({ ok: false, erro: 'Envio não encontrado.' + dica }, { status: 404 })
+  }
 
   const envio = data as Envio
   if (!envio.cliente_email) {
