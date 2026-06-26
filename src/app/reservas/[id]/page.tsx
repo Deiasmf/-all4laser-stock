@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import {
   obterReserva, cancelarReserva, estadoInfo, modalidadeLabel, formatarData,
   CONTACTO_ALL4LASER, type ReservaPortal,
@@ -10,19 +10,21 @@ import {
 import s from '../portal.module.css'
 
 export default function DetalheReservaPage() {
+  return (
+    <Suspense fallback={<p className={s.vazio}>A carregar...</p>}>
+      <DetalheReserva />
+    </Suspense>
+  )
+}
+
+function DetalheReserva() {
   const params = useParams<{ id: string }>()
   const router = useRouter()
+  const novo = useSearchParams().get('novo') === '1'
   const [reserva, setReserva] = useState<ReservaPortal | null>(null)
   const [carregando, setCarregando] = useState(true)
-  const [novo, setNovo] = useState(false)
   const [aCancelar, setACancelar] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setNovo(new URLSearchParams(window.location.search).get('novo') === '1')
-    }
-  }, [])
 
   useEffect(() => {
     if (!params?.id) return

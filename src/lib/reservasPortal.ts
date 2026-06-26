@@ -5,6 +5,19 @@ import { supabase } from './supabase'
 // ── Contacto mostrado às clientes (SMS e páginas). Ajustar ao número real. ──
 export const CONTACTO_ALL4LASER = '+351 220 000 000'
 
+// ── Quem pode validar reservas (confirmar/rejeitar). Admins também podem sempre.
+//    TODO: confirmar os emails reais de Dinis e Eduardo. ──
+export const VALIDADORES_EMAILS = [
+  'andreia.fernandes@all4laser.com',
+  'dinis@all4laser.com',
+  'eduardo@all4laser.com',
+]
+
+export function podeValidar(email: string | null | undefined, isAdmin: boolean): boolean {
+  if (isAdmin) return true
+  return !!email && VALIDADORES_EMAILS.map((e) => e.toLowerCase()).includes(email.toLowerCase())
+}
+
 // ── Modelos disponíveis para reserva ──
 export const MODELOS_RESERVA = [
   'GentleMax Pro Plus',
