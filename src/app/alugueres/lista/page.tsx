@@ -175,11 +175,13 @@ export default function ListaAlugueres() {
         <div style={c.tabela}>
           <div style={{ ...c.linha, ...c.cab }}>
             <span>Cliente</span>
+            <span>Equipamento</span>
             <span>Data</span>
             <span>Método</span>
             <span style={{ textAlign: 'right' }}>Valor</span>
             <span>Valor a Faturar</span>
             <span>Fatura</span>
+            <span style={{ textAlign: 'center' }} title="Validado">✓</span>
           </div>
           {filtrados.map((a) => (
             <div
@@ -192,6 +194,10 @@ export default function ListaAlugueres() {
                 {a.cliente_nome ?? '—'}
                 {!a.nacional && <span style={c.intl}>Internacional</span>}
               </span>
+              <span style={c.equip}>
+                <span style={c.equipSn}>{a.serial_number ?? '—'}</span>
+                <span style={c.equipMarca}>{[a.marca, a.modelo].filter(Boolean).join(' ') || '—'}</span>
+              </span>
               <span>{formatarData(a.data_entrega)}</span>
               <span>{a.metodo_pagamento ?? '—'}</span>
               <span style={{ textAlign: 'right', fontWeight: 700 }}>{formatarEuro(a.valor || 0)}</span>
@@ -200,6 +206,9 @@ export default function ListaAlugueres() {
               </span>
               <span style={c.celula} onClick={(e) => e.stopPropagation()}>
                 <CelulaFatura aluguer={a} podeEditar={isAdmin} onChange={atualizarFaturacao} onEnviar={setEnviarFatura} />
+              </span>
+              <span style={{ ...c.celula, justifyContent: 'center' }} onClick={(e) => e.stopPropagation()}>
+                <VistoValidado aluguer={a} podeEditar={isAdmin} onChange={atualizarFaturacao} />
               </span>
             </div>
           ))}
@@ -391,6 +400,31 @@ function CelulaFatura({
         }}
       />
     </label>
+  )
+}
+
+// ------------------------------------------------------------- CÉLULA: VISTO
+function VistoValidado({
+  aluguer, podeEditar, onChange,
+}: {
+  aluguer: Aluguer
+  podeEditar: boolean
+  onChange: (id: string, patch: Partial<Aluguer>) => void
+}) {
+  const validado = !!aluguer.validado
+  // Viewers só veem o estado (sem clicar)
+  if (!podeEditar) {
+    return <span style={validado ? c.vistoVerde : c.vistoCinza} title={validado ? 'Validado' : 'Por validar'}>✓</span>
+  }
+  return (
+    <button
+      type="button"
+      style={validado ? c.vistoVerde : c.vistoCinza}
+      onClick={() => onChange(aluguer.id, { validado: !validado })}
+      title={validado ? 'Validado — clica para desmarcar' : 'Marcar como validado'}
+    >
+      ✓
+    </button>
   )
 }
 
@@ -684,11 +718,20 @@ const c: Record<string, React.CSSProperties> = {
 
   estado: { color: 'var(--muted)', padding: 8 },
   tabela: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 8, overflowX: 'auto' },
-  linha: { display: 'grid', gridTemplateColumns: '1.5fr 0.9fr 0.9fr 0.8fr 1.6fr 2.1fr', gap: 8, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center', minWidth: 820 },
+  linha: { display: 'grid', gridTemplateColumns: '1.3fr 1.4fr 0.85fr 0.85fr 0.7fr 1.5fr 1.9fr 0.5fr', gap: 8, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center', minWidth: 1040 },
   linhaClicavel: { cursor: 'pointer' },
   cab: { fontWeight: 700, color: 'var(--muted)', fontSize: 12, borderBottom: '2px solid var(--border)' },
   intl: { marginLeft: 6, fontSize: 10, fontWeight: 700, color: '#fff', background: 'var(--accent, #3552eb)', borderRadius: 999, padding: '1px 6px' },
   dica: { color: 'var(--muted)', fontSize: 13, marginTop: 10, textAlign: 'center' },
+
+  // Célula "Equipamento" (SN + marca/modelo)
+  equip: { display: 'flex', flexDirection: 'column', minWidth: 0 },
+  equipSn: { fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  equipMarca: { color: 'var(--muted)', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+
+  // Célula "Visto" (validado)
+  vistoVerde: { width: 26, height: 26, borderRadius: 999, border: 'none', background: '#1b873f', color: '#fff', fontSize: 14, lineHeight: 1, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  vistoCinza: { width: 26, height: 26, borderRadius: 999, border: '1px solid #ccc', background: '#fff', color: '#bbb', fontSize: 14, lineHeight: 1, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
 
   // Célula "Valor a Faturar"
   celula: { display: 'flex', alignItems: 'center', minWidth: 0 },
