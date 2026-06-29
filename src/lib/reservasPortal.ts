@@ -26,18 +26,17 @@ export function podeValidar(email: string | null | undefined, isAdmin: boolean):
 
 // ── Calendários Google por equipamento/região ──
 // O staff escolhe o calendário ao confirmar a reserva. O evento é criado nesse calendário.
-// TODO: preencher o `id` de cada um. Onde: Google Calendar → ⋮ ao lado do calendário →
-// Definições → "Integrar calendário" → "ID do calendário" (algo como ...@group.calendar.google.com).
-// Enquanto o id estiver vazio, esse calendário cai no calendário geral (default).
+// IMPORTANTE: cada um destes calendários tem de estar PARTILHADO com a Service Account
+// (permissão "Fazer alterações a eventos"), senão dá Calendar 403.
 export type CalendarioReserva = { nome: string; id: string }
 export const CALENDARIOS_RESERVAS: CalendarioReserva[] = [
-  { nome: 'Lisboa · Gentle ProU (Alex A)', id: '' },
-  { nome: 'Lisboa · Gmax Pro/Pro Plus (Alex B)', id: '' },
-  { nome: 'Norte · Gentle ProU (Alex K - Gpro Norte 1)', id: '' },
-  { nome: 'Norte · Gmax Pro/Pro Plus (Gmax Pro Norte)', id: '' },
-  { nome: 'Algarve · Gentle ProU/Gmax Pro/Pro Plus (Alex J)', id: '' },
-  { nome: 'Soprano ICE (Laser Diodo Alma)', id: '' },
-  { nome: 'Soprano Platinum', id: '' },
+  { nome: 'Lisboa · Gentle ProU (Alex A)', id: 'all4laser.com_t5fharmhm7rqfllte42te6v9is@group.calendar.google.com' },
+  { nome: 'Lisboa · Gmax Pro/Pro Plus (Alex B)', id: 'all4laser.com_k7cjifhrancibi3mek6ddm3v30@group.calendar.google.com' },
+  { nome: 'Norte · Gentle ProU (Alex K - Gpro Norte 1)', id: 'c_d6bua321f1qn1hk6kdj5dgb6cc@group.calendar.google.com' },
+  { nome: 'Norte · Gmax Pro/Pro Plus (Gmax Pro Norte)', id: 'smvj02908gh5ria1qkau3dnkjo@group.calendar.google.com' },
+  { nome: 'Algarve · Gentle ProU/Gmax Pro/Pro Plus (Alex J)', id: 'c_604fac79664df0563c312a18b25e83c0c050f858b3e21da94a1788b57aa62ff5@group.calendar.google.com' },
+  { nome: 'Soprano ICE (Laser Diodo Alma)', id: '4lkg67nkaelf90sljtpdu4941g@group.calendar.google.com' },
+  { nome: 'Soprano Platinum', id: 'c_fbefdaac7e695feec5d4a4c3f49d7c6de31af4b04588a65a1ed558fd9db263d3@group.calendar.google.com' },
 ]
 
 // Devolve true se o id é um calendário conhecido (ou vazio = usar o geral).
