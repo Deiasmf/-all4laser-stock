@@ -26,6 +26,8 @@ export type Aluguer = {
   criado_por_nome: string | null
   created_at: string
   updated_at: string
+  // Visto de validação da informação do aluguer
+  validado: boolean | null
   // Faturação (tabela mensal)
   valor_a_faturar: number | null
   nao_faturar: boolean | null
