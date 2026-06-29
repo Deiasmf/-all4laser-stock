@@ -174,6 +174,7 @@ export default function ListaAlugueres() {
       ) : (
         <div style={c.tabela}>
           <div style={{ ...c.linha, ...c.cab }}>
+            <span style={{ textAlign: 'center' }} title="Validado">✓</span>
             <span>Cliente</span>
             <span>Equipamento</span>
             <span>Data</span>
@@ -181,7 +182,6 @@ export default function ListaAlugueres() {
             <span style={{ textAlign: 'right' }}>Valor</span>
             <span>Valor a Faturar</span>
             <span>Fatura</span>
-            <span style={{ textAlign: 'center' }} title="Validado">✓</span>
           </div>
           {filtrados.map((a) => (
             <div
@@ -190,6 +190,9 @@ export default function ListaAlugueres() {
               onClick={isAdmin ? () => setEditar(a) : undefined}
               title={isAdmin ? 'Clica para editar ou apagar' : undefined}
             >
+              <span style={{ ...c.celula, justifyContent: 'center' }} onClick={(e) => e.stopPropagation()}>
+                <VistoValidado aluguer={a} podeEditar={isAdmin} onChange={atualizarFaturacao} />
+              </span>
               <span style={{ fontWeight: 600 }}>
                 {a.cliente_nome ?? '—'}
                 {!a.nacional && <span style={c.intl}>Internacional</span>}
@@ -206,9 +209,6 @@ export default function ListaAlugueres() {
               </span>
               <span style={c.celula} onClick={(e) => e.stopPropagation()}>
                 <CelulaFatura aluguer={a} podeEditar={isAdmin} onChange={atualizarFaturacao} onEnviar={setEnviarFatura} />
-              </span>
-              <span style={{ ...c.celula, justifyContent: 'center' }} onClick={(e) => e.stopPropagation()}>
-                <VistoValidado aluguer={a} podeEditar={isAdmin} onChange={atualizarFaturacao} />
               </span>
             </div>
           ))}
@@ -718,7 +718,7 @@ const c: Record<string, React.CSSProperties> = {
 
   estado: { color: 'var(--muted)', padding: 8 },
   tabela: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 8, overflowX: 'auto' },
-  linha: { display: 'grid', gridTemplateColumns: '1.3fr 1.4fr 0.85fr 0.85fr 0.7fr 1.5fr 1.9fr 0.5fr', gap: 8, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center', minWidth: 1040 },
+  linha: { display: 'grid', gridTemplateColumns: '0.5fr 1.3fr 1.4fr 0.85fr 0.85fr 0.7fr 1.5fr 1.9fr', gap: 8, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center', minWidth: 1040 },
   linhaClicavel: { cursor: 'pointer' },
   cab: { fontWeight: 700, color: 'var(--muted)', fontSize: 12, borderBottom: '2px solid var(--border)' },
   intl: { marginLeft: 6, fontSize: 10, fontWeight: 700, color: '#fff', background: 'var(--accent, #3552eb)', borderRadius: 999, padding: '1px 6px' },
