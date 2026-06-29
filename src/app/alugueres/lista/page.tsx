@@ -716,7 +716,7 @@ const c: Record<string, React.CSSProperties> = {
 
   estado: { color: 'var(--muted)', padding: 8 },
   tabela: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 8, overflowX: 'auto' },
-  linha: { display: 'grid', gridTemplateColumns: '0.5fr 1.3fr 1.4fr 0.9fr 0.75fr 1.5fr 1.9fr', gap: 8, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center', minWidth: 820 },
+  linha: { display: 'grid', gridTemplateColumns: '0.5fr 1.3fr 1.4fr 0.9fr 0.75fr 1.25fr 2fr', gap: 10, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center', minWidth: 820 },
   linhaClicavel: { cursor: 'pointer' },
   cab: { fontWeight: 700, color: 'var(--muted)', fontSize: 12, borderBottom: '2px solid var(--border)' },
   intl: { marginLeft: 6, fontSize: 10, fontWeight: 700, color: '#fff', background: 'var(--accent, #3552eb)', borderRadius: 999, padding: '1px 6px' },
@@ -733,10 +733,10 @@ const c: Record<string, React.CSSProperties> = {
 
   // Célula "Valor a Faturar"
   celula: { display: 'flex', alignItems: 'center', minWidth: 0 },
-  faturarLinha: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  selectFaturar: { padding: '5px 8px', border: '1px solid #ccc', borderRadius: 6, fontSize: 13, background: '#fff', color: 'var(--muted)', cursor: 'pointer', maxWidth: '100%' },
-  selectVerde: { padding: '5px 8px', border: '1px solid #1b873f', borderRadius: 6, fontSize: 13, background: '#fff', color: '#1b873f', fontWeight: 700, cursor: 'pointer', maxWidth: '100%' },
-  selectCinza: { padding: '5px 8px', border: '1px solid #ccc', borderRadius: 6, fontSize: 13, background: '#f3f3f3', color: 'var(--muted)', fontWeight: 600, cursor: 'pointer', maxWidth: '100%' },
+  faturarLinha: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', minWidth: 0, maxWidth: '100%' },
+  selectFaturar: { padding: '5px 8px', border: '1px solid #ccc', borderRadius: 6, fontSize: 13, background: '#fff', color: 'var(--muted)', cursor: 'pointer', maxWidth: '100%', minWidth: 0 },
+  selectVerde: { padding: '5px 8px', border: '1px solid #1b873f', borderRadius: 6, fontSize: 13, background: '#fff', color: '#1b873f', fontWeight: 700, cursor: 'pointer', maxWidth: '100%', minWidth: 0 },
+  selectCinza: { padding: '5px 8px', border: '1px solid #ccc', borderRadius: 6, fontSize: 13, background: '#f3f3f3', color: 'var(--muted)', fontWeight: 600, cursor: 'pointer', maxWidth: '100%', minWidth: 0 },
   inputManual: { width: 72, padding: '5px 6px', border: '1px solid #ccc', borderRadius: 6, fontSize: 13 },
   valorVerde: { color: '#1b873f', fontWeight: 700, fontSize: 14 },
   badgeCinza: { background: '#eee', color: 'var(--muted)', borderRadius: 999, padding: '2px 10px', fontSize: 12, fontWeight: 600 },
