@@ -43,8 +43,11 @@ export default function ReservaPortalInternaPage() {
     const json = await r.json()
     setAProcessar(false)
     if (!json.ok) { setMsg({ tipo: 'erro', texto: json.erro ?? 'Falha ao validar.' }); return }
-    const aviso = json.smsEnviado ? 'SMS enviado à cliente.' : `Reserva atualizada, mas o SMS não saiu: ${json.smsErro ?? 'sem telefone'}.`
-    setMsg({ tipo: 'ok', texto: `${acao === 'confirmar' ? 'Reserva confirmada' : 'Reserva rejeitada'}. ${aviso}` })
+    const aviso = json.smsEnviado ? 'SMS enviado à cliente.' : `SMS não saiu: ${json.smsErro ?? 'sem telefone'}.`
+    const avisoCal = acao === 'confirmar'
+      ? (json.eventoCriado ? ' Evento criado no calendário.' : ` Calendário: ${json.eventoErro ?? 'não criado'}.`)
+      : ''
+    setMsg({ tipo: 'ok', texto: `${acao === 'confirmar' ? 'Reserva confirmada' : 'Reserva rejeitada'}. ${aviso}${avisoCal}` })
     const fresca = await obterReserva(reserva.id)
     setReserva(fresca)
   }
