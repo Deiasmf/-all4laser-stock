@@ -64,9 +64,16 @@ export type NovoEventoReserva = {
 }
 
 // Cria o evento da reserva no Google Calendar. Best-effort: nunca lança — devolve o resultado.
-export async function criarEventoReserva(r: NovoEventoReserva): Promise<{ ok: boolean; erro?: string; eventoId?: string }> {
+// `calendarioEscolhido` (opcional): id do calendário escolhido pelo staff; se vazio, usa o geral.
+export async function criarEventoReserva(
+  r: NovoEventoReserva,
+  calendarioEscolhido?: string,
+): Promise<{ ok: boolean; erro?: string; eventoId?: string }> {
   const jsonSA = process.env.GOOGLE_SERVICE_ACCOUNT_JSON
-  const calendarId = process.env.GOOGLE_CALENDAR_ID || CALENDAR_ID_DEFAULT
+  const calendarId =
+    (calendarioEscolhido && calendarioEscolhido.trim()) ||
+    process.env.GOOGLE_CALENDAR_ID ||
+    CALENDAR_ID_DEFAULT
   if (!jsonSA) return { ok: false, erro: 'Google Calendar não configurado (falta GOOGLE_SERVICE_ACCOUNT_JSON).' }
 
   let sa: ServiceAccount

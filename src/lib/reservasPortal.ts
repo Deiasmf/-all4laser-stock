@@ -24,6 +24,27 @@ export function podeValidar(email: string | null | undefined, isAdmin: boolean):
   return !!email && VALIDADORES_EMAILS.map((e) => e.toLowerCase()).includes(email.toLowerCase())
 }
 
+// ── Calendários Google por equipamento/região ──
+// O staff escolhe o calendário ao confirmar a reserva. O evento é criado nesse calendário.
+// TODO: preencher o `id` de cada um. Onde: Google Calendar → ⋮ ao lado do calendário →
+// Definições → "Integrar calendário" → "ID do calendário" (algo como ...@group.calendar.google.com).
+// Enquanto o id estiver vazio, esse calendário cai no calendário geral (default).
+export type CalendarioReserva = { nome: string; id: string }
+export const CALENDARIOS_RESERVAS: CalendarioReserva[] = [
+  { nome: 'Lisboa · Gentle ProU (Alex A)', id: '' },
+  { nome: 'Lisboa · Gmax Pro/Pro Plus (Alex B)', id: '' },
+  { nome: 'Norte · Gentle ProU (Alex K - Gpro Norte 1)', id: '' },
+  { nome: 'Norte · Gmax Pro/Pro Plus (Gmax Pro Norte)', id: '' },
+  { nome: 'Algarve · Gentle ProU/Gmax Pro/Pro Plus (Alex J)', id: '' },
+  { nome: 'Soprano ICE (Laser Diodo Alma)', id: '' },
+  { nome: 'Soprano Platinum', id: '' },
+]
+
+// Devolve true se o id é um calendário conhecido (ou vazio = usar o geral).
+export function calendarioValido(id: string): boolean {
+  return id === '' || CALENDARIOS_RESERVAS.some((c) => c.id !== '' && c.id === id)
+}
+
 // ── Modelos disponíveis para reserva ──
 export const MODELOS_RESERVA = [
   'GentleMax Pro Plus',

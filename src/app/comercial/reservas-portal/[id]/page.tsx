@@ -5,7 +5,8 @@ import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
 import {
-  obterReserva, estadoInfo, modalidadeLabel, formatarData, podeValidar, type ReservaPortal,
+  obterReserva, estadoInfo, modalidadeLabel, formatarData, podeValidar,
+  CALENDARIOS_RESERVAS, type ReservaPortal,
 } from '@/lib/reservasPortal'
 
 export default function ReservaPortalInternaPage() {
@@ -15,6 +16,7 @@ export default function ReservaPortalInternaPage() {
   const [reserva, setReserva] = useState<ReservaPortal | null>(null)
   const [carregando, setCarregando] = useState(true)
   const [motivo, setMotivo] = useState('')
+  const [calendarioId, setCalendarioId] = useState('') // '' = calendário geral
   const [aProcessar, setAProcessar] = useState(false)
   const [msg, setMsg] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null)
 
@@ -38,7 +40,7 @@ export default function ReservaPortalInternaPage() {
     const r = await fetch('/api/reservas-portal/validar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token ?? ''}` },
-      body: JSON.stringify({ id: reserva.id, acao, motivo: motivo.trim() }),
+      body: JSON.stringify({ id: reserva.id, acao, motivo: motivo.trim(), calendarioId }),
     })
     const json = await r.json()
     setAProcessar(false)
@@ -96,7 +98,20 @@ export default function ReservaPortalInternaPage() {
       {validador && reserva.estado === 'pendente' && (
         <div style={c.cartao}>
           <h2 style={c.subt}>Validação</h2>
-          <label style={c.label}>Motivo (obrigatório para rejeitar)</label>
+
+          <label style={c.label}>Calendário do equipamento (ao confirmar)</label>
+          <select
+            value={calendarioId}
+            onChange={(e) => setCalendarioId(e.target.value)}
+            style={{ width: '100%', padding: 11, border: '1px solid var(--border)', borderRadius: 9, fontSize: 15, background: '#fff' }}
+          >
+            <option value="">Calendário geral (Andreia)</option>
+            {CALENDARIOS_RESERVAS.map((cal) => (
+              <option key={cal.nome} value={cal.id}>{cal.nome}</option>
+            ))}
+          </select>
+
+          <label style={{ ...c.label, marginTop: 12 }}>Motivo (obrigatório para rejeitar)</label>
           <textarea
             value={motivo}
             onChange={(e) => setMotivo(e.target.value)}
@@ -111,7 +126,7 @@ export default function ReservaPortalInternaPage() {
               ✗ Rejeitar
             </button>
           </div>
-          <p style={c.nota}>Ao confirmar ou rejeitar é enviado um SMS à cliente (remetente All4laser).</p>
+          <p style={c.nota}>Ao confirmar cria-se o evento no calendário escolhido e envia-se SMS à cliente (remetente All4laser).</p>
         </div>
       )}
 
