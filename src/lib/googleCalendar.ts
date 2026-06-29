@@ -53,6 +53,44 @@ async function obterAccessToken(sa: ServiceAccount): Promise<string> {
   return j.access_token as string
 }
 
+function carregarSA(): { sa?: ServiceAccount; erro?: string } {
+  const jsonSA = process.env.GOOGLE_SERVICE_ACCOUNT_JSON
+  if (!jsonSA) return { erro: 'Google não configurado (falta GOOGLE_SERVICE_ACCOUNT_JSON).' }
+  try {
+    const sa = JSON.parse(jsonSA) as ServiceAccount
+    if (!sa.client_email || !sa.private_key) return { erro: 'Service Account sem client_email/private_key.' }
+    return { sa }
+  } catch {
+    return { erro: 'GOOGLE_SERVICE_ACCOUNT_JSON não é um JSON válido.' }
+  }
+}
+
+// Lista os calendários a que a conta personificada tem acesso (id + nome).
+export async function listarCalendarios(): Promise<{ ok: boolean; erro?: string; calendarios?: { id: string; nome: string }[] }> {
+  const { sa, erro } = carregarSA()
+  if (!sa) return { ok: false, erro }
+  try {
+    const token = await obterAccessToken(sa)
+    const calendarios: { id: string; nome: string }[] = []
+    let pageToken: string | undefined
+    do {
+      const url = new URL('https://www.googleapis.com/calendar/v3/users/me/calendarList')
+      url.searchParams.set('maxResults', '250')
+      url.searchParams.set('showHidden', 'true')
+      if (pageToken) url.searchParams.set('pageToken', pageToken)
+      const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      const j = await r.json()
+      if (!r.ok) return { ok: false, erro: `Calendar ${r.status}: ${j?.error?.message ?? JSON.stringify(j)}` }
+      for (const item of (j.items ?? [])) calendarios.push({ id: item.id, nome: item.summaryOverride ?? item.summary ?? item.id })
+      pageToken = j.nextPageToken
+    } while (pageToken)
+    calendarios.sort((a, b) => a.nome.localeCompare(b.nome, 'pt'))
+    return { ok: true, calendarios }
+  } catch (e) {
+    return { ok: false, erro: e instanceof Error ? e.message : 'Falha ao contactar o Google Calendar.' }
+  }
+}
+
 // Soma 1 dia a uma data 'YYYY-MM-DD' (eventos de dia inteiro no Google têm fim exclusivo).
 function diaSeguinte(data: string): string {
   const [y, m, d] = data.split('-').map(Number)
