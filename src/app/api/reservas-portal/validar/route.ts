@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { enviarSms } from '@/lib/sms'
+import { criarEventoReserva } from '@/lib/googleCalendar'
 import { CONTACTO_ALL4LASER, podeValidar, formatarData } from '@/lib/reservasPortal'
 
 // Valida (confirma/rejeita) uma reserva do portal e envia SMS à cliente.
@@ -9,8 +10,10 @@ import { CONTACTO_ALL4LASER, podeValidar, formatarData } from '@/lib/reservasPor
 type Reserva = {
   numero: string | null
   estado: string
+  cliente_nome: string | null
   cliente_telefone: string | null
   modelo_equipamento: string | null
+  modalidade: string | null
   data_inicio_pretendida: string
   data_fim_pretendida: string
 }
@@ -62,7 +65,7 @@ export async function POST(req: Request) {
   // ── Ler a reserva ──
   const { data: r, error: erroR } = await admin
     .from('reservas_portal')
-    .select('numero, estado, cliente_telefone, modelo_equipamento, data_inicio_pretendida, data_fim_pretendida')
+    .select('numero, estado, cliente_nome, cliente_telefone, modelo_equipamento, modalidade, data_inicio_pretendida, data_fim_pretendida')
     .eq('id', id)
     .single()
   if (erroR || !r) return Response.json({ ok: false, erro: 'Reserva não encontrada.' }, { status: 404 })
@@ -105,5 +108,22 @@ export async function POST(req: Request) {
     .eq('id', id)
   if (erroU) return Response.json({ ok: false, erro: erroU.message }, { status: 500 })
 
-  return Response.json({ ok: true, smsEnviado: smsOk, smsErro })
+  // ── Google Calendar (só ao confirmar; best-effort — não bloqueia a confirmação) ──
+  let eventoCriado = false
+  let eventoErro: string | undefined
+  if (acao === 'confirmar') {
+    const ev = await criarEventoReserva({
+      numero: reserva.numero,
+      modelo: reserva.modelo_equipamento,
+      clienteNome: reserva.cliente_nome,
+      clienteTelefone: reserva.cliente_telefone,
+      modalidade: reserva.modalidade,
+      dataInicio: reserva.data_inicio_pretendida,
+      dataFim: reserva.data_fim_pretendida,
+    })
+    eventoCriado = ev.ok
+    eventoErro = ev.erro
+  }
+
+  return Response.json({ ok: true, smsEnviado: smsOk, smsErro, eventoCriado, eventoErro })
 }
