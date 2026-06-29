@@ -26,8 +26,8 @@ export function podeValidar(email: string | null | undefined, isAdmin: boolean):
 
 // ── Calendários Google por equipamento/região ──
 // O staff escolhe o calendário ao confirmar a reserva. O evento é criado nesse calendário.
-// IMPORTANTE: cada um destes calendários tem de estar PARTILHADO com a Service Account
-// (permissão "Fazer alterações a eventos"), senão dá Calendar 403.
+// A Service Account personifica andreia.fernandes@all4laser.com (Domain-Wide Delegation),
+// por isso escreve em qualquer calendário que ela consiga editar — sem partilhar cada um.
 export type CalendarioReserva = { nome: string; id: string }
 export const CALENDARIOS_RESERVAS: CalendarioReserva[] = [
   { nome: 'Lisboa · Gentle ProU (Alex A)', id: 'all4laser.com_t5fharmhm7rqfllte42te6v9is@group.calendar.google.com' },

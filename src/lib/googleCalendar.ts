@@ -11,6 +11,11 @@ import crypto from 'node:crypto'
 
 const CALENDAR_ID_DEFAULT = 'andreia.fernandes@all4laser.com'
 
+// Utilizador que a Service Account personifica (Domain-Wide Delegation).
+// Tem de conseguir editar os calendários dos equipamentos. Assim não é preciso
+// partilhar cada calendário com a SA. Configurável por GOOGLE_IMPERSONATE_SUBJECT.
+const IMPERSONATE_DEFAULT = 'andreia.fernandes@all4laser.com'
+
 type ServiceAccount = { client_email: string; private_key: string; token_uri?: string }
 
 function base64url(input: string | Buffer): string {
@@ -20,10 +25,12 @@ function base64url(input: string | Buffer): string {
 // Cria um access token da Service Account (fluxo JWT-bearer do Google).
 async function obterAccessToken(sa: ServiceAccount): Promise<string> {
   const tokenUri = sa.token_uri || 'https://oauth2.googleapis.com/token'
+  const subject = process.env.GOOGLE_IMPERSONATE_SUBJECT || IMPERSONATE_DEFAULT
   const now = Math.floor(Date.now() / 1000)
   const cabecalho = base64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))
   const corpo = base64url(JSON.stringify({
     iss: sa.client_email,
+    sub: subject, // personificação via Domain-Wide Delegation
     scope: 'https://www.googleapis.com/auth/calendar',
     aud: tokenUri,
     iat: now,
