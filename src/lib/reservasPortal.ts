@@ -24,6 +24,26 @@ export function podeValidar(email: string | null | undefined, isAdmin: boolean):
   return !!email && VALIDADORES_EMAILS.map((e) => e.toLowerCase()).includes(email.toLowerCase())
 }
 
+// ── Calendários Google por equipamento/região ──
+// O staff escolhe o calendário ao confirmar a reserva. O evento é criado nesse calendário.
+// A Service Account personifica andreia.fernandes@all4laser.com (Domain-Wide Delegation),
+// por isso escreve em qualquer calendário que ela consiga editar — sem partilhar cada um.
+export type CalendarioReserva = { nome: string; id: string }
+export const CALENDARIOS_RESERVAS: CalendarioReserva[] = [
+  { nome: 'Lisboa · Gentle ProU (Alex A)', id: 'all4laser.com_t5fharmhm7rqfllte42te6v9is@group.calendar.google.com' },
+  { nome: 'Lisboa · Gmax Pro/Pro Plus (Alex B)', id: 'all4laser.com_k7cjifhrancibi3mek6ddm3v30@group.calendar.google.com' },
+  { nome: 'Norte · Gentle ProU (Alex K - Gpro Norte 1)', id: 'c_d6bua321f1qn1hk6kdj5dgb6cc@group.calendar.google.com' },
+  { nome: 'Norte · Gmax Pro/Pro Plus (Gmax Pro Norte)', id: 'smvj02908gh5ria1qkau3dnkjo@group.calendar.google.com' },
+  { nome: 'Algarve · Gentle ProU/Gmax Pro/Pro Plus (Alex J)', id: 'c_604fac79664df0563c312a18b25e83c0c050f858b3e21da94a1788b57aa62ff5@group.calendar.google.com' },
+  { nome: 'Soprano ICE (Laser Diodo Alma)', id: '4lkg67nkaelf90sljtpdu4941g@group.calendar.google.com' },
+  { nome: 'Soprano Platinum', id: 'c_fbefdaac7e695feec5d4a4c3f49d7c6de31af4b04588a65a1ed558fd9db263d3@group.calendar.google.com' },
+]
+
+// Devolve true se o id é um calendário conhecido (ou vazio = usar o geral).
+export function calendarioValido(id: string): boolean {
+  return id === '' || CALENDARIOS_RESERVAS.some((c) => c.id !== '' && c.id === id)
+}
+
 // ── Modelos disponíveis para reserva ──
 export const MODELOS_RESERVA = [
   'GentleMax Pro Plus',

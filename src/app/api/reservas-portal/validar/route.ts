@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { enviarSms } from '@/lib/sms'
 import { criarEventoReserva } from '@/lib/googleCalendar'
-import { CONTACTO_ALL4LASER, podeValidar, formatarData } from '@/lib/reservasPortal'
+import { CONTACTO_ALL4LASER, podeValidar, formatarData, calendarioValido } from '@/lib/reservasPortal'
 
 // Valida (confirma/rejeita) uma reserva do portal e envia SMS à cliente.
 // Corre no servidor: verifica que quem chama é staff validador antes de agir.
@@ -19,7 +19,7 @@ type Reserva = {
 }
 
 export async function POST(req: Request) {
-  let body: { id?: string; acao?: string; motivo?: string }
+  let body: { id?: string; acao?: string; motivo?: string; calendarioId?: string }
   try {
     body = await req.json()
   } catch {
@@ -28,6 +28,8 @@ export async function POST(req: Request) {
   const id = String(body.id ?? '')
   const acao = body.acao
   const motivo = (body.motivo ?? '').trim()
+  // Calendário escolhido pelo staff (id). Só aceitamos um id conhecido; senão usa o geral.
+  const calendarioId = calendarioValido(String(body.calendarioId ?? '')) ? String(body.calendarioId ?? '') : ''
   if (!id || (acao !== 'confirmar' && acao !== 'rejeitar')) {
     return Response.json({ ok: false, erro: 'Parâmetros inválidos.' }, { status: 400 })
   }
@@ -120,9 +122,10 @@ export async function POST(req: Request) {
       modalidade: reserva.modalidade,
       dataInicio: reserva.data_inicio_pretendida,
       dataFim: reserva.data_fim_pretendida,
-    })
+    }, calendarioId)
     eventoCriado = ev.ok
     eventoErro = ev.erro
+    console.log(`[validar] ${reserva.numero} calendário=${calendarioId || 'geral'} eventoCriado=${ev.ok} ${ev.erro ?? ev.eventoId ?? ''}`)
   }
 
   return Response.json({ ok: true, smsEnviado: smsOk, smsErro, eventoCriado, eventoErro })
