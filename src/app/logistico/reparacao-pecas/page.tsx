@@ -65,6 +65,11 @@ export default function ReparacaoPecasPage() {
       )
   }, [registos, pesquisa, fStatus])
 
+  // Mostra no máximo LIMITE linhas (o histórico tem ~1900 registos — render leve
+  // e mais rápido no telemóvel). A pesquisa/filtro afina os resultados.
+  const LIMITE = 200
+  const visiveis = filtrados.slice(0, LIMITE)
+
   return (
     <main style={c.page}>
       <div style={c.cabecalho}>
@@ -90,6 +95,9 @@ export default function ReparacaoPecasPage() {
 
       <div style={c.resumo}>
         <span>{filtrados.length} registo(s)</span>
+        {filtrados.length > LIMITE && (
+          <span style={{ fontSize: 13, color: 'var(--muted)' }}>a mostrar {LIMITE} — refina a pesquisa</span>
+        )}
       </div>
 
       {carregando ? (
@@ -103,7 +111,7 @@ export default function ReparacaoPecasPage() {
             <span>Estado</span>
             <span style={{ textAlign: 'right' }}>Entrada</span>
           </div>
-          {filtrados.map((r) => (
+          {visiveis.map((r) => (
             <div key={r.id} style={{ ...c.linha, ...c.clicavel }} onClick={() => setAberta(r)}>
               <span style={{ minWidth: 0 }}>
                 <span style={{ fontWeight: 600 }}>{r.peca || '—'}</span>

@@ -2,12 +2,22 @@ import { supabase } from './supabase'
 import type { ReparacaoPeca } from '@/types/reparacaoPeca'
 
 export async function listarReparacoes(): Promise<ReparacaoPeca[]> {
-  const { data } = await supabase
-    .from('reparacao_pecas')
-    .select('*')
-    .order('data_entrada', { ascending: false, nullsFirst: false })
-    .order('created_at', { ascending: false })
-  return (data as ReparacaoPeca[]) ?? []
+  // O Supabase devolve no máximo 1000 linhas por pedido; o histórico tem mais.
+  // Vamos buscando páginas de 1000 até esgotar.
+  const PAGINA = 1000
+  const todos: ReparacaoPeca[] = []
+  for (let inicio = 0; ; inicio += PAGINA) {
+    const { data } = await supabase
+      .from('reparacao_pecas')
+      .select('*')
+      .order('data_entrada', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false })
+      .range(inicio, inicio + PAGINA - 1)
+    const lote = (data as ReparacaoPeca[]) ?? []
+    todos.push(...lote)
+    if (lote.length < PAGINA) break
+  }
+  return todos
 }
 
 export async function criarReparacao(r: Partial<ReparacaoPeca>) {
