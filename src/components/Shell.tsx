@@ -48,6 +48,7 @@ const NAV: Seccao[] = [
         filhos: [
           { href: '/logistico', label: 'Stock', icon: '📦' },
           { href: '/logistico/pecas', label: 'Stock de peças', icon: '🔩' },
+          { href: '/logistico/reparacao-pecas', label: 'Stock Reparação de Peças', icon: '🛠️' },
           { href: '/logistico/envios-pecas', label: 'Envios de Encomendas', icon: '📬' },
           { href: '/logistico/preparacao', label: 'Em preparação', icon: '🧰' },
           { href: '/logistico/encaixotamento', label: 'Encaixotamento', icon: '📫' },
@@ -85,6 +86,7 @@ const TITULOS: { prefixo: string; titulo: string }[] = [
   { prefixo: '/tecnico/preparacao', titulo: 'Em Preparação Técnica' },
   { prefixo: '/tecnico/pecas-em-falta', titulo: 'Peças em Falta' },
   { prefixo: '/tecnico', titulo: 'Técnico' },
+  { prefixo: '/logistico/reparacao-pecas', titulo: 'Stock Reparação de Peças' },
   { prefixo: '/logistico/pecas', titulo: 'Stock de Peças' },
   { prefixo: '/logistico/envios-pecas', titulo: 'Envios de Encomendas' },
   { prefixo: '/logistico/preparacao', titulo: 'Em Preparação' },
