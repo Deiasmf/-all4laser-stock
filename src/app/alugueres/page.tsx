@@ -94,12 +94,7 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
   const [ano, setAno] = useState('')
 
   const [tipo, setTipo] = useState<string>('')
-  const [valor, setValor] = useState('')
-  const [metodo, setMetodo] = useState<string>('')
   const [dataEntrega, setDataEntrega] = useState(hoje())
-
-  // Tabela de preços: chave `${grupo}|${tipo}` -> valor
-  const [precos, setPrecos] = useState<Map<string, number>>(new Map())
 
   const [aGuardar, setAGuardar] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
@@ -111,16 +106,6 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
       .select('*')
       .order('nome')
       .then(({ data }) => setClientes((data as Cliente[]) ?? []))
-    supabase
-      .from('precos_aluguer')
-      .select('modelo_grupo, mercado, tipo_aluguer, valor')
-      .then(({ data }) => {
-        const m = new Map<string, number>()
-        for (const r of (data ?? []) as { modelo_grupo: string; mercado: string; tipo_aluguer: string; valor: number }[]) {
-          m.set(`${r.modelo_grupo}|${r.mercado}|${r.tipo_aluguer}`, Number(r.valor))
-        }
-        setPrecos(m)
-      })
   }, [])
 
   // Cliente existente correspondente ao texto escrito
@@ -130,30 +115,11 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
 
   // Mercado do aluguer = pelo país do cliente (Portugal = nacional)
   const nacionalAtual = clienteExistente ? clienteExistente.nacional : ehNacional(pais)
-  const mercado = nacionalAtual ? 'nacional' : 'internacional'
   const tiposDisponiveis: readonly string[] = nacionalAtual ? TIPOS_ALUGUER : TIPOS_INTERNACIONAL
 
   // Se mudar de mercado, o tipo escolhido pode deixar de existir → limpar
   // (ajuste de estado durante o render — ver https://react.dev/learn/you-might-not-need-an-effect)
   if (tipo && !tiposDisponiveis.includes(tipo)) setTipo('')
-
-  // Valor sugerido pela tabela (modelo + mercado + tipo)
-  const grupo = grupoPreco(modelo)
-  const sugestao = grupo && tipo ? precos.get(`${grupo}|${mercado}|${tipo}`) : undefined
-
-  // Preenche o valor com a sugestão quando ainda está vazio (só quando a sugestão muda)
-  const [sugestaoAplicada, setSugestaoAplicada] = useState(sugestao)
-  if (sugestao !== sugestaoAplicada) {
-    setSugestaoAplicada(sugestao)
-    if (sugestao !== undefined && valor.trim() === '') setValor(String(sugestao))
-  }
-
-  // Ao escolher o tipo, aplica a sugestão (pode ser ajustada depois)
-  function escolherTipo(novo: string) {
-    setTipo(novo)
-    const sug = grupo ? precos.get(`${grupo}|${mercado}|${novo}`) : undefined
-    if (sug !== undefined) setValor(String(sug))
-  }
 
   // Pesquisa de serial no stock (preenche marca/modelo/ano)
   useEffect(() => {
@@ -190,8 +156,6 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
     if (!cliente.trim()) return setErro('Indica o cliente.')
     if (!serial.trim()) return setErro('Indica o serial number.')
     if (!tipo) return setErro('Escolhe o tipo de aluguer.')
-    if (!valor.trim() || isNaN(Number(valor))) return setErro('Indica um valor válido.')
-    if (!metodo) return setErro('Escolhe o método de pagamento.')
 
     setAGuardar(true)
 
@@ -224,8 +188,8 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
       modelo: modelo.trim() || null,
       ano: ano.trim() || null,
       tipo_aluguer: tipo,
-      valor: Number(valor),
-      metodo_pagamento: metodo,
+      valor: null,
+      metodo_pagamento: null,
       nacional,
       data_entrega: dataEntrega || hoje(),
       data_recolha: null,
@@ -246,8 +210,6 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
     setModelo('')
     setAno('')
     setTipo('')
-    setValor('')
-    setMetodo('')
     setDataEntrega(hoje())
     // recarregar clientes (pode ter sido criado um novo)
     supabase.from('clientes').select('*').order('nome').then(({ data }) => setClientes((data as Cliente[]) ?? []))
@@ -323,37 +285,12 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
       <label style={s.label}>
         Tipo de aluguer {!nacionalAtual && <span style={s.nota}>(internacional — contrato)</span>}
       </label>
-      <select style={s.input} value={tipo} onChange={(e) => escolherTipo(e.target.value)}>
+      <select style={s.input} value={tipo} onChange={(e) => setTipo(e.target.value)}>
         <option value="">— escolher —</option>
         {tiposDisponiveis.map((t) => (
           <option key={t} value={t}>{t}</option>
         ))}
       </select>
-
-      <div style={s.linha2}>
-        <div>
-          <label style={s.label}>Valor (€)</label>
-          <input
-            style={s.input}
-            type="number"
-            inputMode="decimal"
-            value={valor}
-            onChange={(e) => setValor(e.target.value)}
-          />
-          {sugestao !== undefined && (
-            <div style={s.nota}>Preço de tabela: {sugestao}€ (podes ajustar)</div>
-          )}
-        </div>
-        <div>
-          <label style={s.label}>Método de pagamento</label>
-          <select style={s.input} value={metodo} onChange={(e) => setMetodo(e.target.value)}>
-            <option value="">— escolher —</option>
-            {METODOS_PAGAMENTO.map((m) => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
-        </div>
-      </div>
 
       <label style={s.label}>Data de entrega</label>
       <input style={s.input} type="date" value={dataEntrega} onChange={(e) => setDataEntrega(e.target.value)} />
@@ -370,6 +307,9 @@ function FormRecolha() {
   const [abertos, setAbertos] = useState<Aluguer[]>([])
   const [selecionado, setSelecionado] = useState<string | null>(null)
   const [dataRecolha, setDataRecolha] = useState(hoje())
+  const [valor, setValor] = useState('')
+  const [metodo, setMetodo] = useState<string>('')
+  const [precos, setPrecos] = useState<Map<string, number>>(new Map())
   const [aGuardar, setAGuardar] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [okMsg, setOkMsg] = useState<string | null>(null)
@@ -387,21 +327,58 @@ function FormRecolha() {
     // Carregamento inicial — setAbertos só corre após o await, dentro de carregar()
     // eslint-disable-next-line react-hooks/set-state-in-effect
     carregar()
+    supabase
+      .from('precos_aluguer')
+      .select('modelo_grupo, mercado, tipo_aluguer, valor')
+      .then(({ data }) => {
+        const m = new Map<string, number>()
+        for (const r of (data ?? []) as { modelo_grupo: string; mercado: string; tipo_aluguer: string; valor: number }[]) {
+          m.set(`${r.modelo_grupo}|${r.mercado}|${r.tipo_aluguer}`, Number(r.valor))
+        }
+        setPrecos(m)
+      })
   }, [])
+
+  // Valor sugerido pela tabela de preços para um aluguer (modelo + mercado + tipo)
+  function sugestaoPara(a: Aluguer): number | undefined {
+    const grupo = grupoPreco(a.modelo ?? '')
+    const mercado = a.nacional ? 'nacional' : 'internacional'
+    return grupo && a.tipo_aluguer ? precos.get(`${grupo}|${mercado}|${a.tipo_aluguer}`) : undefined
+  }
+
+  // Ao escolher o aluguer, pré-preenche o valor com a sugestão da tabela
+  function escolher(a: Aluguer) {
+    setSelecionado(a.id)
+    const sug = sugestaoPara(a)
+    setValor(sug !== undefined ? String(sug) : '')
+    setMetodo('')
+  }
+
+  const alugSelecionado = abertos.find((a) => a.id === selecionado)
+  const sugestao = alugSelecionado ? sugestaoPara(alugSelecionado) : undefined
 
   async function guardar() {
     if (!selecionado) return setErro('Escolhe o aluguer a fechar.')
+    if (!valor.trim() || isNaN(Number(valor))) return setErro('Indica um valor válido.')
+    if (!metodo) return setErro('Escolhe o método de pagamento.')
     setErro(null)
     setAGuardar(true)
     const { error } = await supabase
       .from('alugueres')
-      .update({ data_recolha: dataRecolha || hoje(), updated_at: new Date().toISOString() })
+      .update({
+        data_recolha: dataRecolha || hoje(),
+        valor: Number(valor),
+        metodo_pagamento: metodo,
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', selecionado)
     setAGuardar(false)
     if (error) return setErro('Erro a registar a recolha: ' + error.message)
     setOkMsg('Recolha registada.')
     setSelecionado(null)
     setDataRecolha(hoje())
+    setValor('')
+    setMetodo('')
     carregar()
   }
 
@@ -419,7 +396,7 @@ function FormRecolha() {
             <button
               key={a.id}
               style={{ ...s.itemAberto, ...(selecionado === a.id ? s.itemSelecionado : {}) }}
-              onClick={() => setSelecionado(a.id)}
+              onClick={() => escolher(a)}
             >
               <strong>{a.cliente_nome ?? '—'}</strong>
               <span style={s.itemDetalhe}>
@@ -434,6 +411,32 @@ function FormRecolha() {
         <>
           <label style={s.label}>Data de recolha</label>
           <input style={s.input} type="date" value={dataRecolha} onChange={(e) => setDataRecolha(e.target.value)} />
+
+          <div style={s.linha2}>
+            <div>
+              <label style={s.label}>Valor (€)</label>
+              <input
+                style={s.input}
+                type="number"
+                inputMode="decimal"
+                value={valor}
+                onChange={(e) => setValor(e.target.value)}
+              />
+              {sugestao !== undefined && (
+                <div style={s.nota}>Preço de tabela: {sugestao}€ (podes ajustar)</div>
+              )}
+            </div>
+            <div>
+              <label style={s.label}>Método de pagamento</label>
+              <select style={s.input} value={metodo} onChange={(e) => setMetodo(e.target.value)}>
+                <option value="">— escolher —</option>
+                {METODOS_PAGAMENTO.map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
           <button style={{ ...s.botao, opacity: aGuardar ? 0.6 : 1 }} disabled={aGuardar} onClick={guardar}>
             {aGuardar ? 'A guardar...' : 'Registar recolha'}
           </button>
