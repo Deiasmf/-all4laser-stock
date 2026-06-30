@@ -65,10 +65,47 @@ export default function ReparacaoPecasPage() {
       )
   }, [registos, pesquisa, fStatus])
 
-  // Mostra no máximo LIMITE linhas (o histórico tem ~1900 registos — render leve
-  // e mais rápido no telemóvel). A pesquisa/filtro afina os resultados.
+  // Ordena por fornecedor de serviço (para agrupar) e, dentro de cada um, pela
+  // data de entrada mais recente. Mostra no máximo LIMITE linhas (render leve no
+  // telemóvel); a pesquisa/filtro afinam os resultados.
   const LIMITE = 200
-  const visiveis = filtrados.slice(0, LIMITE)
+  const ordenados = useMemo(
+    () =>
+      [...filtrados].sort(
+        (a, b) =>
+          (a.fornecedor ?? 'zzz').localeCompare(b.fornecedor ?? 'zzz', 'pt') ||
+          (b.data_entrada ?? '').localeCompare(a.data_entrada ?? '') ||
+          (b.data_saida ?? '').localeCompare(a.data_saida ?? '')
+      ),
+    [filtrados]
+  )
+  const visiveis = ordenados.slice(0, LIMITE)
+
+  // Constrói as linhas agrupadas por fornecedor de serviço
+  function linhasAgrupadas() {
+    const linhas: React.ReactElement[] = []
+    let ultimoForn: string | null = null
+    for (const r of visiveis) {
+      const forn = r.fornecedor || 'Sem fornecedor'
+      if (forn !== ultimoForn) {
+        linhas.push(<div key={`f-${forn}`} style={c.grupoForn}>{forn}</div>)
+        ultimoForn = forn
+      }
+      linhas.push(
+        <div key={r.id} style={{ ...c.linha, ...c.clicavel }} onClick={() => setAberta(r)}>
+          <span style={{ minWidth: 0 }}>
+            <span style={{ fontWeight: 600 }}>{r.peca || '—'}</span>
+            {r.serial_number && <span style={c.serialTag}>S/N: {r.serial_number}</span>}
+            <span style={c.datas}>
+              Saída: {r.data_saida || '—'} · Entrada: {r.data_entrada || '—'}
+            </span>
+          </span>
+          <span><StatusBadge status={r.status} /></span>
+        </div>
+      )
+    }
+    return linhas
+  }
 
   return (
     <main style={c.page}>
@@ -106,22 +143,7 @@ export default function ReparacaoPecasPage() {
         <p style={c.estado}>Sem registos.</p>
       ) : (
         <div style={c.tabela}>
-          <div style={{ ...c.linha, ...c.cab }}>
-            <span>Peça / Fornecedor</span>
-            <span>Estado</span>
-            <span style={{ textAlign: 'right' }}>Entrada</span>
-          </div>
-          {visiveis.map((r) => (
-            <div key={r.id} style={{ ...c.linha, ...c.clicavel }} onClick={() => setAberta(r)}>
-              <span style={{ minWidth: 0 }}>
-                <span style={{ fontWeight: 600 }}>{r.peca || '—'}</span>
-                {r.serial_number && <span style={c.serialTag}>S/N: {r.serial_number}</span>}
-                <span style={c.fornecedor}>{r.fornecedor || '—'}</span>
-              </span>
-              <span><StatusBadge status={r.status} /></span>
-              <span style={{ textAlign: 'right', color: 'var(--muted)', fontSize: 13 }}>{r.data_entrada || '—'}</span>
-            </div>
-          ))}
+          {linhasAgrupadas()}
         </div>
       )}
 
@@ -230,11 +252,11 @@ function ModalReparacao({
 
         <div style={c.linha2}>
           <div>
-            <label style={c.label}>Data de saída</label>
+            <label style={c.label}>Data de saída (enviada ao fornecedor)</label>
             <input style={c.inputModal} type="date" value={dataSaida} onChange={(e) => setDataSaida(e.target.value)} disabled={soLeitura} />
           </div>
           <div>
-            <label style={c.label}>Data de entrada</label>
+            <label style={c.label}>Data de entrada (devolvida)</label>
             <input style={c.inputModal} type="date" value={dataEntrada} onChange={(e) => setDataEntrada(e.target.value)} disabled={soLeitura} />
           </div>
         </div>
@@ -291,11 +313,11 @@ const c: Record<string, React.CSSProperties> = {
   resumo: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--accent-bg, #eef1f6)', borderRadius: 10, padding: '10px 14px', marginBottom: 14, flexWrap: 'wrap', gap: 8 },
   estado: { color: 'var(--muted)', padding: 8 },
   tabela: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 8 },
-  linha: { display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 10, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center' },
+  linha: { display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center' },
   clicavel: { cursor: 'pointer' },
-  cab: { fontWeight: 700, color: 'var(--muted)', fontSize: 12, borderBottom: '2px solid var(--border)' },
+  grupoForn: { fontWeight: 800, fontSize: 14, color: 'var(--primary)', background: 'var(--accent-bg, #eef1f6)', borderRadius: 6, padding: 8, marginTop: 8 },
   serialTag: { marginLeft: 6, fontSize: 11, fontWeight: 500, color: 'var(--muted)' },
-  fornecedor: { display: 'block', fontSize: 12.5, color: 'var(--muted)', marginTop: 2 },
+  datas: { display: 'block', fontSize: 12.5, color: 'var(--muted)', marginTop: 2 },
   dica: { color: 'var(--muted)', fontSize: 13, marginTop: 10, textAlign: 'center' },
 
   overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 16, overflowY: 'auto', zIndex: 100 },
