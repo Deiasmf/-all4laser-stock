@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import QRCode from 'qrcode'
@@ -8,8 +8,10 @@ import { useAuth } from '@/lib/auth'
 import {
   obterReparacao, atualizarReparacao,
   listarItens, atualizarItem,
-  listarMovimentos, criarMovimento,
+  listarMovimentos, criarMovimento, descontarStockPeca,
 } from '@/lib/reparacaoPecas'
+import { pesquisarPecas } from '@/lib/pecas'
+import type { Peca } from '@/types/peca'
 import type { ReparacaoPeca, ReparacaoItem, ReparacaoMovimento } from '@/types/reparacaoPeca'
 import { estadoInfo, TIPOS_GARANTIA, RESPONSAVEIS_PAGAMENTO } from '@/types/reparacaoPeca'
 
@@ -36,10 +38,16 @@ export default function ReparacaoDetalhePage() {
   const [erro, setErro] = useState<string | null>(null)
 
   // painéis de ação
-  const [painel, setPainel] = useState<'entrada' | 'avariada' | null>(null)
+  const [painel, setPainel] = useState<'entrada' | 'avariada' | 'substituta' | null>(null)
   const [aData, setAData] = useState(hoje())
   const [aNotas, setANotas] = useState('')
   const [itemQtd, setItemQtd] = useState<Record<string, string>>({})
+
+  // envio de substituta
+  const [subBusca, setSubBusca] = useState('')
+  const [subPecaId, setSubPecaId] = useState<string | null>(null)
+  const [subSugestoes, setSubSugestoes] = useState<Peca[]>([])
+  const [subSn, setSubSn] = useState('')
 
   // pagamento
   const [valorFinal, setValorFinal] = useState('')
@@ -76,10 +84,19 @@ export default function ReparacaoDetalhePage() {
       setPainel(null)
       setAData(hoje())
       setANotas('')
+      setSubBusca(''); setSubPecaId(null); setSubSugestoes([]); setSubSn('')
       await recarregar()
     } catch (e) {
       setErro('Erro: ' + (e instanceof Error ? e.message : 'desconhecido'))
     }
+  }
+
+  const subBuscaRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  function procurarSubstituta(q: string) {
+    if (subBuscaRef.current) clearTimeout(subBuscaRef.current)
+    subBuscaRef.current = setTimeout(async () => {
+      setSubSugestoes(q.trim().length >= 2 ? await pesquisarPecas(q) : [])
+    }, 250)
   }
 
   async function registarEntrada() {
@@ -98,10 +115,14 @@ export default function ReparacaoDetalhePage() {
   }
 
   async function registarSubstituta() {
-    if (!confirm('Registar o envio de peça substituta em avanço?')) return
     await acao(async () => {
-      await atualizarReparacao(id, { substituta_enviada: true })
-      await criarMovimento({ reparacao_id: id, tipo: 'substituta_enviada', data: hoje(), sn: r?.substituta_sn ?? null, ...criador })
+      await atualizarReparacao(id, {
+        substituta_enviada: true,
+        substituta_peca_id: subPecaId,
+        substituta_sn: subSn.trim() || null,
+      })
+      await criarMovimento({ reparacao_id: id, tipo: 'substituta_enviada', data: hoje(), sn: subSn.trim() || null, ...criador })
+      if (subPecaId) await descontarStockPeca(subPecaId, 1) // sai do stock definitivamente
     })
   }
 
@@ -258,7 +279,32 @@ export default function ReparacaoDetalhePage() {
           )}
 
           {emReparacao && r.tipo_dono === 'cliente' && !r.substituta_enviada && (
-            <button style={c.btnGhost} onClick={registarSubstituta}>Registar envio de substituta</button>
+            painel === 'substituta' ? (
+              <div style={c.painel}>
+                <label style={c.label}>Peça substituta (do stock)</label>
+                <div style={{ position: 'relative' }}>
+                  <input style={c.input} placeholder="Procurar no stock" value={subBusca} onChange={(e) => { setSubBusca(e.target.value); setSubPecaId(null); procurarSubstituta(e.target.value) }} />
+                  {subPecaId === null && subSugestoes.length > 0 && (
+                    <div style={c.dropdown}>
+                      {subSugestoes.map((p) => (
+                        <button type="button" key={p.id} style={c.dropItem} onClick={() => { setSubBusca(p.nome); setSubPecaId(p.id); setSubSugestoes([]) }}>
+                          {p.nome}{p.serial_number ? ` · S/N ${p.serial_number}` : ''}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <label style={c.label}>SN da substituta (opcional)</label>
+                <input style={c.input} value={subSn} onChange={(e) => setSubSn(e.target.value)} />
+                <p style={c.avisoSub}>A peça substituta sai do stock definitivamente.</p>
+                <div style={c.painelBtns}>
+                  <button style={c.btnGhost} onClick={() => setPainel(null)}>Cancelar</button>
+                  <button style={c.btnPrimario} onClick={registarSubstituta}>Confirmar envio</button>
+                </div>
+              </div>
+            ) : (
+              <button style={c.btnGhost} onClick={() => setPainel('substituta')}>Registar envio de substituta</button>
+            )
           )}
 
           {aguardaAvariada && (
@@ -372,6 +418,9 @@ const c: Record<string, React.CSSProperties> = {
   inputMini: { width: 64, padding: 6, border: '1px solid #ccc', borderRadius: 6, fontSize: 14 },
   btnMini: { background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 10px', fontWeight: 600, cursor: 'pointer', fontSize: 13 },
   painel: { display: 'flex', flexDirection: 'column', gap: 4, background: '#fafafa', border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginTop: 8 },
+  dropdown: { position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 6px 16px rgba(0,0,0,0.12)', zIndex: 20, maxHeight: 200, overflowY: 'auto' },
+  dropItem: { display: 'block', width: '100%', textAlign: 'left', padding: '10px 12px', border: 'none', background: '#fff', cursor: 'pointer', fontSize: 14, borderBottom: '1px solid #f2f2f2' },
+  avisoSub: { fontSize: 13, color: '#9a5b00', background: '#fdf2e3', border: '1px solid #f0c884', borderRadius: 8, padding: '8px 10px', marginTop: 8 },
   painelBtns: { display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 10 },
   label: { fontWeight: 600, fontSize: 13, marginTop: 8, marginBottom: 4, display: 'block' },
   input: { width: '100%', padding: 10, border: '1px solid #ccc', borderRadius: 8, fontSize: 16, boxSizing: 'border-box' },

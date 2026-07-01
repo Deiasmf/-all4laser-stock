@@ -115,10 +115,53 @@ export default function ReparacaoPecasPage() {
       )
   }, [registos, pesquisa, fStatus, fDono, fFornecedor, fMes])
 
+  // Agrupa por fornecedor de serviço; dentro de cada um, mais recente primeiro.
+  const ordenados = useMemo(
+    () =>
+      [...filtrados].sort(
+        (a, b) =>
+          (a.fornecedor ?? 'zzz').localeCompare(b.fornecedor ?? 'zzz', 'pt') ||
+          (b.data_saida ?? '').localeCompare(a.data_saida ?? '')
+      ),
+    [filtrados]
+  )
   const LIMITE = 200
-  const visiveis = filtrados.slice(0, LIMITE)
+  const visiveis = ordenados.slice(0, LIMITE)
 
   const estadoLabel = (s: string) => estadoInfo(s)?.label ?? s
+
+  function linhasAgrupadas() {
+    const linhas: React.ReactElement[] = []
+    let ultimoForn: string | null = null
+    for (const r of visiveis) {
+      const forn = r.fornecedor || 'Sem fornecedor'
+      if (forn !== ultimoForn) {
+        linhas.push(<div key={`f-${forn}`} style={c.grupoForn}>{forn}</div>)
+        ultimoForn = forn
+      }
+      linhas.push(
+        <Link key={r.id} href={`/logistico/reparacao-pecas/${r.id}`} style={c.linha}>
+          <span style={{ minWidth: 0 }}>
+            <span style={c.numero}>{r.numero || '—'}</span>
+            <span style={{ fontWeight: 600 }}>{r.peca || '—'}</span>
+            {(r.sn_avariado || r.serial_number) && (
+              <span style={c.serialTag}>S/N: {r.sn_avariado || r.serial_number}</span>
+            )}
+            <span style={c.meta}>
+              {r.tipo_dono === 'cliente' ? `Cliente: ${r.cliente_nome || '—'}` : 'Nossa'}
+              {r.garantia ? ` · ${r.garantia}` : ''}
+              {r.pago ? ` · ${r.pago}` : ''}
+            </span>
+          </span>
+          <span style={c.dir}>
+            <EstadoBadge r={r} />
+            <span style={c.dataSaida}>{r.data_saida || '—'}</span>
+          </span>
+        </Link>
+      )
+    }
+    return linhas
+  }
 
   return (
     <main style={c.page}>
@@ -169,29 +212,7 @@ export default function ReparacaoPecasPage() {
         <p style={c.estado}>Sem registos.</p>
       ) : (
         <div style={c.tabela}>
-          {visiveis.map((r) => (
-            <Link key={r.id} href={`/logistico/reparacao-pecas/${r.id}`} style={c.linha}>
-              <span style={{ minWidth: 0 }}>
-                <span style={c.numero}>{r.numero || '—'}</span>
-                <span style={{ fontWeight: 600 }}>{r.peca || '—'}</span>
-                {(r.sn_avariado || r.serial_number) && (
-                  <span style={c.serialTag}>S/N: {r.sn_avariado || r.serial_number}</span>
-                )}
-                <span style={c.meta}>
-                  {r.tipo_dono === 'cliente'
-                    ? `Cliente: ${r.cliente_nome || '—'}`
-                    : 'Nossa'}
-                  {r.fornecedor ? ` · ${r.fornecedor}` : ''}
-                  {r.garantia ? ` · ${r.garantia}` : ''}
-                  {r.pago ? ` · ${r.pago}` : ''}
-                </span>
-              </span>
-              <span style={c.dir}>
-                <EstadoBadge r={r} />
-                <span style={c.dataSaida}>{r.data_saida || '—'}</span>
-              </span>
-            </Link>
-          ))}
+          {linhasAgrupadas()}
         </div>
       )}
 
@@ -211,6 +232,7 @@ const c: Record<string, React.CSSProperties> = {
   resumo: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--accent-bg, #eef1f6)', borderRadius: 10, padding: '10px 14px', marginBottom: 14, flexWrap: 'wrap', gap: 8 },
   estado: { color: 'var(--muted)', padding: 8 },
   tabela: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 8 },
+  grupoForn: { fontWeight: 800, fontSize: 14, color: 'var(--primary)', background: 'var(--accent-bg, #eef1f6)', borderRadius: 6, padding: 8, marginTop: 8 },
   linha: { display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center', textDecoration: 'none', color: 'inherit', cursor: 'pointer' },
   numero: { display: 'inline-block', marginRight: 8, fontWeight: 700, fontSize: 12.5, color: 'var(--primary)' },
   serialTag: { marginLeft: 6, fontSize: 11, fontWeight: 500, color: 'var(--muted)' },
