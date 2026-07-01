@@ -46,6 +46,7 @@ export default function ReparacaoPecasPage() {
   const [fFornecedor, setFFornecedor] = useState('')
   const [fMes, setFMes] = useState('')
   const [filtrosCarregados, setFiltrosCarregados] = useState(false)
+  const [recolhidos, setRecolhidos] = useState<Record<string, boolean>>({})
 
   async function carregar() {
     const lista = await listarReparacoes()
@@ -130,15 +131,41 @@ export default function ReparacaoPecasPage() {
 
   const estadoLabel = (s: string) => estadoInfo(s)?.label ?? s
 
+  // Nº de registos visíveis por fornecedor (para mostrar no cabeçalho)
+  const contagemPorForn = useMemo(() => {
+    const m: Record<string, number> = {}
+    for (const r of visiveis) {
+      const forn = r.fornecedor || 'Sem fornecedor'
+      m[forn] = (m[forn] ?? 0) + 1
+    }
+    return m
+  }, [visiveis])
+
   function linhasAgrupadas() {
     const linhas: React.ReactElement[] = []
     let ultimoForn: string | null = null
+    let recolhidoAtual = false
     for (const r of visiveis) {
       const forn = r.fornecedor || 'Sem fornecedor'
       if (forn !== ultimoForn) {
-        linhas.push(<div key={`f-${forn}`} style={c.grupoForn}>{forn}</div>)
+        recolhidoAtual = !!recolhidos[forn]
+        const recolhido = recolhidoAtual
+        linhas.push(
+          <button
+            key={`f-${forn}`}
+            type="button"
+            style={c.grupoForn}
+            onClick={() => setRecolhidos((mp) => ({ ...mp, [forn]: !mp[forn] }))}
+            aria-expanded={!recolhido}
+          >
+            <span style={{ ...c.chevron, transform: recolhido ? 'rotate(0deg)' : 'rotate(90deg)' }}>▸</span>
+            <span>{forn}</span>
+            <span style={c.grupoContagem}>{contagemPorForn[forn]}</span>
+          </button>
+        )
         ultimoForn = forn
       }
+      if (recolhidoAtual) continue
       linhas.push(
         <Link key={r.id} href={`/logistico/reparacao-pecas/${r.id}`} style={c.linha}>
           <span style={{ minWidth: 0 }}>
@@ -232,7 +259,9 @@ const c: Record<string, React.CSSProperties> = {
   resumo: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--accent-bg, #eef1f6)', borderRadius: 10, padding: '10px 14px', marginBottom: 14, flexWrap: 'wrap', gap: 8 },
   estado: { color: 'var(--muted)', padding: 8 },
   tabela: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 8 },
-  grupoForn: { fontWeight: 800, fontSize: 14, color: 'var(--primary)', background: 'var(--accent-bg, #eef1f6)', borderRadius: 6, padding: 8, marginTop: 8 },
+  grupoForn: { display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', fontWeight: 800, fontSize: 14, color: 'var(--primary)', background: 'var(--accent-bg, #eef1f6)', border: 'none', borderRadius: 6, padding: 8, marginTop: 8, cursor: 'pointer' },
+  chevron: { display: 'inline-block', fontSize: 12, transition: 'transform 0.15s', color: 'var(--muted)' },
+  grupoContagem: { marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: 'var(--muted)', background: '#fff', borderRadius: 999, padding: '1px 8px' },
   linha: { display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center', textDecoration: 'none', color: 'inherit', cursor: 'pointer' },
   numero: { display: 'inline-block', marginRight: 8, fontWeight: 700, fontSize: 12.5, color: 'var(--primary)' },
   serialTag: { marginLeft: 6, fontSize: 11, fontWeight: 500, color: 'var(--muted)' },
