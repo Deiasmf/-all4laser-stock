@@ -3,24 +3,35 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
-import { listarReparacoes, criarReparacao, atualizarReparacao, eliminarReparacao } from '@/lib/reparacaoPecas'
+import { listarReparacoes } from '@/lib/reparacaoPecas'
 import type { ReparacaoPeca } from '@/types/reparacaoPeca'
-import { STATUS_REPARACAO, PAGO_REPARACAO } from '@/types/reparacaoPeca'
+import { estadoInfo } from '@/types/reparacaoPeca'
 
-// Cor do badge conforme o estado da reparação
-function corStatus(status: string | null): string {
-  const s = (status ?? '').toLowerCase()
-  if (s.includes('em reparação') || s.includes('aguarda')) return '#D4820A'
-  if (s.includes('fechado')) return '#16A34A'
-  if (s.includes('não') || s.includes('devolu')) return '#DC2626'
-  return '#6B7280'
+const CHAVE_FILTROS = 'reparacao_pecas_filtros'
+
+// Estado efetivo para o badge: "aguarda avariada" quando enviámos substituta
+// e o cliente ainda não devolveu a peça avariada.
+function estadoEfetivo(r: ReparacaoPeca): string | null {
+  if (
+    r.status === 'em_reparacao' &&
+    r.tipo_dono === 'cliente' &&
+    r.substituta_enviada &&
+    !r.cliente_enviou_avariada
+  ) {
+    return 'aguarda_avariada'
+  }
+  return r.status
 }
 
-function StatusBadge({ status }: { status: string | null }) {
-  if (!status) return null
+function EstadoBadge({ r }: { r: ReparacaoPeca }) {
+  const est = estadoEfetivo(r)
+  if (!est) return null
+  const info = estadoInfo(est)
+  const cor = info?.cor ?? '#6B7280'
+  const texto = info?.label ?? est
   return (
-    <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '1px 8px', color: '#fff', background: corStatus(status) }}>
-      {status}
+    <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '2px 8px', color: '#fff', background: cor, whiteSpace: 'nowrap' }}>
+      {texto}
     </span>
   )
 }
@@ -31,8 +42,10 @@ export default function ReparacaoPecasPage() {
   const [carregando, setCarregando] = useState(true)
   const [pesquisa, setPesquisa] = useState('')
   const [fStatus, setFStatus] = useState('')
-  const [aberta, setAberta] = useState<ReparacaoPeca | null>(null)
-  const [criar, setCriar] = useState(false)
+  const [fDono, setFDono] = useState('')
+  const [fFornecedor, setFFornecedor] = useState('')
+  const [fMes, setFMes] = useState('')
+  const [filtrosCarregados, setFiltrosCarregados] = useState(false)
 
   async function carregar() {
     const lista = await listarReparacoes()
@@ -44,11 +57,44 @@ export default function ReparacaoPecasPage() {
     // setState só corre após o await, dentro de carregar()
     // eslint-disable-next-line react-hooks/set-state-in-effect
     carregar()
+    // Repõe filtros guardados
+    try {
+      const raw = sessionStorage.getItem(CHAVE_FILTROS)
+      if (raw) {
+        const f = JSON.parse(raw)
+        setPesquisa(f.pesquisa ?? '')
+        setFStatus(f.fStatus ?? '')
+        setFDono(f.fDono ?? '')
+        setFFornecedor(f.fFornecedor ?? '')
+        setFMes(f.fMes ?? '')
+      }
+    } catch { /* filtros inválidos — ignora */ }
+    setFiltrosCarregados(true)
   }, [])
 
-  // Estados existentes nos dados (para o filtro)
-  const estados = useMemo(
+  // Persiste filtros
+  useEffect(() => {
+    if (!filtrosCarregados) return
+    sessionStorage.setItem(
+      CHAVE_FILTROS,
+      JSON.stringify({ pesquisa, fStatus, fDono, fFornecedor, fMes })
+    )
+  }, [filtrosCarregados, pesquisa, fStatus, fDono, fFornecedor, fMes])
+
+  // Opções de filtro derivadas dos dados
+  const estadosOpc = useMemo(
     () => Array.from(new Set(registos.map((r) => r.status).filter(Boolean))).sort() as string[],
+    [registos]
+  )
+  const fornecedoresOpc = useMemo(
+    () => Array.from(new Set(registos.map((r) => r.fornecedor).filter(Boolean))).sort() as string[],
+    [registos]
+  )
+  const mesesOpc = useMemo(
+    () =>
+      Array.from(new Set(registos.map((r) => (r.data_saida ? r.data_saida.slice(0, 7) : null)).filter(Boolean)))
+        .sort()
+        .reverse() as string[],
     [registos]
   )
 
@@ -56,77 +102,57 @@ export default function ReparacaoPecasPage() {
     const q = pesquisa.trim().toLowerCase()
     return registos
       .filter((r) => !fStatus || r.status === fStatus)
+      .filter((r) => !fDono || r.tipo_dono === fDono)
+      .filter((r) => !fFornecedor || r.fornecedor === fFornecedor)
+      .filter((r) => !fMes || (r.data_saida ?? '').slice(0, 7) === fMes)
       .filter((r) =>
         !q ||
+        (r.numero ?? '').toLowerCase().includes(q) ||
         (r.peca ?? '').toLowerCase().includes(q) ||
-        (r.fornecedor ?? '').toLowerCase().includes(q) ||
         (r.serial_number ?? '').toLowerCase().includes(q) ||
-        (r.observacoes ?? '').toLowerCase().includes(q)
+        (r.sn_avariado ?? '').toLowerCase().includes(q) ||
+        (r.cliente_nome ?? '').toLowerCase().includes(q)
       )
-  }, [registos, pesquisa, fStatus])
+  }, [registos, pesquisa, fStatus, fDono, fFornecedor, fMes])
 
-  // Ordena por fornecedor de serviço (para agrupar) e, dentro de cada um, pela
-  // data de entrada mais recente. Mostra no máximo LIMITE linhas (render leve no
-  // telemóvel); a pesquisa/filtro afinam os resultados.
   const LIMITE = 200
-  const ordenados = useMemo(
-    () =>
-      [...filtrados].sort(
-        (a, b) =>
-          (a.fornecedor ?? 'zzz').localeCompare(b.fornecedor ?? 'zzz', 'pt') ||
-          (b.data_entrada ?? '').localeCompare(a.data_entrada ?? '') ||
-          (b.data_saida ?? '').localeCompare(a.data_saida ?? '')
-      ),
-    [filtrados]
-  )
-  const visiveis = ordenados.slice(0, LIMITE)
+  const visiveis = filtrados.slice(0, LIMITE)
 
-  // Constrói as linhas agrupadas por fornecedor de serviço
-  function linhasAgrupadas() {
-    const linhas: React.ReactElement[] = []
-    let ultimoForn: string | null = null
-    for (const r of visiveis) {
-      const forn = r.fornecedor || 'Sem fornecedor'
-      if (forn !== ultimoForn) {
-        linhas.push(<div key={`f-${forn}`} style={c.grupoForn}>{forn}</div>)
-        ultimoForn = forn
-      }
-      linhas.push(
-        <div key={r.id} style={{ ...c.linha, ...c.clicavel }} onClick={() => setAberta(r)}>
-          <span style={{ minWidth: 0 }}>
-            <span style={{ fontWeight: 600 }}>{r.peca || '—'}</span>
-            {r.serial_number && <span style={c.serialTag}>S/N: {r.serial_number}</span>}
-            <span style={c.datas}>
-              Saída: {r.data_saida || '—'} · Entrada: {r.data_entrada || '—'}
-            </span>
-          </span>
-          <span><StatusBadge status={r.status} /></span>
-        </div>
-      )
-    }
-    return linhas
-  }
+  const estadoLabel = (s: string) => estadoInfo(s)?.label ?? s
 
   return (
     <main style={c.page}>
       <div style={c.cabecalho}>
-        <h1 style={c.titulo}>Stock Reparação de Peças</h1>
+        <h1 style={c.titulo}>Peças em Reparação</h1>
         <Link href="/logistico" style={c.voltar}>← Logística</Link>
       </div>
 
       <div style={c.filtros}>
         <input
-          placeholder="Procurar por peça, fornecedor, serial..."
+          placeholder="Procurar por nº, peça, SN, cliente..."
           value={pesquisa}
           onChange={(e) => setPesquisa(e.target.value)}
           style={c.input}
         />
         <select value={fStatus} onChange={(e) => setFStatus(e.target.value)} style={c.select}>
           <option value="">Todos os estados</option>
-          {estados.map((s) => <option key={s} value={s}>{s}</option>)}
+          {estadosOpc.map((s) => <option key={s} value={s}>{estadoLabel(s)}</option>)}
+        </select>
+        <select value={fDono} onChange={(e) => setFDono(e.target.value)} style={c.select}>
+          <option value="">Nossa / Cliente</option>
+          <option value="nossa">Nossa</option>
+          <option value="cliente">Cliente</option>
+        </select>
+        <select value={fFornecedor} onChange={(e) => setFFornecedor(e.target.value)} style={c.select}>
+          <option value="">Todos os fornecedores</option>
+          {fornecedoresOpc.map((f) => <option key={f} value={f}>{f}</option>)}
+        </select>
+        <select value={fMes} onChange={(e) => setFMes(e.target.value)} style={c.select}>
+          <option value="">Todos os meses</option>
+          {mesesOpc.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
         {isAdmin && (
-          <button style={c.btnPrimario} onClick={() => setCriar(true)}>+ Novo registo</button>
+          <Link href="/logistico/reparacao-pecas/nova" style={c.btnPrimario}>+ Nova Reparação</Link>
         )}
       </div>
 
@@ -143,195 +169,54 @@ export default function ReparacaoPecasPage() {
         <p style={c.estado}>Sem registos.</p>
       ) : (
         <div style={c.tabela}>
-          {linhasAgrupadas()}
+          {visiveis.map((r) => (
+            <Link key={r.id} href={`/logistico/reparacao-pecas/${r.id}`} style={c.linha}>
+              <span style={{ minWidth: 0 }}>
+                <span style={c.numero}>{r.numero || '—'}</span>
+                <span style={{ fontWeight: 600 }}>{r.peca || '—'}</span>
+                {(r.sn_avariado || r.serial_number) && (
+                  <span style={c.serialTag}>S/N: {r.sn_avariado || r.serial_number}</span>
+                )}
+                <span style={c.meta}>
+                  {r.tipo_dono === 'cliente'
+                    ? `Cliente: ${r.cliente_nome || '—'}`
+                    : 'Nossa'}
+                  {r.fornecedor ? ` · ${r.fornecedor}` : ''}
+                  {r.garantia ? ` · ${r.garantia}` : ''}
+                  {r.pago ? ` · ${r.pago}` : ''}
+                </span>
+              </span>
+              <span style={c.dir}>
+                <EstadoBadge r={r} />
+                <span style={c.dataSaida}>{r.data_saida || '—'}</span>
+              </span>
+            </Link>
+          ))}
         </div>
       )}
 
-      <p style={c.dica}>Toca num registo para ver os detalhes{isAdmin ? ' e editar' : ''}.</p>
-
-      {(aberta || criar) && (
-        <ModalReparacao
-          registo={aberta}
-          isAdmin={isAdmin}
-          onFechar={() => { setAberta(null); setCriar(false) }}
-          onGuardado={() => { setAberta(null); setCriar(false); carregar() }}
-        />
-      )}
+      <p style={c.dica}>Toca num registo para ver os detalhes e gerir o processo.</p>
     </main>
   )
 }
 
-function ModalReparacao({
-  registo, isAdmin, onFechar, onGuardado,
-}: {
-  registo: ReparacaoPeca | null
-  isAdmin: boolean
-  onFechar: () => void
-  onGuardado: () => void
-}) {
-  const [fornecedor, setFornecedor] = useState(registo?.fornecedor ?? '')
-  const [peca, setPeca] = useState(registo?.peca ?? '')
-  const [serialNumber, setSerialNumber] = useState(registo?.serial_number ?? '')
-  const [avaria, setAvaria] = useState(registo?.avaria ?? '')
-  const [garantia, setGarantia] = useState(registo?.garantia ?? '')
-  const [dataSaida, setDataSaida] = useState(registo?.data_saida ?? '')
-  const [dataEntrada, setDataEntrada] = useState(registo?.data_entrada ?? '')
-  const [status, setStatus] = useState(registo?.status ?? '')
-  const [pago, setPago] = useState(registo?.pago ?? '')
-  const [observacoes, setObservacoes] = useState(registo?.observacoes ?? '')
-  const [aGuardar, setAGuardar] = useState(false)
-  const [aApagar, setAApagar] = useState(false)
-  const [erro, setErro] = useState<string | null>(null)
-
-  const soLeitura = !isAdmin
-
-  async function guardar() {
-    setErro(null)
-    if (!peca.trim() && !fornecedor.trim()) { setErro('Indica pelo menos a peça ou o fornecedor.'); return }
-    setAGuardar(true)
-    const payload = {
-      fornecedor: fornecedor.trim() || null,
-      peca: peca.trim() || null,
-      serial_number: serialNumber.trim() || null,
-      avaria: avaria.trim() || null,
-      garantia: garantia.trim() || null,
-      data_saida: dataSaida || null,
-      data_entrada: dataEntrada || null,
-      status: status.trim() || null,
-      pago: pago.trim() || null,
-      observacoes: observacoes.trim() || null,
-    }
-    const { error } = registo ? await atualizarReparacao(registo.id, payload) : await criarReparacao(payload)
-    setAGuardar(false)
-    if (error) { setErro('Erro a guardar: ' + error.message); return }
-    onGuardado()
-  }
-
-  async function apagar() {
-    if (!registo) return
-    if (!confirm('Apagar este registo de reparação? Esta ação não pode ser anulada.')) return
-    setAApagar(true)
-    const { error } = await eliminarReparacao(registo.id)
-    setAApagar(false)
-    if (error) { setErro('Erro a apagar: ' + error.message); return }
-    onGuardado()
-  }
-
-  const titulo = !registo ? 'Novo registo' : soLeitura ? 'Reparação' : 'Editar reparação'
-
-  // Garante que o estado/pago do registo aparece na lista mesmo que não esteja nas constantes
-  const estadosOpcoes = Array.from(new Set([...STATUS_REPARACAO, ...(status ? [status] : [])]))
-  const pagoOpcoes = Array.from(new Set([...PAGO_REPARACAO, ...(pago ? [pago] : [])]))
-
-  return (
-    <div style={c.overlay} onClick={onFechar}>
-      <div style={c.modal} onClick={(e) => e.stopPropagation()}>
-        <div style={c.modalCab}>
-          <h2 style={c.modalTitulo}>{titulo}</h2>
-          <button onClick={onFechar} style={c.fechar} aria-label="Fechar">✕</button>
-        </div>
-
-        {erro && <div style={c.erro}>{erro}</div>}
-
-        <label style={c.label}>Peça</label>
-        <input style={c.inputModal} value={peca} onChange={(e) => setPeca(e.target.value)} placeholder="Ex: Fonte MGL" disabled={soLeitura} />
-
-        <div style={c.linha2}>
-          <div>
-            <label style={c.label}>Fornecedor de serviço</label>
-            <input style={c.inputModal} value={fornecedor} onChange={(e) => setFornecedor(e.target.value)} disabled={soLeitura} />
-          </div>
-          <div>
-            <label style={c.label}>Serial Number</label>
-            <input style={c.inputModal} value={serialNumber} onChange={(e) => setSerialNumber(e.target.value)} disabled={soLeitura} />
-          </div>
-        </div>
-
-        <label style={c.label}>Descrição da avaria</label>
-        <input style={c.inputModal} value={avaria} onChange={(e) => setAvaria(e.target.value)} disabled={soLeitura} />
-
-        <div style={c.linha2}>
-          <div>
-            <label style={c.label}>Data de saída (enviada ao fornecedor)</label>
-            <input style={c.inputModal} type="date" value={dataSaida} onChange={(e) => setDataSaida(e.target.value)} disabled={soLeitura} />
-          </div>
-          <div>
-            <label style={c.label}>Data de entrada (devolvida)</label>
-            <input style={c.inputModal} type="date" value={dataEntrada} onChange={(e) => setDataEntrada(e.target.value)} disabled={soLeitura} />
-          </div>
-        </div>
-
-        <div style={c.linha2}>
-          <div>
-            <label style={c.label}>Estado</label>
-            <select style={c.inputModal} value={status} onChange={(e) => setStatus(e.target.value)} disabled={soLeitura}>
-              <option value="">—</option>
-              {estadosOpcoes.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={c.label}>Pago</label>
-            <select style={c.inputModal} value={pago} onChange={(e) => setPago(e.target.value)} disabled={soLeitura}>
-              <option value="">—</option>
-              {pagoOpcoes.map((p) => <option key={p} value={p}>{p}</option>)}
-            </select>
-          </div>
-        </div>
-
-        <label style={c.label}>Garantia</label>
-        <input style={c.inputModal} value={garantia} onChange={(e) => setGarantia(e.target.value)} placeholder="Ex: S/ Garantia" disabled={soLeitura} />
-
-        <label style={c.label}>Observações</label>
-        <textarea style={c.textarea} value={observacoes} onChange={(e) => setObservacoes(e.target.value)} disabled={soLeitura} />
-
-        <div style={c.modalAcoes}>
-          {registo && isAdmin && (
-            <button onClick={apagar} disabled={aApagar} style={c.btnDanger}>
-              {aApagar ? 'A apagar...' : 'Apagar'}
-            </button>
-          )}
-          <button onClick={onFechar} style={c.btnGhost}>{soLeitura ? 'Fechar' : 'Cancelar'}</button>
-          {isAdmin && (
-            <button onClick={guardar} disabled={aGuardar} style={c.btnPrimario}>
-              {aGuardar ? 'A guardar...' : 'Guardar'}
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 const c: Record<string, React.CSSProperties> = {
-  page: { maxWidth: 900, margin: '0 auto', padding: 20 },
+  page: { maxWidth: 960, margin: '0 auto', padding: 20 },
   cabecalho: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   titulo: { fontSize: 22, fontWeight: 700, color: 'var(--primary)' },
   voltar: { color: 'var(--muted)', textDecoration: 'none' },
-  filtros: { display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' },
-  input: { flex: 1, minWidth: 160, padding: 10, border: '1px solid #ccc', borderRadius: 8, fontSize: 15 },
+  filtros: { display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' },
+  input: { flex: 1, minWidth: 180, padding: 10, border: '1px solid #ccc', borderRadius: 8, fontSize: 15 },
   select: { padding: 10, border: '1px solid #ccc', borderRadius: 8, fontSize: 15 },
   resumo: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--accent-bg, #eef1f6)', borderRadius: 10, padding: '10px 14px', marginBottom: 14, flexWrap: 'wrap', gap: 8 },
   estado: { color: 'var(--muted)', padding: 8 },
   tabela: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 8 },
-  linha: { display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center' },
-  clicavel: { cursor: 'pointer' },
-  grupoForn: { fontWeight: 800, fontSize: 14, color: 'var(--primary)', background: 'var(--accent-bg, #eef1f6)', borderRadius: 6, padding: 8, marginTop: 8 },
+  linha: { display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center', textDecoration: 'none', color: 'inherit', cursor: 'pointer' },
+  numero: { display: 'inline-block', marginRight: 8, fontWeight: 700, fontSize: 12.5, color: 'var(--primary)' },
   serialTag: { marginLeft: 6, fontSize: 11, fontWeight: 500, color: 'var(--muted)' },
-  datas: { display: 'block', fontSize: 12.5, color: 'var(--muted)', marginTop: 2 },
+  meta: { display: 'block', fontSize: 12.5, color: 'var(--muted)', marginTop: 2 },
+  dir: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 },
+  dataSaida: { fontSize: 12.5, color: 'var(--muted)' },
   dica: { color: 'var(--muted)', fontSize: 13, marginTop: 10, textAlign: 'center' },
-
-  overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 16, overflowY: 'auto', zIndex: 100 },
-  modal: { background: '#fff', borderRadius: 14, padding: 20, width: '100%', maxWidth: 520, margin: 'auto', display: 'flex', flexDirection: 'column', gap: 2 },
-  modalCab: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  modalTitulo: { fontSize: 18, fontWeight: 700, color: 'var(--primary)' },
-  fechar: { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: 'var(--muted)', padding: 4 },
-  label: { fontWeight: 600, fontSize: 14, marginTop: 12, marginBottom: 4, display: 'block' },
-  inputModal: { width: '100%', padding: 10, border: '1px solid #ccc', borderRadius: 8, fontSize: 16, boxSizing: 'border-box' },
-  textarea: { width: '100%', minHeight: 60, padding: 10, border: '1px solid #ccc', borderRadius: 8, fontSize: 16, boxSizing: 'border-box', resize: 'vertical' },
-  linha2: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 },
-  erro: { background: '#ffebee', border: '1px solid #ef9a9a', borderRadius: 8, padding: 12, marginTop: 8, color: '#c62828' },
-  modalAcoes: { display: 'flex', gap: 8, marginTop: 22, alignItems: 'center', flexWrap: 'wrap' },
-  btnPrimario: { background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 18px', fontWeight: 700, cursor: 'pointer' },
-  btnGhost: { background: '#fff', color: 'var(--foreground)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 16px', fontWeight: 600, cursor: 'pointer' },
-  btnDanger: { background: '#fff', color: 'var(--danger, #c62828)', border: '1px solid var(--danger, #c62828)', borderRadius: 8, padding: '10px 16px', fontWeight: 700, cursor: 'pointer' },
+  btnPrimario: { background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 16px', fontWeight: 700, cursor: 'pointer', textDecoration: 'none', whiteSpace: 'nowrap' },
 }
