@@ -186,8 +186,8 @@ export default function ReparacaoDetalhePage() {
     <main style={c.page}>
       <div style={c.cabecalho}>
         <div>
-          <h1 style={c.titulo}>{r.numero || 'Reparação'}</h1>
-          <div style={c.sub}>{r.peca || '—'}</div>
+          {r.numero && <div style={c.numeroTopo}>{r.numero}</div>}
+          <h1 style={c.titulo}>{r.peca || 'Reparação'}</h1>
         </div>
         <Link href="/logistico/reparacao-pecas" style={c.voltar}>← Voltar</Link>
       </div>
@@ -400,6 +400,7 @@ const c: Record<string, React.CSSProperties> = {
   page: { maxWidth: 640, margin: '0 auto', padding: 20 },
   cabecalho: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12, gap: 12 },
   titulo: { fontSize: 22, fontWeight: 700, color: 'var(--primary)' },
+  numeroTopo: { fontSize: 13, fontWeight: 800, letterSpacing: 0.5, color: 'var(--primary)', marginBottom: 2 },
   sub: { color: 'var(--muted)', fontSize: 14, marginTop: 2 },
   voltar: { color: 'var(--muted)', textDecoration: 'none', whiteSpace: 'nowrap' },
   badgeRow: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 },
