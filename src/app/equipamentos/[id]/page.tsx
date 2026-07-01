@@ -12,6 +12,7 @@ import MediaGaleria from '@/components/MediaGaleria'
 import QrEquipamento from '@/components/QrEquipamento'
 import EquipamentoPecasFalta from '@/components/EquipamentoPecasFalta'
 import StatusEquipamento from '@/components/StatusEquipamento'
+import BotaoPdf from '@/components/BotaoPdf'
 import styles from './detalhe.module.css'
 
 function formatarData(d: string | null) {
@@ -138,16 +139,65 @@ export default function DetalheEquipamento() {
 
       <div className={styles.header}>
         <span className={styles.titulo}>{eq.modelo ?? 'Sem modelo'}</span>
-        {isAdmin && (
-          <div className={styles.headerBotoes}>
-            <Link href={`/equipamentos/${eq.id}/edit?saida=1`} className={styles.btnSaida}>
-              Registar saída
-            </Link>
-            <Link href={`/equipamentos/${eq.id}/edit`} className={styles.btnEditar}>
-              Editar
-            </Link>
-          </div>
-        )}
+        <div className={styles.headerBotoes}>
+          <BotaoPdf
+            ficheiro={`Equipamento-${eq.serial_number || eq.modelo || ''}`}
+            documento={() => ({
+              titulo: 'Ficha de Equipamento',
+              subtitulo: `${eq.modelo ?? ''} · ${eq.serial_number ?? ''}`,
+              seccoes: [
+                {
+                  titulo: 'Equipamento',
+                  linhas: [
+                    { rotulo: 'Modelo', valor: eq.modelo },
+                    { rotulo: 'Marca', valor: eq.marca },
+                    { rotulo: 'Serial Number', valor: eq.serial_number },
+                    { rotulo: 'Ano', valor: eq.ano },
+                    { rotulo: 'Estado', valor: eq.status },
+                    { rotulo: 'Original/Upgraded', valor: eq.original_upgraded },
+                  ],
+                },
+                {
+                  titulo: 'Origem / Destino',
+                  linhas: [
+                    { rotulo: 'Origem', valor: eq.origem },
+                    { rotulo: 'Destino', valor: eq.destino },
+                    { rotulo: 'Data entrada', valor: formatarData(eq.data_entrada) },
+                    { rotulo: 'Data saída', valor: formatarData(eq.data_saida) },
+                  ],
+                },
+                ...(isAdmin
+                  ? [{
+                      titulo: 'Comercial',
+                      linhas: [
+                        { rotulo: 'Valor de compra', valor: formatarEuro(eq.valor_compra) },
+                        { rotulo: 'Preço de venda', valor: formatarEuro(eq.preco_venda) },
+                        { rotulo: 'Rentabilização', valor: eq.rentabilizacao },
+                      ],
+                    }]
+                  : []),
+                {
+                  titulo: 'Outros',
+                  linhas: [
+                    { rotulo: 'Acessórios', valor: eq.acessorios },
+                    { rotulo: 'AWB/DAU', valor: eq.awb_dau },
+                    { rotulo: 'Observações', valor: eq.observacoes },
+                  ],
+                },
+              ],
+            })}
+          />
+          {isAdmin && (
+            <>
+              <Link href={`/equipamentos/${eq.id}/edit?saida=1`} className={styles.btnSaida}>
+                Registar saída
+              </Link>
+              <Link href={`/equipamentos/${eq.id}/edit`} className={styles.btnEditar}>
+                Editar
+              </Link>
+            </>
+          )}
+        </div>
       </div>
       <div className={styles.subtitulo}>
         Serial: {eq.serial_number ?? '—'}

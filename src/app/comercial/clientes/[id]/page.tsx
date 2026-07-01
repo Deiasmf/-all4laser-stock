@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 import ClienteForm from '@/components/ClienteForm'
+import BotaoPdf from '@/components/BotaoPdf'
 import { obterCliente, atualizarCliente, eliminarCliente, historicoCliente } from '@/lib/clientes'
 import type { Cliente, ClienteInput, HistoricoItem } from '@/types/cliente'
 
@@ -107,6 +108,48 @@ export default function FichaClientePage() {
           <Link href="/comercial/clientes" style={s.voltar}>← Clientes</Link>
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <BotaoPdf
+            ficheiro={`Cliente-${cliente.nome}`}
+            documento={() => ({
+              titulo: 'Ficha de Cliente',
+              subtitulo: cliente.nome,
+              seccoes: [
+                {
+                  titulo: 'Cliente',
+                  linhas: [
+                    { rotulo: 'Nome', valor: cliente.nome },
+                    { rotulo: 'Tipo', valor: cliente.tipo },
+                    { rotulo: 'Mercado', valor: cliente.nacional ? 'Nacional' : 'Internacional' },
+                  ],
+                },
+                {
+                  titulo: 'Contacto',
+                  linhas: [
+                    { rotulo: 'Contacto', valor: cliente.contacto_nome },
+                    { rotulo: 'Email', valor: cliente.email },
+                    { rotulo: 'Telefone', valor: cliente.telefone },
+                  ],
+                },
+                {
+                  titulo: 'Morada',
+                  linhas: [
+                    { rotulo: 'Morada', valor: cliente.morada },
+                    { rotulo: 'Cidade', valor: cliente.cidade },
+                    { rotulo: 'Código postal', valor: cliente.codigo_postal },
+                    { rotulo: 'País', valor: cliente.pais },
+                  ],
+                },
+                {
+                  titulo: 'Fiscal',
+                  linhas: [{ rotulo: 'NIF', valor: cliente.nif }],
+                },
+                {
+                  titulo: 'Observações',
+                  linhas: [{ rotulo: 'Observações', valor: cliente.observacoes }],
+                },
+              ],
+            })}
+          />
           <button onClick={() => setEditar(true)} style={s.btnSecundario}>Editar</button>
           {isAdmin && <button onClick={eliminar} style={s.btnEliminar}>Eliminar</button>}
         </div>

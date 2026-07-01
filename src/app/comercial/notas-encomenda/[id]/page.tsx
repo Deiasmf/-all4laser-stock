@@ -9,6 +9,7 @@ import {
   alterarEstadoNota, eliminarNota,
 } from '@/lib/notasEncomenda'
 import NotaEncomendaForm from '@/components/NotaEncomendaForm'
+import BotaoPdf from '@/components/BotaoPdf'
 import {
   ESTADO_NOTA_CONFIG,
   type NotaEncomenda, type NotaMaterial, type NotaInput, type MaterialEscolhido,
@@ -137,7 +138,54 @@ export default function DetalheNotaPage() {
           <Link href="/comercial/notas-encomenda" style={s.voltar}>← Notas de Encomenda</Link>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <button onClick={() => window.print()} style={s.btnPdf}>📄 Exportar PDF</button>
+          <button onClick={() => window.print()} style={s.btnPdf}>🖨 Imprimir</button>
+          <BotaoPdf
+            ficheiro={nota.numero ?? 'nota-encomenda'}
+            documento={() => ({
+              titulo: 'Nota de Encomenda',
+              subtitulo: nota.numero ?? undefined,
+              seccoes: [
+                {
+                  titulo: 'Pedido',
+                  linhas: [
+                    { rotulo: 'Data', valor: formatarData(nota.data_pedido) },
+                    { rotulo: 'Estado', valor: cfg.label },
+                    { rotulo: 'Criado por', valor: nota.criado_por_nome },
+                  ],
+                },
+                {
+                  titulo: 'Cliente',
+                  linhas: [
+                    { rotulo: 'Nome', valor: nota.cliente_nome },
+                    { rotulo: 'País destino', valor: nota.pais_destino },
+                  ],
+                },
+                {
+                  titulo: 'Equipamento',
+                  linhas: [
+                    { rotulo: 'Modelo', valor: nota.equipamento_modelo },
+                    { rotulo: 'SN', valor: nota.equipamento_sn },
+                    { rotulo: 'Ano', valor: nota.equipamento_ano },
+                  ],
+                },
+                {
+                  titulo: 'Detalhes',
+                  linhas: [
+                    { rotulo: 'Detalhes técnicos', valor: nota.detalhes_tecnicos },
+                    { rotulo: 'Capas', valor: nota.capas },
+                    { rotulo: 'Observações', valor: nota.observacoes },
+                  ],
+                },
+              ],
+              tabelas: materiais.length
+                ? [{
+                    titulo: 'Materiais',
+                    colunas: ['Categoria', 'Item'],
+                    linhas: materiais.map((m) => [m.categoria, m.item]),
+                  }]
+                : [],
+            })}
+          />
           {nota.estado !== 'expedida' && nota.estado !== 'cancelada' && (
             <button onClick={marcarExpedida} style={s.btnSecundario}>Marcar como Expedida</button>
           )}

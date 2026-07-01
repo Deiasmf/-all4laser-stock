@@ -12,8 +12,15 @@ import {
   estadoInfo, transportadoraLabel, formatarEuro, TRANSPORTADORA_LINK, TRANSPORTADORAS, KEYINVOICE_URL,
   type EnvioPeca, type EnvioItem,
 } from '@/types/envioPecas'
+import BotaoPdf from '@/components/BotaoPdf'
 
 const hoje = () => new Date().toISOString().slice(0, 10)
+
+function formatarData(d: string | null) {
+  if (!d) return ''
+  const dt = new Date(d)
+  return isNaN(dt.getTime()) ? d : dt.toLocaleDateString('pt-PT')
+}
 
 export default function DetalheEnvioPage() {
   const params = useParams<{ id: string }>()
@@ -145,7 +152,72 @@ export default function DetalheEnvioPage() {
           <h1 style={c.titulo}>{envio.numero ?? 'Envio'}</h1>
           <span style={{ fontSize: 12, fontWeight: 700, borderRadius: 999, padding: '2px 10px', color: i.cor, background: i.bg }}>{i.label}</span>
         </div>
-        <Link href="/logistico/envios-pecas" style={c.voltar}>← Envios</Link>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <BotaoPdf
+            ficheiro={envio.numero ?? 'envio'}
+            documento={() => ({
+              titulo: 'Envio de Encomenda',
+              subtitulo: envio.numero ?? undefined,
+              seccoes: [
+                {
+                  titulo: 'Envio',
+                  linhas: [
+                    { rotulo: 'Estado', valor: i.label },
+                    { rotulo: 'Expedido em', valor: formatarData(envio.expedido_em ?? envio.created_at) },
+                  ],
+                },
+                {
+                  titulo: 'Cliente',
+                  linhas: [
+                    { rotulo: 'Nome', valor: envio.cliente_nome },
+                    { rotulo: 'Email', valor: envio.cliente_email },
+                    { rotulo: 'Morada', valor: envio.morada_envio },
+                  ],
+                },
+                {
+                  titulo: 'Logística',
+                  linhas: [
+                    { rotulo: 'Responsável', valor: envio.responsavel_nome },
+                    { rotulo: 'Transportadora', valor: transportadoraLabel(envio) },
+                    { rotulo: 'Peso (kg)', valor: envio.peso_kg },
+                    {
+                      rotulo: 'Dimensões',
+                      valor: dims.length === 3
+                        ? `${envio.comprimento_cm}x${envio.largura_cm}x${envio.altura_cm} cm`
+                        : null,
+                    },
+                  ],
+                },
+                {
+                  titulo: 'Pagamento',
+                  linhas: [
+                    { rotulo: 'Valor a faturar', valor: formatarEuro(envio.valor_a_faturar) },
+                    { rotulo: 'Pago', valor: envio.pago },
+                    { rotulo: 'Data pagamento', valor: formatarData(envio.data_pagamento) },
+                  ],
+                },
+                {
+                  titulo: 'Notas',
+                  linhas: [{ rotulo: 'Notas', valor: envio.notas }],
+                },
+              ],
+              tabelas: itens.length
+                ? [{
+                    titulo: 'Itens',
+                    colunas: ['Peça', 'Qtd', 'Preço unit.', 'Total'],
+                    larguras: [3, 1, 1, 1],
+                    linhas: itens.map((it) => [
+                      it.peca_nome,
+                      it.quantidade,
+                      formatarEuro(it.preco_unitario),
+                      formatarEuro(it.preco_total),
+                    ]),
+                  }]
+                : [],
+            })}
+          />
+          <Link href="/logistico/envios-pecas" style={c.voltar}>← Envios</Link>
+        </div>
       </div>
 
       {msg && <div style={c.aviso}>{msg}</div>}
