@@ -3,10 +3,20 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { listarFornecedores, criarFornecedor, atualizarFornecedor } from '@/lib/compras'
+import BotaoExportar from '@/components/BotaoExportar'
+import type { ColunaExport } from '@/lib/exportar'
 import type { Fornecedor } from '@/types/compras'
 
 type Form = { nome: string; contacto: string; email: string; notas: string }
 const vazio: Form = { nome: '', contacto: '', email: '', notas: '' }
+
+const colunasExport: ColunaExport<Fornecedor>[] = [
+  { cabecalho: 'Nome', valor: (f) => f.nome },
+  { cabecalho: 'Contacto', valor: (f) => f.contacto },
+  { cabecalho: 'Email', valor: (f) => f.email },
+  { cabecalho: 'Notas', valor: (f) => f.notas },
+  { cabecalho: 'Ativo', valor: (f) => (f.ativo ? 'Sim' : 'Não') },
+]
 
 export default function FornecedoresPage() {
   const [lista, setLista] = useState<Fornecedor[]>([])
@@ -49,7 +59,10 @@ export default function FornecedoresPage() {
           <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--a4l-text-dark)' }}>Fornecedores</h1>
           <Link href="/compras" style={{ color: 'var(--a4l-text-light)', textDecoration: 'none', fontSize: 14 }}>← Pedidos de Compra</Link>
         </div>
-        <button className="a4l-btn" onClick={abrirNovo}>+ Novo Fornecedor</button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <BotaoExportar nome="fornecedores" colunas={colunasExport} linhas={lista} />
+          <button className="a4l-btn" onClick={abrirNovo}>+ Novo Fornecedor</button>
+        </div>
       </div>
 
       {carregando ? (

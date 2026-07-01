@@ -8,6 +8,8 @@ import { listarModelos, verificarDisponibilidade } from '@/lib/disponibilidade'
 import {
   listarReservas, criarReserva, atualizarEstadoReserva, eliminarReserva, listarClientesNomes,
 } from '@/lib/reservas'
+import BotaoExportar from '@/components/BotaoExportar'
+import type { ColunaExport } from '@/lib/exportar'
 import {
   ESTADO_RESERVA_CONFIG, MODALIDADE_CONFIG, MODALIDADE_OPCOES,
   type Reserva, type ModeloAluguer, type Modalidade, type EstadoReserva,
@@ -18,6 +20,16 @@ function fdata(d: string | null) {
   const dt = new Date(d)
   return isNaN(dt.getTime()) ? d : dt.toLocaleDateString('pt-PT')
 }
+
+const colunasExport: ColunaExport<Reserva>[] = [
+  { cabecalho: 'Modelo', valor: (r) => r.modelo_nome },
+  { cabecalho: 'Zimmer', valor: (r) => (r.com_zimmer ? 'Sim' : 'Não') },
+  { cabecalho: 'Cliente', valor: (r) => r.cliente_nome },
+  { cabecalho: 'Estado', valor: (r) => ESTADO_RESERVA_CONFIG[r.estado].label },
+  { cabecalho: 'Modalidade', valor: (r) => (r.modalidade ? MODALIDADE_CONFIG[r.modalidade].label : '') },
+  { cabecalho: 'De', valor: (r) => fdata(r.data_inicio) },
+  { cabecalho: 'Até', valor: (r) => fdata(r.data_fim) },
+]
 
 function EstadoTag({ estado }: { estado: EstadoReserva }) {
   const cfg = ESTADO_RESERVA_CONFIG[estado]
@@ -80,6 +92,7 @@ export default function ReservasPage() {
         <button onClick={() => setMostrarForm((v) => !v)} style={c.btnPrimario}>
           {mostrarForm ? 'Fechar' : '+ Nova reserva'}
         </button>
+        <BotaoExportar nome="reservas" colunas={colunasExport} linhas={filtradas} />
       </div>
 
       {mostrarForm && (

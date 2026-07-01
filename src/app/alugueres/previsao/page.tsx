@@ -5,12 +5,24 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import AlugueresNav from '@/components/AlugueresNav'
 import { formatarEuro, nomeMes } from '@/lib/alugueres'
+import BotaoExportar from '@/components/BotaoExportar'
+import type { ColunaExport } from '@/lib/exportar'
 
 type Marcacao = { cliente: string; calendario: string; modelo: string; zona: string; inicio: string; dias: number; tipo: string; valor: number; mes: string }
 type Dados = {
   ok: boolean; erro?: string; total: number; nMarcacoes: number
   marcacoes: Marcacao[]; porMes: { mes: string; valor: number }[]; porZona: { zona: string; valor: number }[]; erros: string[]
 }
+
+const colunasExport: ColunaExport<Marcacao>[] = [
+  { cabecalho: 'Cliente', valor: (m) => m.cliente },
+  { cabecalho: 'Equipamento', valor: (m) => m.modelo },
+  { cabecalho: 'Zona', valor: (m) => m.zona },
+  { cabecalho: 'Início', valor: (m) => m.inicio },
+  { cabecalho: 'Dias', valor: (m) => m.dias },
+  { cabecalho: 'Tipo', valor: (m) => m.tipo },
+  { cabecalho: 'Valor', valor: (m) => formatarEuro(m.valor) },
+]
 
 export default function PrevisaoPage() {
   const [dados, setDados] = useState<Dados | null>(null)
@@ -93,7 +105,10 @@ export default function PrevisaoPage() {
             ))}
           </div>
 
-          <h2 style={c.subt}>Marcações {zona && `· ${zona}`} ({marcacoesFiltradas.length})</h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <h2 style={c.subt}>Marcações {zona && `· ${zona}`} ({marcacoesFiltradas.length})</h2>
+            <BotaoExportar nome="previsao" colunas={colunasExport} linhas={marcacoesFiltradas} />
+          </div>
           <div style={c.tabela}>
             <div style={{ ...c.linha, ...c.cab }}>
               <span>Cliente</span>

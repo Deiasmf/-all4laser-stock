@@ -5,7 +5,19 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import AlugueresNav from '@/components/AlugueresNav'
 import { formatarEuro, somar } from '@/lib/alugueres'
+import BotaoExportar from '@/components/BotaoExportar'
+import type { ColunaExport } from '@/lib/exportar'
 import type { FaturacaoEquip } from '@/types/aluguer'
+
+const colunasExport: ColunaExport<FaturacaoEquip>[] = [
+  { cabecalho: 'Serial', valor: (l) => l.serial_number },
+  { cabecalho: 'Modelo', valor: (l) => l.modelo },
+  { cabecalho: 'Localização', valor: (l) => l.localizacao },
+  { cabecalho: 'Nacional', valor: (l) => (l.nacional ? 'Sim' : 'Não') },
+  { cabecalho: 'Estado', valor: (l) => l.estado },
+  { cabecalho: 'Mensal', valor: (l) => (l.valor_mensal != null ? formatarEuro(l.valor_mensal) : '') },
+  { cabecalho: 'Acumulado', valor: (l) => (l.total_acumulado != null ? formatarEuro(l.total_acumulado) : '') },
+]
 
 export default function FaturacaoPorEquipamento() {
   const [linhas, setLinhas] = useState<FaturacaoEquip[]>([])
@@ -65,6 +77,7 @@ export default function FaturacaoPorEquipamento() {
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
+        <BotaoExportar nome="alugueres-por-equipamento" colunas={colunasExport} linhas={filtradas} />
       </div>
 
       <div style={c.resumo}>

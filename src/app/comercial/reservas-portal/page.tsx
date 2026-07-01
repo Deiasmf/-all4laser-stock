@@ -6,8 +6,21 @@ import {
   listarTodasReservas, estadoInfo, modalidadeLabel, formatarData,
   MODELOS_RESERVA, type ReservaPortal,
 } from '@/lib/reservasPortal'
+import BotaoExportar from '@/components/BotaoExportar'
+import type { ColunaExport } from '@/lib/exportar'
 
 const ESTADOS = ['pendente', 'confirmada', 'rejeitada', 'cancelada']
+
+const colunasExport: ColunaExport<ReservaPortal>[] = [
+  { cabecalho: 'Número', valor: (r) => r.numero },
+  { cabecalho: 'Data pedido', valor: (r) => (r.created_at ?? '').slice(0, 10) },
+  { cabecalho: 'Cliente', valor: (r) => r.cliente_nome },
+  { cabecalho: 'Modelo', valor: (r) => r.modelo_equipamento },
+  { cabecalho: 'Modalidade', valor: (r) => modalidadeLabel(r.modalidade ?? '') },
+  { cabecalho: 'Data início', valor: (r) => formatarData(r.data_inicio_pretendida) },
+  { cabecalho: 'Data fim', valor: (r) => formatarData(r.data_fim_pretendida) },
+  { cabecalho: 'Estado', valor: (r) => estadoInfo(r.estado).label },
+]
 
 function EstadoBadge({ estado }: { estado: string }) {
   const i = estadoInfo(estado)
@@ -60,6 +73,7 @@ export default function ReservasPortalPage() {
         {temFiltros && (
           <button style={c.btnGhost} onClick={() => { setEstado(''); setModelo(''); setMes('') }}>Limpar</button>
         )}
+        <BotaoExportar nome="reservas-portal" colunas={colunasExport} linhas={filtrados} />
       </div>
 
       <div style={c.resumo}><span>{filtrados.length} pedido(s)</span></div>
