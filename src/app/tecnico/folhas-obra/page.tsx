@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { listarFolhas } from '@/lib/folhasObra'
+import BotaoExportar from '@/components/BotaoExportar'
+import type { ColunaExport } from '@/lib/exportar'
 import {
   ESTADO_FOLHA_CONFIG, ESTADO_FOLHA_OPCOES,
   type FolhaObra, type EstadoFolha,
@@ -14,6 +16,17 @@ function formatarData(d: string | null) {
   const dt = new Date(d)
   return isNaN(dt.getTime()) ? d : dt.toLocaleDateString('pt-PT')
 }
+
+const colunasExport: ColunaExport<FolhaObra>[] = [
+  { cabecalho: 'Número', valor: (f) => f.numero },
+  { cabecalho: 'Estado', valor: (f) => ESTADO_FOLHA_CONFIG[f.estado].label },
+  { cabecalho: 'Data intervenção', valor: (f) => formatarData(f.data_intervencao) },
+  { cabecalho: 'Cliente', valor: (f) => f.cliente_nome },
+  { cabecalho: 'Equipamento', valor: (f) => f.equipamento_modelo },
+  { cabecalho: 'Serial', valor: (f) => f.equipamento_sn },
+  { cabecalho: 'Tipo de serviço', valor: (f) => f.tipo_servico },
+  { cabecalho: 'Técnico', valor: (f) => f.tecnico_nome },
+]
 
 function EstadoTag({ estado }: { estado: EstadoFolha }) {
   const cfg = ESTADO_FOLHA_CONFIG[estado]
@@ -110,6 +123,7 @@ export default function FolhasObraPage() {
         {(fEstado || fTecnico || pesquisa) && (
           <button onClick={() => { setFEstado(''); setFTecnico(''); setPesquisa('') }} style={c.limpar}>Limpar</button>
         )}
+        <BotaoExportar nome="folhas-obra" colunas={colunasExport} linhas={filtradas} />
         <span style={{ marginLeft: 'auto', color: 'var(--muted)', fontSize: 14, alignSelf: 'center' }}>
           {filtradas.length} de {folhas.length}
         </span>

@@ -6,6 +6,8 @@ import AlugueresNav from '@/components/AlugueresNav'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
 import { atualizarLead, eliminarLead } from '@/lib/leads'
+import BotaoExportar from '@/components/BotaoExportar'
+import type { ColunaExport } from '@/lib/exportar'
 import {
   CANAL_CONFIG, ESTADO_CONFIG, CANAL_OPCOES, ESTADO_OPCOES,
   type Lead, type EstadoLead,
@@ -16,6 +18,19 @@ function formatarData(d: string | null) {
   const dt = new Date(d)
   return isNaN(dt.getTime()) ? d : dt.toLocaleDateString('pt-PT')
 }
+
+const colunasExport: ColunaExport<Lead>[] = [
+  { cabecalho: 'Nome', valor: (l) => l.nome },
+  { cabecalho: 'Estado', valor: (l) => ESTADO_CONFIG[l.estado].label },
+  { cabecalho: 'Canal', valor: (l) => CANAL_CONFIG[l.canal].label },
+  { cabecalho: 'Interesse', valor: (l) => l.modelo_interesse },
+  { cabecalho: 'Data início', valor: (l) => formatarData(l.data_inicio) },
+  { cabecalho: 'Data fim', valor: (l) => formatarData(l.data_fim) },
+  { cabecalho: 'Cidade', valor: (l) => l.cidade },
+  { cabecalho: 'Email', valor: (l) => l.email },
+  { cabecalho: 'Telefone', valor: (l) => l.telefone },
+  { cabecalho: 'Recebida', valor: (l) => formatarData(l.created_at) },
+]
 
 function CanalTag({ canal }: { canal: Lead['canal'] }) {
   const cfg = CANAL_CONFIG[canal]
@@ -100,6 +115,7 @@ export default function LeadsPage() {
         {(fCanal || fEstado) && (
           <button onClick={() => { setFCanal(''); setFEstado('') }} style={c.limpar}>Limpar</button>
         )}
+        <BotaoExportar nome="leads" colunas={colunasExport} linhas={filtradas} />
         <span style={{ marginLeft: 'auto', color: 'var(--muted)', fontSize: 14, alignSelf: 'center' }}>
           {filtradas.length} de {leads.length}
         </span>

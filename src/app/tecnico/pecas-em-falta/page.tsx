@@ -10,12 +10,23 @@ import {
 } from '@/lib/pecasFalta'
 import { criarPedido, type ItemInput } from '@/lib/compras'
 import PecaAutocomplete from '@/components/PecaAutocomplete'
+import BotaoExportar from '@/components/BotaoExportar'
+import type { ColunaExport } from '@/lib/exportar'
 import { ESTADO_FALTA_CONFIG, type PecaFalta } from '@/types/compras'
 
 function FaltaTag({ p }: { p: PecaFalta }) {
   const c = ESTADO_FALTA_CONFIG[p.estado]
   return <span style={{ fontSize: 11, fontWeight: 700, color: c.color, background: c.bg, borderRadius: 999, padding: '2px 8px', whiteSpace: 'nowrap' }}>{c.label}</span>
 }
+
+const colunasExport: ColunaExport<PecaFalta>[] = [
+  { cabecalho: 'Equipamento (SN)', valor: (p) => p.equipamento_sn },
+  { cabecalho: 'Modelo', valor: (p) => p.equipamento_modelo },
+  { cabecalho: 'Peça', valor: (p) => p.peca_nome },
+  { cabecalho: 'Quantidade', valor: (p) => p.quantidade_necessaria },
+  { cabecalho: 'Estado', valor: (p) => ESTADO_FALTA_CONFIG[p.estado].label },
+  { cabecalho: 'Notas', valor: (p) => p.notas },
+]
 
 export default function PecasEmFaltaPage() {
   const router = useRouter()
@@ -83,6 +94,7 @@ export default function PecasEmFaltaPage() {
   }
 
   const totalFalta = grupos.reduce((a, g) => a + g.pecas.filter((p) => p.estado === 'em_falta').length, 0)
+  const linhasExport = grupos.flatMap((g) => g.pecas)
 
   return (
     <div style={{ maxWidth: 960, margin: '0 auto' }}>
@@ -91,9 +103,12 @@ export default function PecasEmFaltaPage() {
           <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--a4l-text-dark)' }}>Peças em Falta por Equipamento</h1>
           <Link href="/tecnico" style={{ color: 'var(--a4l-text-light)', textDecoration: 'none', fontSize: 14 }}>← Técnico</Link>
         </div>
-        <button className="a4l-btn" disabled={sel.size === 0 || aCriar} onClick={criarPedidoDaSelecao} style={{ opacity: sel.size === 0 ? 0.5 : 1 }}>
-          {aCriar ? 'A criar...' : `Criar Pedido de Compra (${sel.size})`}
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <BotaoExportar nome="pecas-em-falta" colunas={colunasExport} linhas={linhasExport} />
+          <button className="a4l-btn" disabled={sel.size === 0 || aCriar} onClick={criarPedidoDaSelecao} style={{ opacity: sel.size === 0 ? 0.5 : 1 }}>
+            {aCriar ? 'A criar...' : `Criar Pedido de Compra (${sel.size})`}
+          </button>
+        </div>
       </div>
 
       <p style={{ color: 'var(--a4l-text-light)', fontSize: 13, marginBottom: 12 }}>{totalFalta} peça(s) em falta · {grupos.length} equipamento(s)</p>
