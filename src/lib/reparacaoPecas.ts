@@ -137,3 +137,8 @@ export async function criarFornecedorReparacao(nome: string): Promise<Fornecedor
     .single()
   return (data as FornecedorReparacao) ?? null
 }
+
+// Desconta o stock de uma peça (usado quando se envia uma peça substituta)
+export function descontarStockPeca(pecaId: string, qtd = 1) {
+  return supabase.rpc('descontar_stock_peca', { p_peca_id: pecaId, p_qtd: qtd })
+}

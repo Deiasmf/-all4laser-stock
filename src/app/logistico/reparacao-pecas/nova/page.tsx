@@ -8,7 +8,7 @@ import { pesquisarPecas } from '@/lib/pecas'
 import { listarClientesCompleto } from '@/lib/clientes'
 import {
   criarReparacao, criarItens, criarMovimento,
-  listarFornecedoresReparacao, criarFornecedorReparacao,
+  listarFornecedoresReparacao, criarFornecedorReparacao, descontarStockPeca,
 } from '@/lib/reparacaoPecas'
 import type { Peca } from '@/types/peca'
 import type { Cliente } from '@/types/cliente'
@@ -180,13 +180,14 @@ export default function NovaReparacaoPage() {
       notas: notas.trim() || null,
       criado_por: perfil?.id ?? null, criado_por_nome: perfil?.nome ?? perfil?.email ?? null,
     })
-    // Movimento de substituta enviada
+    // Movimento de substituta enviada + desconto do stock (sai definitivamente)
     if (tipoDono === 'cliente' && substitutaEnviada) {
       await criarMovimento({
         reparacao_id: id, tipo: 'substituta_enviada', data: dataSaida || hoje(),
         sn: substitutaSn.trim() || null,
         criado_por: perfil?.id ?? null, criado_por_nome: perfil?.nome ?? perfil?.email ?? null,
       })
+      if (substitutaPecaId) await descontarStockPeca(substitutaPecaId, 1)
     }
 
     router.push(`/logistico/reparacao-pecas/${id}`)
