@@ -6,6 +6,8 @@ import { useAuth } from '@/lib/auth'
 import { listarReparacoes } from '@/lib/reparacaoPecas'
 import type { ReparacaoPeca } from '@/types/reparacaoPeca'
 import { estadoInfo } from '@/types/reparacaoPeca'
+import BotaoExportar from '@/components/BotaoExportar'
+import type { ColunaExport } from '@/lib/exportar'
 
 const CHAVE_FILTROS = 'reparacao_pecas_filtros'
 
@@ -22,6 +24,27 @@ function estadoEfetivo(r: ReparacaoPeca): string | null {
   }
   return r.status
 }
+
+// Preço formatado em euros (para exportação)
+function euroRep(v: number | null) {
+  if (v == null) return ''
+  return v.toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' })
+}
+
+// Colunas para exportação (espelham a lista de reparações)
+const colunasExport: ColunaExport<ReparacaoPeca>[] = [
+  { cabecalho: 'Número', valor: (r) => r.numero },
+  { cabecalho: 'Peça', valor: (r) => r.peca },
+  { cabecalho: 'SN', valor: (r) => r.sn_avariado || r.serial_number },
+  { cabecalho: 'Dono', valor: (r) => (r.tipo_dono === 'cliente' ? `Cliente: ${r.cliente_nome || '—'}` : 'Nossa') },
+  { cabecalho: 'Fornecedor', valor: (r) => r.fornecedor },
+  { cabecalho: 'Garantia', valor: (r) => r.garantia },
+  { cabecalho: 'Estado', valor: (r) => { const e = estadoEfetivo(r); return estadoInfo(e)?.label ?? e ?? '' } },
+  { cabecalho: 'Pago', valor: (r) => r.pago },
+  { cabecalho: 'Data saída', valor: (r) => r.data_saida },
+  { cabecalho: 'Data entrada', valor: (r) => r.data_entrada },
+  { cabecalho: 'Valor', valor: (r) => euroRep(r.valor_reparacao) },
+]
 
 function EstadoBadge({ r }: { r: ReparacaoPeca }) {
   const est = estadoEfetivo(r)
@@ -221,6 +244,7 @@ export default function ReparacaoPecasPage() {
           <option value="">Todos os meses</option>
           {mesesOpc.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
+        <BotaoExportar nome="reparacao-pecas" colunas={colunasExport} linhas={filtrados} />
         {isAdmin && (
           <Link href="/logistico/reparacao-pecas/nova" style={c.btnPrimario}>+ Nova Reparação</Link>
         )}

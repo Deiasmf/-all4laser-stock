@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { listarPedidos, type PedidoComContagem } from '@/lib/compras'
 import { ESTADO_PEDIDO_CONFIG, ESTADO_PEDIDO_OPCOES, type EstadoPedido } from '@/types/compras'
+import BotaoExportar from '@/components/BotaoExportar'
+import type { ColunaExport } from '@/lib/exportar'
 
 const STORAGE_KEY = 'compras-filtros'
 
@@ -18,6 +20,16 @@ function formatarData(d: string | null) {
   const dt = new Date(d)
   return isNaN(dt.getTime()) ? d : dt.toLocaleDateString('pt-PT')
 }
+
+// Colunas para exportação (espelham a tabela de pedidos de compra)
+const colunasExport: ColunaExport<PedidoComContagem>[] = [
+  { cabecalho: 'Número', valor: (p) => p.numero },
+  { cabecalho: 'Data', valor: (p) => formatarData(p.created_at) },
+  { cabecalho: 'Estado', valor: (p) => ESTADO_PEDIDO_CONFIG[p.estado].label },
+  { cabecalho: 'Urgente', valor: (p) => (p.urgente ? 'Sim' : 'Não') },
+  { cabecalho: 'Itens', valor: (p) => p.n_itens },
+  { cabecalho: 'Criado por', valor: (p) => p.criado_por_nome },
+]
 
 function EstadoTag({ estado }: { estado: EstadoPedido }) {
   const c = ESTADO_PEDIDO_CONFIG[estado]
@@ -70,6 +82,7 @@ export default function ComprasPage() {
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: 'var(--a4l-text-mid)' }}>
           <input type="checkbox" checked={fUrgente} onChange={(e) => setFUrgente(e.target.checked)} /> Só urgentes
         </label>
+        <BotaoExportar nome="compras" colunas={colunasExport} linhas={filtrados} />
       </div>
 
       {carregando ? (

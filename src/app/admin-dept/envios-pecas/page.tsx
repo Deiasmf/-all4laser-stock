@@ -4,6 +4,18 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { listarEnvios, marcarPago } from '@/lib/enviosPecas'
 import { estadoInfo, formatarEuro, type EnvioPeca } from '@/types/envioPecas'
+import BotaoExportar from '@/components/BotaoExportar'
+import type { ColunaExport } from '@/lib/exportar'
+
+// Colunas para exportação (espelham a tabela administrativa de envios)
+const colunasExport: ColunaExport<EnvioPeca>[] = [
+  { cabecalho: 'Número', valor: (e) => e.numero },
+  { cabecalho: 'Cliente', valor: (e) => e.cliente_nome },
+  { cabecalho: 'Responsável', valor: (e) => e.responsavel_nome },
+  { cabecalho: 'Estado', valor: (e) => estadoInfo(e.estado).label },
+  { cabecalho: 'Valor', valor: (e) => formatarEuro(e.valor_a_faturar) },
+  { cabecalho: 'Pago', valor: (e) => (e.pago ? 'Sim' : 'Não') },
+]
 
 const hoje = () => new Date().toISOString().slice(0, 10)
 
@@ -39,8 +51,13 @@ export default function AdminEnviosPage() {
 
   return (
     <main style={c.page}>
-      <h1 style={c.titulo}>Envios de Encomendas — Administrativo</h1>
-      <p style={c.sub}>Encomendas prontas a expedir e expedidas. Clica no número para faturar, fazer carta de porte, expedir e enviar ao cliente.</p>
+      <div style={c.topo}>
+        <div>
+          <h1 style={c.titulo}>Envios de Encomendas — Administrativo</h1>
+          <p style={c.sub}>Encomendas prontas a expedir e expedidas. Clica no número para faturar, fazer carta de porte, expedir e enviar ao cliente.</p>
+        </div>
+        <BotaoExportar nome="encomendas-expedicao" colunas={colunasExport} linhas={envios} />
+      </div>
 
       {carregando ? (
         <p style={c.muted}>A carregar...</p>
@@ -89,6 +106,7 @@ export default function AdminEnviosPage() {
 
 const c: Record<string, React.CSSProperties> = {
   page: { maxWidth: 1000, margin: '0 auto', padding: 20 },
+  topo: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', marginBottom: 16 },
   titulo: { fontSize: 22, fontWeight: 700, color: 'var(--primary)', marginBottom: 4 },
   sub: { color: 'var(--muted)', fontSize: 13, marginBottom: 16 },
   muted: { color: 'var(--muted)', padding: 8 },

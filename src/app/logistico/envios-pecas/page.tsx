@@ -5,6 +5,20 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { listarEnvios } from '@/lib/enviosPecas'
 import { ESTADOS_ENVIO, estadoInfo, transportadoraLabel, formatarEuro, type EnvioPeca } from '@/types/envioPecas'
+import BotaoExportar from '@/components/BotaoExportar'
+import type { ColunaExport } from '@/lib/exportar'
+
+// Colunas para exportação (espelham a tabela de envios)
+const colunasExport: ColunaExport<EnvioPeca>[] = [
+  { cabecalho: 'Número', valor: (e) => e.numero },
+  { cabecalho: 'Data', valor: (e) => (e.created_at ?? '').slice(0, 10) },
+  { cabecalho: 'Cliente', valor: (e) => e.cliente_nome },
+  { cabecalho: 'Responsável', valor: (e) => e.responsavel_nome },
+  { cabecalho: 'Transportadora', valor: (e) => transportadoraLabel(e) },
+  { cabecalho: 'Estado', valor: (e) => estadoInfo(e.estado).label },
+  { cabecalho: 'Pago', valor: (e) => (e.pago ? 'Sim' : 'Não') },
+  { cabecalho: 'Valor', valor: (e) => formatarEuro(e.valor_a_faturar) },
+]
 
 const CHAVE_FILTROS = 'envios-pecas:filtros'
 
@@ -93,6 +107,7 @@ export default function EnviosPecasPage() {
             Limpar
           </button>
         )}
+        <BotaoExportar nome="encomendas-envios" colunas={colunasExport} linhas={filtrados} />
       </div>
 
       <div style={c.resumo}>

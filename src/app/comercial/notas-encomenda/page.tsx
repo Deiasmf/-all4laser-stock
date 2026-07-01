@@ -8,6 +8,8 @@ import {
   ESTADO_NOTA_CONFIG, ESTADO_NOTA_OPCOES,
   type NotaEncomenda, type EstadoNota,
 } from '@/types/notaEncomenda'
+import BotaoExportar from '@/components/BotaoExportar'
+import type { ColunaExport } from '@/lib/exportar'
 
 const STORAGE_KEY = 'notas-encomenda-filtros'
 
@@ -27,6 +29,17 @@ function formatarData(d: string | null) {
   const dt = new Date(d)
   return isNaN(dt.getTime()) ? d : dt.toLocaleDateString('pt-PT')
 }
+
+// Colunas para exportação (espelham a tabela de notas de encomenda)
+const colunasExport: ColunaExport<NotaEncomenda>[] = [
+  { cabecalho: 'Número', valor: (n) => n.numero },
+  { cabecalho: 'Data', valor: (n) => formatarData(n.data_pedido) },
+  { cabecalho: 'Cliente', valor: (n) => n.cliente_nome },
+  { cabecalho: 'País', valor: (n) => n.pais_destino },
+  { cabecalho: 'Equipamento', valor: (n) => n.equipamento_modelo },
+  { cabecalho: 'SN', valor: (n) => n.equipamento_sn },
+  { cabecalho: 'Estado', valor: (n) => ESTADO_NOTA_CONFIG[n.estado].label },
+]
 
 function EstadoTag({ estado }: { estado: EstadoNota }) {
   const cfg = ESTADO_NOTA_CONFIG[estado]
@@ -122,6 +135,7 @@ export default function NotasEncomendaPage() {
         {(fEstado || fMes || pesquisa) && (
           <button onClick={() => { setFEstado(''); setFMes(''); setPesquisa('') }} style={c.limpar}>Limpar</button>
         )}
+        <BotaoExportar nome="notas-encomenda" colunas={colunasExport} linhas={filtradas} />
         <span style={{ marginLeft: 'auto', color: 'var(--muted)', fontSize: 14, alignSelf: 'center' }}>
           {filtradas.length} de {notas.length}
         </span>

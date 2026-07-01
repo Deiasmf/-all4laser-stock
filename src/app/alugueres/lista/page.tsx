@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
 import AlugueresNav from '@/components/AlugueresNav'
+import BotaoExportar from '@/components/BotaoExportar'
+import type { ColunaExport } from '@/lib/exportar'
 import { formatarEuro, mesAtual, nomeMes, somar } from '@/lib/alugueres'
 import {
   TIPOS_ALUGUER,
@@ -25,6 +27,27 @@ function formatarData(d: string | null) {
 function nomeSeguro(nome: string) {
   return nome.normalize('NFD').replace(/[^\w.\-]/g, '_')
 }
+
+// Texto do "Valor a Faturar" (espelha a célula da tabela)
+function valorAFaturarTexto(a: Aluguer): string {
+  if (a.nao_faturar) return 'Não faturar'
+  if (a.valor_a_faturar != null) return formatarEuro(a.valor_a_faturar)
+  return '—'
+}
+
+// Colunas para exportação (espelham a tabela de alugueres)
+const colunasExport: ColunaExport<Aluguer>[] = [
+  { cabecalho: 'Cliente', valor: (a) => a.cliente_nome },
+  { cabecalho: 'Mercado', valor: (a) => (a.nacional ? 'Nacional' : 'Internacional') },
+  { cabecalho: 'Serial Number', valor: (a) => a.serial_number },
+  { cabecalho: 'Marca', valor: (a) => a.marca },
+  { cabecalho: 'Modelo', valor: (a) => a.modelo },
+  { cabecalho: 'Data', valor: (a) => formatarData(a.data_entrega) },
+  { cabecalho: 'Valor', valor: (a) => formatarEuro(a.valor || 0) },
+  { cabecalho: 'Valor a Faturar', valor: (a) => valorAFaturarTexto(a) },
+  { cabecalho: 'Fatura', valor: (a) => a.fatura_nome ?? '—' },
+  { cabecalho: 'Validado', valor: (a) => (a.validado ? 'Sim' : 'Não') },
+]
 
 // Opções de ordenação da lista
 type Ordenacao = 'cliente-asc' | 'cliente-desc' | 'valor-desc' | 'valor-asc' | 'data-desc' | 'data-asc'
@@ -148,6 +171,7 @@ export default function ListaAlugueres() {
           <option value="data-desc">Data (mais recente)</option>
           <option value="data-asc">Data (mais antiga)</option>
         </select>
+        <BotaoExportar nome="alugueres" colunas={colunasExport} linhas={filtrados} />
       </div>
 
       <div style={c.resumo}>
