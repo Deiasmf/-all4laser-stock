@@ -9,6 +9,7 @@ import { LOCALIZACOES_PECA } from '@/types/compras'
 import QrPeca from '@/components/QrPeca'
 import { imprimirEtiquetas } from '@/lib/etiquetas'
 import BotaoExportar from '@/components/BotaoExportar'
+import BotaoPdf from '@/components/BotaoPdf'
 import type { ColunaExport } from '@/lib/exportar'
 import type { Peca } from '@/types/peca'
 import { STATUS_PECA } from '@/types/peca'
@@ -370,6 +371,45 @@ function ModalPeca({
         <textarea style={c.textarea} value={notas} onChange={(e) => setNotas(e.target.value)} disabled={soLeitura} />
 
         <div style={c.modalAcoes}>
+          {peca && (
+            <BotaoPdf
+              ficheiro={`Peca-${peca.nome}`}
+              documento={() => ({
+                titulo: 'Ficha de Peça',
+                subtitulo: peca.nome,
+                seccoes: [
+                  {
+                    titulo: 'Peça',
+                    linhas: [
+                      { rotulo: 'Nome', valor: peca.nome },
+                      { rotulo: 'Marca', valor: peca.marca },
+                      { rotulo: 'Grupo', valor: peca.grupo },
+                    ],
+                  },
+                  {
+                    titulo: 'Identificação',
+                    linhas: [
+                      { rotulo: 'Serial Number', valor: peca.serial_number },
+                      { rotulo: 'Referência', valor: peca.referencia },
+                      { rotulo: 'Estado', valor: peca.status },
+                    ],
+                  },
+                  {
+                    titulo: 'Stock',
+                    linhas: [
+                      { rotulo: 'Quantidade', valor: peca.quantidade },
+                      { rotulo: 'Localização', valor: peca.localizacao },
+                      { rotulo: 'Preço de venda', valor: euroPeca(peca.preco_venda) },
+                    ],
+                  },
+                  {
+                    titulo: 'Notas',
+                    linhas: [{ rotulo: 'Notas', valor: peca.notas }],
+                  },
+                ],
+              })}
+            />
+          )}
           {peca && isAdmin && (
             <button onClick={apagar} disabled={aApagar} style={c.btnDanger}>
               {aApagar ? 'A apagar...' : 'Apagar'}
