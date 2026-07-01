@@ -1,9 +1,10 @@
 'use client'
 
-import { exportarCSV } from '@/lib/exportar'
+import { useState } from 'react'
+import { exportarExcel } from '@/lib/exportar'
 import type { ColunaExport } from '@/lib/exportar'
 
-// Botão reutilizável para exportar uma lista para Excel (CSV que o Excel abre).
+// Botão reutilizável para exportar uma lista para Excel (.xlsx).
 export default function BotaoExportar<T>({
   nome,
   colunas,
@@ -15,12 +16,24 @@ export default function BotaoExportar<T>({
   linhas: T[]
   style?: React.CSSProperties
 }) {
+  const [aExportar, setAExportar] = useState(false)
   const semDados = linhas.length === 0
+
+  async function exportar() {
+    if (semDados || aExportar) return
+    setAExportar(true)
+    try {
+      await exportarExcel(nome, colunas, linhas)
+    } finally {
+      setAExportar(false)
+    }
+  }
+
   return (
     <button
       type="button"
-      onClick={() => exportarCSV(nome, colunas, linhas)}
-      disabled={semDados}
+      onClick={exportar}
+      disabled={semDados || aExportar}
       title={semDados ? 'Sem dados para exportar' : `Exportar ${linhas.length} linha(s) para Excel`}
       style={{
         background: '#fff',
@@ -29,13 +42,13 @@ export default function BotaoExportar<T>({
         borderRadius: 8,
         padding: '10px 14px',
         fontWeight: 600,
-        cursor: semDados ? 'not-allowed' : 'pointer',
+        cursor: semDados || aExportar ? 'not-allowed' : 'pointer',
         opacity: semDados ? 0.5 : 1,
         whiteSpace: 'nowrap',
         ...style,
       }}
     >
-      📊 Exportar Excel
+      {aExportar ? 'A exportar...' : '📊 Exportar Excel'}
     </button>
   )
 }
