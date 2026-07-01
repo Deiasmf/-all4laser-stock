@@ -179,10 +179,10 @@ export default function ReparacaoPecasPage() {
               {r.garantia ? ` · ${r.garantia}` : ''}
               {r.pago ? ` · ${r.pago}` : ''}
             </span>
+            <span style={c.datas}>Saída: {r.data_saida || '—'} · Entrada: {r.data_entrada || '—'}</span>
           </span>
           <span style={c.dir}>
             <EstadoBadge r={r} />
-            <span style={c.dataSaida}>{r.data_saida || '—'}</span>
           </span>
         </Link>
       )
@@ -266,8 +266,8 @@ const c: Record<string, React.CSSProperties> = {
   numero: { display: 'inline-block', marginRight: 8, fontWeight: 700, fontSize: 12.5, color: 'var(--primary)' },
   serialTag: { marginLeft: 6, fontSize: 11, fontWeight: 500, color: 'var(--muted)' },
   meta: { display: 'block', fontSize: 12.5, color: 'var(--muted)', marginTop: 2 },
+  datas: { display: 'block', fontSize: 12.5, color: 'var(--muted)', marginTop: 2 },
   dir: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 },
-  dataSaida: { fontSize: 12.5, color: 'var(--muted)' },
   dica: { color: 'var(--muted)', fontSize: 13, marginTop: 10, textAlign: 'center' },
   btnPrimario: { background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 16px', fontWeight: 700, cursor: 'pointer', textDecoration: 'none', whiteSpace: 'nowrap' },
 }
