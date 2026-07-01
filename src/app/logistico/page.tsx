@@ -13,6 +13,8 @@ import FiltroMulti from '@/components/FiltroMulti'
 import FiltroData from '@/components/FiltroData'
 import StatusEquipamento from '@/components/StatusEquipamento'
 import { imprimirEtiquetas } from '@/lib/etiquetas'
+import BotaoExportar from '@/components/BotaoExportar'
+import type { ColunaExport } from '@/lib/exportar'
 import styles from './page.module.css'
 
 const TAMANHO_LOTE = 1000 // o Supabase devolve no máximo 1000 por pedido
@@ -43,6 +45,19 @@ function modelosDistintos(lista: Equipamento[]) {
 function clienteDe(e: Equipamento) {
   return nomeClienteStock(e.destino)
 }
+
+// Colunas para exportação (espelham a lista de stock)
+const colunasExport: ColunaExport<Equipamento>[] = [
+  { cabecalho: 'Serial Number', valor: (e) => e.serial_number },
+  { cabecalho: 'Marca', valor: (e) => e.marca },
+  { cabecalho: 'Modelo', valor: (e) => modeloDe(e) },
+  { cabecalho: 'Ano', valor: (e) => e.ano },
+  { cabecalho: 'Status', valor: (e) => e.status },
+  { cabecalho: 'Origem', valor: (e) => e.origem },
+  { cabecalho: 'Destino', valor: (e) => clienteDe(e) },
+  { cabecalho: 'Preço de compra', valor: (e) => formatarEuro(e.valor_compra) },
+  { cabecalho: 'Preço de venda', valor: (e) => formatarEuro(e.preco_venda) },
+]
 
 // Persistência dos filtros entre navegações (sessionStorage = dura a sessão do separador)
 const CHAVE_FILTROS = 'stock:filtros'
@@ -369,6 +384,7 @@ export default function Home() {
           >
             🖨 Etiquetas
           </button>
+          <BotaoExportar nome="stock" colunas={colunasExport} linhas={equipamentos} />
           <span className={styles.count}>{equipamentos.length} de {todos.length}</span>
           {isAdmin && (
             <Link href="/equipamentos/novo" className={styles.btnAdicionar}>

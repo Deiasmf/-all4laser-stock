@@ -8,8 +8,29 @@ import { pecasComPedidoPendente } from '@/lib/compras'
 import { LOCALIZACOES_PECA } from '@/types/compras'
 import QrPeca from '@/components/QrPeca'
 import { imprimirEtiquetas } from '@/lib/etiquetas'
+import BotaoExportar from '@/components/BotaoExportar'
+import type { ColunaExport } from '@/lib/exportar'
 import type { Peca } from '@/types/peca'
 import { STATUS_PECA } from '@/types/peca'
+
+// Preço formatado em euros (para exportação)
+function euroPeca(v: number | null) {
+  if (v == null) return ''
+  return v.toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' })
+}
+
+// Colunas para exportação (espelham o stock de peças)
+const colunasExport: ColunaExport<Peca>[] = [
+  { cabecalho: 'Nome', valor: (p) => p.nome },
+  { cabecalho: 'Marca', valor: (p) => p.marca },
+  { cabecalho: 'Grupo', valor: (p) => p.grupo },
+  { cabecalho: 'Serial Number', valor: (p) => p.serial_number },
+  { cabecalho: 'Status', valor: (p) => p.status },
+  { cabecalho: 'Referência', valor: (p) => p.referencia },
+  { cabecalho: 'Preço de venda', valor: (p) => euroPeca(p.preco_venda) },
+  { cabecalho: 'Quantidade', valor: (p) => p.quantidade },
+  { cabecalho: 'Localização', valor: (p) => p.localizacao },
+]
 
 // Badge de estado da peça (só aparece quando não está em "Stock")
 function StatusPecaBadge({ status }: { status: string | null }) {
@@ -178,6 +199,7 @@ export default function StockPecasPage() {
         >
           🖨 Etiquetas
         </button>
+        <BotaoExportar nome="stock-pecas" colunas={colunasExport} linhas={filtradas} />
         {isAdmin && (
           <button style={c.btnPrimario} onClick={() => setCriar(true)}>+ Nova peça</button>
         )}

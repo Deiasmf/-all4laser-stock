@@ -5,6 +5,20 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { listarClientesCompleto } from '@/lib/clientes'
 import type { Cliente } from '@/types/cliente'
+import BotaoExportar from '@/components/BotaoExportar'
+import type { ColunaExport } from '@/lib/exportar'
+
+// Colunas para exportação (espelham a tabela de clientes)
+const colunasExport: ColunaExport<Cliente>[] = [
+  { cabecalho: 'Nome', valor: (c) => c.nome },
+  { cabecalho: 'Tipo', valor: (c) => c.tipo },
+  { cabecalho: 'Contacto', valor: (c) => c.contacto_nome },
+  { cabecalho: 'Cidade', valor: (c) => c.cidade },
+  { cabecalho: 'Email', valor: (c) => c.email },
+  { cabecalho: 'Telefone', valor: (c) => c.telefone },
+  { cabecalho: 'País', valor: (c) => c.pais },
+  { cabecalho: 'NIF', valor: (c) => c.nif },
+]
 
 export default function ClientesPage() {
   const router = useRouter()
@@ -61,6 +75,7 @@ export default function ClientesPage() {
         >
           ✉️ Sem email · {semEmail}
         </button>
+        <BotaoExportar nome="clientes" colunas={colunasExport} linhas={filtrados} />
         <span style={{ marginLeft: 'auto', color: 'var(--muted)', fontSize: 14, alignSelf: 'center' }}>
           {filtrados.length} de {clientes.length}
         </span>
