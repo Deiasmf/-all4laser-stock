@@ -16,7 +16,7 @@ type Resultado =
   | { tipo: 'equip'; id: string; modelo: string | null; sn: string | null }
   | { tipo: 'desconhecido'; valor: string }
 
-export default function RecepcaoScanPage() {
+export default function EncomendasScanPage() {
   const router = useRouter()
   const scannerRef = useRef<Html5Qrcode | null>(null)
   const aProcessarRef = useRef(false)
@@ -32,7 +32,6 @@ export default function RecepcaoScanPage() {
     const sc = scannerRef.current
     if (!sc) return
     try {
-      // Só é possível parar se estiver a filmar
       if (sc.getState && sc.getState() === 2 /* SCANNING */) await sc.stop()
       await sc.clear()
     } catch { /* já parado */ }
@@ -135,18 +134,16 @@ export default function RecepcaoScanPage() {
   function aoGravar(_m: RecepcaoMovimento) {
     setModalAberto(false)
     setResultado(null)
-    // volta a ler o próximo QR
     iniciarCamara()
   }
 
   return (
     <div style={s.wrap}>
       <div style={s.topo}>
-        <Link href="/logistico/recepcao" style={s.voltar}>← Receção</Link>
+        <Link href="/logistico/encomendas" style={s.voltar}>← Encomendas</Link>
         <span style={s.tituloTopo}>Scan QR</span>
       </div>
 
-      {/* Câmara */}
       <div style={s.cameraCard}>
         <div id={REGIAO_ID} style={s.camera} />
         {aLer && <div style={s.mira}>Aponta ao QR code</div>}
@@ -159,7 +156,6 @@ export default function RecepcaoScanPage() {
         </div>
       )}
 
-      {/* Resultado do scan */}
       {resultado && (
         <div style={s.resultado}>
           {resultado.tipo === 'rpc' && (
@@ -215,14 +211,12 @@ export default function RecepcaoScanPage() {
         </div>
       )}
 
-      {/* Ações sempre disponíveis */}
       {!resultado && (
         <div style={s.acoes}>
           <button style={s.btnClaro} onClick={() => abrirModal({ qr_lido: false })}>Registar manualmente</button>
         </div>
       )}
 
-      {/* Histórico da sessão */}
       {historico.length > 0 && (
         <div style={s.historico}>
           <div style={s.histTitulo}>Últimos scans</div>

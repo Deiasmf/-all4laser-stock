@@ -15,7 +15,7 @@ function qtd(m: RecepcaoMovimento) {
   return m.quantidade ?? 1
 }
 
-export default function RecepcaoMatchPage() {
+export default function EncomendasMatchPage() {
   const params = useParams<{ id: string }>()
   const id = params.id
   const { isAdmin } = useAuth()
@@ -55,7 +55,7 @@ export default function RecepcaoMatchPage() {
   if (carregando) return <main style={c.page}><p style={c.nota}>A carregar...</p></main>
   if (!match) return (
     <main style={c.page}>
-      <div style={c.cabecalho}><h1 style={c.titulo}>Match</h1><Link href="/logistico/recepcao" style={c.voltar}>← Voltar</Link></div>
+      <div style={c.cabecalho}><h1 style={c.titulo}>Match</h1><Link href="/logistico/encomendas" style={c.voltar}>← Voltar</Link></div>
       <p style={c.nota}>Match não encontrado.</p>
     </main>
   )
@@ -71,7 +71,7 @@ export default function RecepcaoMatchPage() {
           {match.numero && <div style={c.numeroTopo}>{match.numero}</div>}
           <h1 style={c.titulo}>{match.contraparte || 'Match'}</h1>
         </div>
-        <Link href="/logistico/recepcao" style={c.voltar}>← Voltar</Link>
+        <Link href="/logistico/encomendas" style={c.voltar}>← Voltar</Link>
       </div>
 
       <div style={c.badgeRow}>
@@ -79,7 +79,6 @@ export default function RecepcaoMatchPage() {
         {clienteDeveDevolucao && <span style={c.badgeDevolucao}>⚠️ Cliente deve devolução</span>}
       </div>
 
-      {/* Resumo */}
       <section style={c.card}>
         <div style={c.cardTitulo}>Resumo</div>
         <div style={c.resumoGrid}>
@@ -89,7 +88,6 @@ export default function RecepcaoMatchPage() {
         </div>
       </section>
 
-      {/* Ações */}
       {isAdmin && (
         <div style={c.acoes}>
           <button style={c.btnPrimario} onClick={() => setModalAberto(true)}>+ Registar entrada manual</button>
@@ -99,7 +97,6 @@ export default function RecepcaoMatchPage() {
         </div>
       )}
 
-      {/* Timeline / histórico completo */}
       <section style={c.card}>
         <div style={c.cardTitulo}>Movimentos ({movimentos.length})</div>
         {movimentos.length === 0 ? (
