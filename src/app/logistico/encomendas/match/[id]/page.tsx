@@ -90,7 +90,7 @@ export default function EncomendasMatchPage() {
 
       {isAdmin && (
         <div style={c.acoes}>
-          <button style={c.btnPrimario} onClick={() => setModalAberto(true)}>+ Registar entrada manual</button>
+          <button style={c.btnPrimario} onClick={() => setModalAberto(true)}>+ Registar receção</button>
           {resolvido && match.estado !== 'fechado' && (
             <button style={c.btnFechar} onClick={fechar}>✓ Fechar match</button>
           )}
@@ -110,7 +110,7 @@ export default function EncomendasMatchPage() {
                 </span>
                 <div style={{ minWidth: 0 }}>
                   <div style={c.movTopo}>
-                    <strong>{m.tipo === 'entrada' ? 'Entrada' : 'Saída'}</strong>
+                    <strong>{m.tipo === 'entrada' ? 'Receção' : 'Envio'}</strong>
                     <span style={c.movData}>{m.data_movimento}</span>
                   </div>
                   <div style={c.movDesc}>
@@ -139,6 +139,8 @@ export default function EncomendasMatchPage() {
         onFechar={() => setModalAberto(false)}
         onGravado={aoGravar}
         prefill={{ tipo: 'entrada', origem_destino: match.contraparte ?? '' }}
+        titulo="Registar receção"
+        bloquearTipo
       />
     </main>
   )

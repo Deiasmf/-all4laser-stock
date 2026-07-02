@@ -31,11 +31,15 @@ export default function RecepcaoMovimentoModal({
   onFechar,
   onGravado,
   prefill,
+  titulo = 'Registar movimento',
+  bloquearTipo = false,
 }: {
   aberto: boolean
   onFechar: () => void
   onGravado: (m: RecepcaoMovimento) => void
   prefill?: Prefill
+  titulo?: string
+  bloquearTipo?: boolean
 }) {
   const { perfil } = useAuth()
 
@@ -60,7 +64,7 @@ export default function RecepcaoMovimentoModal({
   const [sugOrigem, setSugOrigem] = useState<string[]>([])
   const [sugDesc, setSugDesc] = useState<Peca[]>([])
   const [sugEquip, setSugEquip] = useState<EquipOpc[]>([])
-  const [sugRef, setSugRef] = useState<{ id: string; numero: string; peca: string | null }[]>([])
+  const [sugRef, setSugRef] = useState<{ id: string; numero: string; label: string; tipo: ReferenciaTipo }[]>([])
 
   // Repõe o formulário sempre que abre (aplicando prefill do scan)
   useEffect(() => {
@@ -124,12 +128,16 @@ export default function RecepcaoMovimentoModal({
     refBuscaRef.current = setTimeout(async () => {
       const t = q.trim()
       if (t.length < 2) { setSugRef([]); return }
-      const { data } = await supabase
-        .from('reparacao_pecas')
-        .select('id, numero, peca')
-        .ilike('numero', `%${t}%`)
-        .limit(8)
-      setSugRef((data as { id: string; numero: string; peca: string | null }[]) ?? [])
+      // Procura em envios (EP) e reparações (RPC) para poder fazer o match.
+      const [envios, reparacoes] = await Promise.all([
+        supabase.from('envios_pecas').select('id, numero, cliente_nome, fornecedor_nome').ilike('numero', `%${t}%`).limit(6),
+        supabase.from('reparacao_pecas').select('id, numero, peca').ilike('numero', `%${t}%`).limit(6),
+      ])
+      const dosEnvios = ((envios.data as { id: string; numero: string; cliente_nome: string | null; fornecedor_nome: string | null }[]) ?? [])
+        .map((e) => ({ id: e.id, numero: e.numero, label: `${e.numero} · Envio${e.fornecedor_nome || e.cliente_nome ? ` · ${e.fornecedor_nome || e.cliente_nome}` : ''}`, tipo: 'envio_pecas' as ReferenciaTipo }))
+      const dasReparacoes = ((reparacoes.data as { id: string; numero: string; peca: string | null }[]) ?? [])
+        .map((r) => ({ id: r.id, numero: r.numero, label: `${r.numero} · Reparação${r.peca ? ` · ${r.peca}` : ''}`, tipo: 'reparacao' as ReferenciaTipo }))
+      setSugRef([...dosEnvios, ...dasReparacoes])
     }, 250)
   }
 
@@ -178,29 +186,31 @@ export default function RecepcaoMovimentoModal({
     <div style={s.overlay} onClick={onFechar}>
       <div style={s.modal} onClick={(e) => e.stopPropagation()}>
         <div style={s.cabecalho}>
-          <h2 style={s.titulo}>Registar movimento</h2>
+          <h2 style={s.titulo}>{titulo}</h2>
           <button style={s.fechar} onClick={onFechar} aria-label="Fechar">✕</button>
         </div>
 
         {erro && <div style={s.erro}>{erro}</div>}
 
-        <div style={s.tipoRow}>
-          <button
-            type="button"
-            style={{ ...s.tipoBtn, ...(tipo === 'entrada' ? s.tipoEntradaAtivo : {}) }}
-            onClick={() => setTipo('entrada')}
-          >↓ Entrada</button>
-          <button
-            type="button"
-            style={{ ...s.tipoBtn, ...(tipo === 'saida' ? s.tipoSaidaAtivo : {}) }}
-            onClick={() => setTipo('saida')}
-          >↑ Saída</button>
-        </div>
+        {!bloquearTipo && (
+          <div style={s.tipoRow}>
+            <button
+              type="button"
+              style={{ ...s.tipoBtn, ...(tipo === 'entrada' ? s.tipoEntradaAtivo : {}) }}
+              onClick={() => setTipo('entrada')}
+            >↓ Receção</button>
+            <button
+              type="button"
+              style={{ ...s.tipoBtn, ...(tipo === 'saida' ? s.tipoSaidaAtivo : {}) }}
+              onClick={() => setTipo('saida')}
+            >↑ Envio</button>
+          </div>
+        )}
 
         <label style={s.label}>Data</label>
         <input style={s.input} type="date" value={dataMov} onChange={(e) => setDataMov(e.target.value)} />
 
-        <label style={s.label}>Origem / Destino *</label>
+        <label style={s.label}>{tipo === 'entrada' ? 'De quem recebeste *' : 'Para quem envias *'}</label>
         <div style={{ position: 'relative' }}>
           <input
             style={s.input}
@@ -280,19 +290,19 @@ export default function RecepcaoMovimentoModal({
           )}
         </div>
 
-        <label style={s.label}>Referência (opcional)</label>
+        <label style={s.label}>Ligar a um envio / reparação (para o match)</label>
         <div style={{ position: 'relative' }}>
           <input
             style={s.input}
-            placeholder="Nº RPC / EP / NE"
+            placeholder="Nº do envio (EP) ou reparação (RPC)"
             value={refNumero}
             onChange={(e) => { setRefNumero(e.target.value); setRefId(null); setRefTipo('manual'); procurarRef(e.target.value) }}
           />
           {refId === null && sugRef.length > 0 && (
             <div style={s.dropdown}>
               {sugRef.map((rp) => (
-                <button type="button" key={rp.id} style={s.dropItem} onClick={() => { setRefNumero(rp.numero); setRefId(rp.id); setRefTipo('reparacao'); setSugRef([]) }}>
-                  {rp.numero}{rp.peca ? ` · ${rp.peca}` : ''}
+                <button type="button" key={rp.id} style={s.dropItem} onClick={() => { setRefNumero(rp.numero); setRefId(rp.id); setRefTipo(rp.tipo); setSugRef([]) }}>
+                  {rp.label}
                 </button>
               ))}
             </div>
