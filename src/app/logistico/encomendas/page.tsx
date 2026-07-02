@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
-import { listarMovimentos, criarMatch, atualizarMovimento } from '@/lib/recepcao'
+import { listarMovimentos, criarMatch, atualizarMovimento, eliminarMovimento } from '@/lib/recepcao'
+import { eliminarEnvio } from '@/lib/enviosPecas'
 import type { RecepcaoMovimento } from '@/types/recepcao'
 import { matchStatusInfo, REFERENCIA_TIPO_LABEL } from '@/types/recepcao'
 import RecepcaoMovimentoModal from '@/components/RecepcaoMovimentoModal'
@@ -148,6 +149,28 @@ export default function EncomendasPage() {
       .sort((a, b) => b.antigo - a.antigo)
   }, [movimentos])
 
+  async function apagar(m: RecepcaoMovimento) {
+    const eEnvio = m.referencia_tipo === 'envio_pecas' && m.referencia_id
+    const eReparacao = m.referencia_tipo === 'reparacao'
+    const aviso = eEnvio
+      ? 'Apagar este ENVIO? Remove a encomenda enviada (com itens) e a sua linha do livro.'
+      : eReparacao
+      ? 'Apagar esta linha do livro? A reparação em si mantém-se no módulo de Reparação.'
+      : 'Apagar esta receção/movimento?'
+    if (!confirm(aviso + '\n\nEsta ação não pode ser revertida.')) return
+
+    if (eEnvio) {
+      const { error } = await eliminarEnvio(m.referencia_id as string)
+      if (error) { alert('Não foi possível apagar: ' + error.message); return }
+      // Remove todas as linhas ligadas a este envio
+      setMovimentos((prev) => prev.filter((x) => !(x.referencia_tipo === 'envio_pecas' && x.referencia_id === m.referencia_id)))
+    } else {
+      const { error } = await eliminarMovimento(m.id)
+      if (error) { alert('Não foi possível apagar: ' + error.message); return }
+      setMovimentos((prev) => prev.filter((x) => x.id !== m.id))
+    }
+  }
+
   async function agruparEmMatch(contraparte: string, movs: RecepcaoMovimento[]) {
     const primeiro = movs[0]
     const { data } = await criarMatch({
@@ -249,6 +272,9 @@ export default function EncomendasPage() {
                   )}
                   <span style={{ flex: 1 }} />
                   <MatchBadge status={m.match_status} />
+                  {isAdmin && (
+                    <button style={c.btnApagar} title="Apagar" onClick={() => apagar(m)}>🗑</button>
+                  )}
                 </div>
                 <div style={c.descricao}>
                   {m.descricao}
@@ -356,6 +382,7 @@ const c: Record<string, React.CSSProperties> = {
   qrTag: { marginLeft: 6, fontWeight: 700, color: 'var(--primary-dark)' },
   notas: { fontSize: 12.5, color: 'var(--muted)', marginTop: 4, fontStyle: 'italic' },
   verFicha: { display: 'inline-block', marginTop: 6, fontSize: 12.5, fontWeight: 700, color: 'var(--primary-dark)', textDecoration: 'none' },
+  btnApagar: { background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 14, padding: '0 2px', lineHeight: 1, opacity: 0.7 },
   subtitulo: { fontSize: 17, fontWeight: 700, color: 'var(--primary)', marginBottom: 10 },
   gruposWrap: { display: 'flex', flexDirection: 'column', gap: 8 },
   grupo: { border: '1px solid var(--border)', borderRadius: 10, background: '#fff', overflow: 'hidden' },

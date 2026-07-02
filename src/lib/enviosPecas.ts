@@ -50,6 +50,13 @@ export async function atualizarEnvio(id: string, patch: Partial<EnvioPeca>) {
   return supabase.from('envios_pecas').update(patch).eq('id', id).select().single()
 }
 
+// Apaga um envio (os itens caem em cascata) e a respetiva linha no livro de Encomendas.
+export async function eliminarEnvio(id: string) {
+  await supabase.from('recepcao_movimentos').delete()
+    .eq('referencia_tipo', 'envio_pecas').eq('referencia_id', id)
+  return supabase.from('envios_pecas').delete().eq('id', id)
+}
+
 // Muda o estado; ao expedir regista a data de expedição.
 export async function alterarEstado(id: string, estado: EnvioEstado) {
   const patch: Partial<EnvioPeca> = { estado }
