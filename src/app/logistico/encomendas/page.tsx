@@ -31,7 +31,7 @@ function TipoBadge({ tipo }: { tipo: string }) {
   const entrada = tipo === 'entrada'
   return (
     <span style={{ ...c.tipoBadge, background: entrada ? '#159a4a' : '#c62828' }}>
-      {entrada ? '↓ ENTRADA' : '↑ SAÍDA'}
+      {entrada ? '↓ RECEÇÃO' : '↑ ENVIO'}
     </span>
   )
 }
@@ -170,24 +170,24 @@ export default function EncomendasPage() {
 
       {/* Cards de resumo */}
       <div style={c.cards}>
-        <div style={{ ...c.card, borderTop: '3px solid #159a4a' }}>
-          <div style={c.cardNum}>{resumo.entradas}</div>
-          <div style={c.cardLbl}>Entradas este mês</div>
-        </div>
         <div style={{ ...c.card, borderTop: '3px solid #c62828' }}>
           <div style={c.cardNum}>{resumo.saidas}</div>
-          <div style={c.cardLbl}>Saídas este mês</div>
+          <div style={c.cardLbl}>Envios este mês</div>
+        </div>
+        <div style={{ ...c.card, borderTop: '3px solid #159a4a' }}>
+          <div style={c.cardNum}>{resumo.entradas}</div>
+          <div style={c.cardLbl}>Receções este mês</div>
         </div>
         <div style={{ ...c.card, borderTop: '3px solid #d4820a' }}>
           <div style={c.cardNum}>{resumo.pendentes}</div>
-          <div style={c.cardLbl}>Movimentos pendentes</div>
+          <div style={c.cardLbl}>Pendentes de match</div>
         </div>
       </div>
 
       {/* Ações */}
       <div style={c.acoes}>
         {isAdmin && <Link href="/logistico/envios-pecas/novo" style={c.btnPrimario}>+ Novo Envio</Link>}
-        <button style={c.btnGhost} onClick={() => setModalAberto(true)}>+ Registar movimento</button>
+        <button style={c.btnGhost} onClick={() => setModalAberto(true)}>+ Nova Receção</button>
         <Link href="/logistico/encomendas/scan" style={c.btnScan}>📷 Scan QR</Link>
       </div>
 
@@ -207,9 +207,9 @@ export default function EncomendasPage() {
           <option value="nota_encomenda">Notas de encomenda</option>
         </select>
         <select value={fTipo} onChange={(e) => setFTipo(e.target.value)} style={c.select}>
-          <option value="">Entradas e saídas</option>
-          <option value="entrada">Só entradas</option>
-          <option value="saida">Só saídas</option>
+          <option value="">Envios e receções</option>
+          <option value="saida">Só envios</option>
+          <option value="entrada">Só receções</option>
         </select>
         <select value={fOrigem} onChange={(e) => setFOrigem(e.target.value)} style={c.select}>
           <option value="">Toda a origem/destino</option>
@@ -255,7 +255,7 @@ export default function EncomendasPage() {
                   {m.quantidade && m.quantidade !== 1 ? <span style={c.qtd}> × {m.quantidade}</span> : null}
                 </div>
                 <div style={c.meta}>
-                  <span><strong>{m.tipo === 'entrada' ? 'Origem' : 'Destino'}:</strong> {m.origem_destino}</span>
+                  <span><strong>{m.tipo === 'entrada' ? 'De' : 'Para'}:</strong> {m.origem_destino}</span>
                   {m.serial_numbers && m.serial_numbers.length > 0 && <span> · S/N: {m.serial_numbers.join(', ')}</span>}
                   {m.equipamento_sn && <span> · Equip.: {m.equipamento_sn}</span>}
                   {m.referencia_numero && <span> · Ref.: {m.referencia_numero}</span>}
@@ -271,7 +271,7 @@ export default function EncomendasPage() {
 
       {/* Movimentos pendentes por contraparte */}
       <section style={{ marginTop: 28 }}>
-        <h2 style={c.subtitulo}>Pendentes por contraparte</h2>
+        <h2 style={c.subtitulo}>Match — enviadas ↔ recebidas por contraparte</h2>
         {gruposPendentes.length === 0 ? (
           <p style={c.estado}>Tudo fechado — sem pendências. 🎉</p>
         ) : (
@@ -284,7 +284,7 @@ export default function EncomendasPage() {
                   <button style={c.grupoBtn} onClick={() => setExpandido((e) => ({ ...e, [g.contraparte]: !aberto }))}>
                     <span style={{ ...c.chevron, transform: aberto ? 'rotate(90deg)' : 'none' }}>▸</span>
                     <span style={{ fontWeight: 700 }}>{g.contraparte}</span>
-                    <span style={c.grupoResumo}>{g.saidas} saídas · {g.entradas} entradas · {g.pendentes} pendentes</span>
+                    <span style={c.grupoResumo}>{g.saidas} envios · {g.entradas} receções · {g.pendentes} por fechar</span>
                     {atrasado && <span style={c.badgeAtraso}>+30 dias</span>}
                   </button>
                   {aberto && (
@@ -313,6 +313,9 @@ export default function EncomendasPage() {
         aberto={modalAberto}
         onFechar={() => setModalAberto(false)}
         onGravado={(m) => { setModalAberto(false); setMovimentos((prev) => [m, ...prev]) }}
+        prefill={{ tipo: 'entrada' }}
+        titulo="Nova Receção de Encomenda"
+        bloquearTipo
       />
 
       <p style={c.dica}>Livro central de encomendas: envios, receções, reparações e movimentos manuais num só sítio.</p>
