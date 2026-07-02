@@ -50,6 +50,11 @@ export function atualizarMovimento(id: string, patch: Partial<RecepcaoMovimento>
   return supabase.from('recepcao_movimentos').update(limparMov(patch)).eq('id', id).select().single()
 }
 
+// Apaga uma linha do livro (receção/movimento manual ou linha de reparação).
+export function eliminarMovimento(id: string) {
+  return supabase.from('recepcao_movimentos').delete().eq('id', id)
+}
+
 // ── Matches ──
 
 export async function listarMatches(): Promise<RecepcaoMatch[]> {

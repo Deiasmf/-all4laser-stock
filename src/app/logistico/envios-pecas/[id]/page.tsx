@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
+import { useAuth } from '@/lib/auth'
 import {
   obterEnvio, listarItens, alterarEstado, marcarPago,
   carregarDocumento, notificarProntoExpedir, atualizarEnvio, listarFuncionarios,
+  eliminarEnvio,
   type FuncionarioOpc,
 } from '@/lib/enviosPecas'
 import {
@@ -25,6 +27,8 @@ function formatarData(d: string | null) {
 export default function DetalheEnvioPage() {
   const params = useParams<{ id: string }>()
   const id = params.id
+  const router = useRouter()
+  const { isAdmin } = useAuth()
   const [envio, setEnvio] = useState<EnvioPeca | null>(null)
   const [itens, setItens] = useState<EnvioItem[]>([])
   const [carregando, setCarregando] = useState(true)
@@ -121,6 +125,14 @@ export default function DetalheEnvioPage() {
     await marcarPago(id, true, data || hoje())
     await recarregar()
     setATrabalhar(false)
+  }
+
+  async function apagarEnvio() {
+    if (!confirm('Apagar este envio? Remove a encomenda enviada (com itens) e a sua linha do livro de Encomendas.\n\nEsta ação não pode ser revertida.')) return
+    setATrabalhar(true); setMsg(null)
+    const { error } = await eliminarEnvio(id)
+    if (error) { setMsg('Não foi possível apagar: ' + error.message); setATrabalhar(false); return }
+    router.push('/logistico/encomendas')
   }
 
   async function enviarDocumentos() {
@@ -226,7 +238,10 @@ export default function DetalheEnvioPage() {
                 : [],
             })}
           />
-          <Link href="/logistico/envios-pecas" style={c.voltar}>← Envios</Link>
+          {isAdmin && (
+            <button style={c.btnApagar} disabled={aTrabalhar} onClick={apagarEnvio}>🗑 Apagar</button>
+          )}
+          <Link href="/logistico/encomendas" style={c.voltar}>← Encomendas</Link>
         </div>
       </div>
 
@@ -426,6 +441,7 @@ const c: Record<string, React.CSSProperties> = {
   cabecalho: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' },
   titulo: { fontSize: 22, fontWeight: 700, color: 'var(--primary)', marginBottom: 6 },
   voltar: { color: 'var(--muted)', textDecoration: 'none' },
+  btnApagar: { background: 'transparent', color: '#c62828', border: '1px solid #ef9a9a', borderRadius: 8, padding: '6px 12px', fontWeight: 600, cursor: 'pointer', fontSize: 13 },
   card: { background: 'var(--surface, #fff)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', gap: 8 },
   cardTitulo: { fontSize: 14, fontWeight: 700, color: 'var(--primary)', marginBottom: 4 },
   linhaInfo: { display: 'grid', gridTemplateColumns: '160px 1fr', gap: 8, fontSize: 14 },
