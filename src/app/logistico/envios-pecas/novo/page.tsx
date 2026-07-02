@@ -7,15 +7,19 @@ import { useAuth } from '@/lib/auth'
 import { PAISES } from '@/lib/paises'
 import {
   criarEnvio, listarClientesEnvio, criarClienteEnvio, pesquisarMaterial, listarFuncionarios,
-  type ClienteEnvioOpc, type MaterialOpc, type FuncionarioOpc,
+  listarFornecedoresEnvio,
+  type ClienteEnvioOpc, type MaterialOpc, type FuncionarioOpc, type FornecedorEnvioOpc,
 } from '@/lib/enviosPecas'
-import { formatarEuro, type EnvioItemInput } from '@/types/envioPecas'
+import { formatarEuro, MOTIVOS_ENVIO, motivoInfo, type EnvioItemInput, type DestinatarioTipo, type MotivoEnvio } from '@/types/envioPecas'
 
 const num = (s: string) => (s.trim() === '' ? null : Number(s))
 
 export default function NovoEnvioPage() {
   const router = useRouter()
   const { perfil } = useAuth()
+
+  // Destinatário: cliente ou fornecedor
+  const [destinatarioTipo, setDestinatarioTipo] = useState<DestinatarioTipo>('cliente')
 
   // Cliente
   const [clientes, setClientes] = useState<ClienteEnvioOpc[]>([])
@@ -24,6 +28,15 @@ export default function NovoEnvioPage() {
   const [clienteEmail, setClienteEmail] = useState('')
   const [pais, setPais] = useState('')
   const [moradaEnvio, setMoradaEnvio] = useState('')
+
+  // Fornecedor
+  const [fornecedores, setFornecedores] = useState<FornecedorEnvioOpc[]>([])
+  const [fornecedorId, setFornecedorId] = useState<string | null>(null)
+  const [fornecedorNome, setFornecedorNome] = useState('')
+
+  // Motivo + faturação
+  const [motivo, setMotivo] = useState<MotivoEnvio>('venda')
+  const [faturavel, setFaturavel] = useState(true)
 
   // Funcionário responsável
   const [funcionarios, setFuncionarios] = useState<FuncionarioOpc[]>([])
@@ -48,7 +61,22 @@ export default function NovoEnvioPage() {
   const [erro, setErro] = useState<string | null>(null)
 
   useEffect(() => { listarClientesEnvio().then(setClientes) }, [])
+  useEffect(() => { listarFornecedoresEnvio().then(setFornecedores) }, [])
   useEffect(() => { listarFuncionarios().then(setFuncionarios) }, [])
+
+  const semCusto = motivoInfo(motivo).semCusto
+
+  // Ao mudar o motivo, Garantia e Peças em falta ficam sem custo (não faturável).
+  function escolherMotivo(m: MotivoEnvio) {
+    setMotivo(m)
+    setFaturavel(!motivoInfo(m).semCusto)
+  }
+
+  const buscarFornecedor = useCallback(async (q: string): Promise<FornecedorEnvioOpc[]> => {
+    const t = q.trim().toLowerCase()
+    const base = t ? fornecedores.filter((fo) => fo.nome.toLowerCase().includes(t)) : fornecedores
+    return base.slice(0, 50)
+  }, [fornecedores])
 
   const totalItens = useMemo(
     () => itens.reduce((a, i) => a + i.quantidade * i.preco_unitario, 0),
@@ -87,7 +115,7 @@ export default function NovoEnvioPage() {
   function adicionarItem(m: MaterialOpc) {
     setItens((prev) => [
       ...prev,
-      { peca_id: m.peca_id, peca_nome: m.nome, quantidade: 1, preco_unitario: m.preco },
+      { peca_id: m.peca_id, peca_nome: m.nome, serial_number: null, quantidade: 1, preco_unitario: m.preco },
     ])
   }
   function alterarItem(i: number, patch: Partial<EnvioItemInput>) {
@@ -101,7 +129,7 @@ export default function NovoEnvioPage() {
     if (!nome) return
     setItens((prev) => [
       ...prev,
-      { peca_id: null, peca_nome: nome, quantidade: 1, preco_unitario: Number(manualPreco) || 0 },
+      { peca_id: null, peca_nome: nome, serial_number: null, quantidade: 1, preco_unitario: Number(manualPreco) || 0 },
     ])
     setManualNome('')
     setManualPreco('')
@@ -109,13 +137,20 @@ export default function NovoEnvioPage() {
 
   async function submeter() {
     setErro(null)
-    if (!clienteNome.trim()) { setErro('Indica o cliente.'); return }
+    if (destinatarioTipo === 'cliente' && !clienteNome.trim()) { setErro('Indica o cliente.'); return }
+    if (destinatarioTipo === 'fornecedor' && !fornecedorNome.trim()) { setErro('Indica o fornecedor.'); return }
     setAGuardar(true)
+    const eCliente = destinatarioTipo === 'cliente'
     const { data, error } = await criarEnvio(
       {
-        cliente_id: clienteId,
-        cliente_nome: clienteNome.trim() || null,
-        cliente_email: clienteEmail.trim() || null,
+        destinatario_tipo: destinatarioTipo,
+        fornecedor_id: eCliente ? null : fornecedorId,
+        fornecedor_nome: eCliente ? null : (fornecedorNome.trim() || null),
+        motivo,
+        faturavel: semCusto ? false : faturavel,
+        cliente_id: eCliente ? clienteId : null,
+        cliente_nome: eCliente ? (clienteNome.trim() || null) : null,
+        cliente_email: eCliente ? (clienteEmail.trim() || null) : null,
         morada_envio: moradaEnvio.trim() || null,
         responsavel_id: responsavelId || null,
         responsavel_nome: funcionarios.find((f) => f.id === responsavelId)?.nome ?? null,
@@ -125,7 +160,7 @@ export default function NovoEnvioPage() {
         comprimento_cm: num(comprimento),
         largura_cm: num(largura),
         altura_cm: num(altura),
-        valor_a_faturar: num(valorFaturar),
+        valor_a_faturar: (semCusto || !faturavel) ? null : num(valorFaturar),
         notas: notas.trim() || null,
       },
       itens,
@@ -141,51 +176,111 @@ export default function NovoEnvioPage() {
     <main style={f.page}>
       <div style={f.cabecalho}>
         <h1 style={f.titulo}>Novo Envio de Encomenda</h1>
-        <Link href="/logistico/envios-pecas" style={f.voltar}>← Envios</Link>
+        <Link href="/logistico/encomendas" style={f.voltar}>← Encomendas</Link>
       </div>
 
-      {/* 1. Cliente */}
+      {/* 1. Destinatário */}
       <section style={f.seccao}>
-        <div style={f.seccaoTitulo}>Cliente</div>
-        <div style={f.grid2}>
-          <Campo rotulo="Nome do cliente *">
-            <Autocomplete
-              valor={clienteNome}
-              placeholder="Escolher da lista ou escrever..."
-              buscar={buscarCliente}
-              onChangeTexto={(v) => { setClienteNome(v); setClienteId(null) }}
-              onEscolher={escolherCliente}
-              render={(c) => `${c.nome}${c.pais ? ` · ${c.pais}` : ''}`}
-              chaveTexto={(c) => c.nome}
-              onTextoNovo={adicionarCliente}
-              textoNovoRotulo={(t) => `➕ Adicionar «${t}» como novo cliente`}
-            />
-          </Campo>
-          <Campo rotulo="Email do cliente">
-            <input value={clienteEmail} onChange={(e) => setClienteEmail(e.target.value)} style={f.input} placeholder="email@cliente.com" />
-          </Campo>
+        <div style={f.seccaoTitulo}>Destinatário</div>
+        <div style={f.toggleTipo}>
+          <button
+            type="button"
+            style={{ ...f.toggleBtn, ...(destinatarioTipo === 'cliente' ? f.toggleBtnAtivo : {}) }}
+            onClick={() => setDestinatarioTipo('cliente')}
+          >👤 Cliente</button>
+          <button
+            type="button"
+            style={{ ...f.toggleBtn, ...(destinatarioTipo === 'fornecedor' ? f.toggleBtnAtivo : {}) }}
+            onClick={() => setDestinatarioTipo('fornecedor')}
+          >🏭 Fornecedor</button>
         </div>
-        <div style={f.grid2}>
-          <Campo rotulo="País">
-            <Autocomplete
-              valor={pais}
-              placeholder="Escolher da lista ou escrever..."
-              buscar={buscarPais}
-              onChangeTexto={setPais}
-              onEscolher={setPais}
-              render={(p) => p}
-              chaveTexto={(p) => p}
-              onTextoNovo={setPais}
-              textoNovoRotulo={(t) => `➕ Usar «${t}»`}
-            />
-          </Campo>
-          <Campo rotulo="Funcionário responsável">
-            <select value={responsavelId} onChange={(e) => setResponsavelId(e.target.value)} style={f.input}>
-              <option value="">— quem está a tratar —</option>
-              {funcionarios.map((fn) => <option key={fn.id} value={fn.id}>{fn.nome}</option>)}
-            </select>
-          </Campo>
+
+        {destinatarioTipo === 'cliente' ? (
+          <>
+            <div style={f.grid2}>
+              <Campo rotulo="Nome do cliente *">
+                <Autocomplete
+                  valor={clienteNome}
+                  placeholder="Escolher da lista ou escrever..."
+                  buscar={buscarCliente}
+                  onChangeTexto={(v) => { setClienteNome(v); setClienteId(null) }}
+                  onEscolher={escolherCliente}
+                  render={(c) => `${c.nome}${c.pais ? ` · ${c.pais}` : ''}`}
+                  chaveTexto={(c) => c.nome}
+                  onTextoNovo={adicionarCliente}
+                  textoNovoRotulo={(t) => `➕ Adicionar «${t}» como novo cliente`}
+                />
+              </Campo>
+              <Campo rotulo="Email do cliente">
+                <input value={clienteEmail} onChange={(e) => setClienteEmail(e.target.value)} style={f.input} placeholder="email@cliente.com" />
+              </Campo>
+            </div>
+            <div style={f.grid2}>
+              <Campo rotulo="País">
+                <Autocomplete
+                  valor={pais}
+                  placeholder="Escolher da lista ou escrever..."
+                  buscar={buscarPais}
+                  onChangeTexto={setPais}
+                  onEscolher={setPais}
+                  render={(p) => p}
+                  chaveTexto={(p) => p}
+                  onTextoNovo={setPais}
+                  textoNovoRotulo={(t) => `➕ Usar «${t}»`}
+                />
+              </Campo>
+              <Campo rotulo="Funcionário responsável">
+                <select value={responsavelId} onChange={(e) => setResponsavelId(e.target.value)} style={f.input}>
+                  <option value="">— quem está a tratar —</option>
+                  {funcionarios.map((fn) => <option key={fn.id} value={fn.id}>{fn.nome}</option>)}
+                </select>
+              </Campo>
+            </div>
+          </>
+        ) : (
+          <div style={f.grid2}>
+            <Campo rotulo="Fornecedor *">
+              <Autocomplete
+                valor={fornecedorNome}
+                placeholder="Escolher da lista ou escrever..."
+                buscar={buscarFornecedor}
+                onChangeTexto={(v) => { setFornecedorNome(v); setFornecedorId(null) }}
+                onEscolher={(fo) => { setFornecedorNome(fo.nome); setFornecedorId(fo.id) }}
+                render={(fo) => fo.nome}
+                chaveTexto={(fo) => fo.nome}
+                onTextoNovo={(t) => { setFornecedorNome(t); setFornecedorId(null) }}
+                textoNovoRotulo={(t) => `➕ Usar «${t}»`}
+              />
+            </Campo>
+            <Campo rotulo="Funcionário responsável">
+              <select value={responsavelId} onChange={(e) => setResponsavelId(e.target.value)} style={f.input}>
+                <option value="">— quem está a tratar —</option>
+                {funcionarios.map((fn) => <option key={fn.id} value={fn.id}>{fn.nome}</option>)}
+              </select>
+            </Campo>
+          </div>
+        )}
+      </section>
+
+      {/* Motivo do envio + faturação */}
+      <section style={f.seccao}>
+        <div style={f.seccaoTitulo}>Motivo do envio</div>
+        <div style={f.motivos}>
+          {MOTIVOS_ENVIO.map((m) => (
+            <button
+              key={m.valor}
+              type="button"
+              style={{ ...f.motivoBtn, ...(motivo === m.valor ? f.motivoBtnAtivo : {}) }}
+              onClick={() => escolherMotivo(m.valor)}
+            >
+              {m.label}{m.semCusto ? ' · sem custo' : ''}
+            </button>
+          ))}
         </div>
+        <label style={f.checkLinha}>
+          <input type="checkbox" checked={faturavel} disabled={semCusto} onChange={(e) => setFaturavel(e.target.checked)} />
+          <span>Faturável{semCusto ? ' (não se aplica a este motivo — sem custo associado)' : ''}</span>
+        </label>
       </section>
 
       {/* 2. Morada */}
@@ -235,6 +330,7 @@ export default function NovoEnvioPage() {
           <div style={f.itensTabela}>
             <div style={{ ...f.itemLinha, ...f.itemCab }}>
               <span>Peça</span>
+              <span>S/N (opcional)</span>
               <span style={{ textAlign: 'center' }}>Qtd</span>
               <span style={{ textAlign: 'right' }}>Preço unit. (€)</span>
               <span style={{ textAlign: 'right' }}>Total</span>
@@ -243,6 +339,12 @@ export default function NovoEnvioPage() {
             {itens.map((it, i) => (
               <div key={i} style={f.itemLinha}>
                 <span>{it.peca_nome}</span>
+                <input
+                  value={it.serial_number ?? ''}
+                  onChange={(e) => alterarItem(i, { serial_number: e.target.value || null })}
+                  placeholder="Sem SN"
+                  style={f.inputMini}
+                />
                 <input
                   type="number" min={1} value={it.quantidade}
                   onChange={(e) => alterarItem(i, { quantidade: Math.max(1, Number(e.target.value) || 1) })}
@@ -276,14 +378,21 @@ export default function NovoEnvioPage() {
         </div>
       </section>
 
-      {/* 6. Valor a faturar */}
-      <section style={f.seccao}>
-        <div style={f.seccaoTitulo}>Valor a faturar</div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <input type="number" step="0.01" value={valorFaturar} onChange={(e) => setValorFaturar(e.target.value)} style={{ ...f.input, maxWidth: 200 }} placeholder="0.00" />
-          <button type="button" style={f.btnAdd} onClick={() => setValorFaturar(String(totalItens))}>Usar total dos itens ({formatarEuro(totalItens)})</button>
-        </div>
-      </section>
+      {/* 6. Valor a faturar (só quando faturável) */}
+      {faturavel && !semCusto ? (
+        <section style={f.seccao}>
+          <div style={f.seccaoTitulo}>Valor a faturar</div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input type="number" step="0.01" value={valorFaturar} onChange={(e) => setValorFaturar(e.target.value)} style={{ ...f.input, maxWidth: 200 }} placeholder="0.00" />
+            <button type="button" style={f.btnAdd} onClick={() => setValorFaturar(String(totalItens))}>Usar total dos itens ({formatarEuro(totalItens)})</button>
+          </div>
+        </section>
+      ) : (
+        <section style={f.seccao}>
+          <div style={f.seccaoTitulo}>Valor a faturar</div>
+          <p style={f.ajuda}>Este envio é <strong>{motivoInfo(motivo).label}</strong> — sem valor a faturar.</p>
+        </section>
+      )}
 
       {/* 7. Notas */}
       <section style={f.seccao}>
@@ -397,7 +506,7 @@ const f: Record<string, React.CSSProperties> = {
   textarea: { width: '100%', minHeight: 70, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8, font: 'inherit', resize: 'vertical', boxSizing: 'border-box' },
   ajuda: { fontSize: 13, color: 'var(--muted)', margin: 0 },
   itensTabela: { border: '1px solid var(--border)', borderRadius: 8, padding: 6 },
-  itemLinha: { display: 'grid', gridTemplateColumns: '2fr 0.7fr 1fr 1fr 32px', gap: 8, padding: '6px 6px', alignItems: 'center', fontSize: 14, borderBottom: '1px solid #f2f2f2' },
+  itemLinha: { display: 'grid', gridTemplateColumns: '1.6fr 1fr 0.6fr 1fr 1fr 32px', gap: 8, padding: '6px 6px', alignItems: 'center', fontSize: 14, borderBottom: '1px solid #f2f2f2' },
   itemCab: { fontWeight: 700, color: 'var(--muted)', fontSize: 12 },
   totalLinha: { display: 'flex', justifyContent: 'space-between', padding: '10px 6px 2px', fontSize: 15 },
   btnX: { background: 'transparent', border: 'none', color: 'var(--danger, #c62828)', fontSize: 18, cursor: 'pointer', lineHeight: 1 },
@@ -409,4 +518,11 @@ const f: Record<string, React.CSSProperties> = {
   erro: { background: '#fbecea', color: 'var(--danger)', border: '1px solid var(--danger)', borderRadius: 8, padding: '10px 12px', fontSize: 14, fontWeight: 600 },
   acoes: { display: 'flex', gap: 10 },
   btnPrimario: { background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '12px 24px', fontWeight: 700, cursor: 'pointer', fontSize: 15 },
+  toggleTipo: { display: 'flex', gap: 8 },
+  toggleBtn: { flex: 1, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface, #fff)', fontWeight: 700, cursor: 'pointer', color: 'var(--foreground)' },
+  toggleBtnAtivo: { background: 'var(--accent-bg, #ece8fb)', borderColor: 'var(--primary)', color: 'var(--primary-dark)' },
+  motivos: { display: 'flex', gap: 8, flexWrap: 'wrap' },
+  motivoBtn: { padding: '8px 14px', border: '1px solid var(--border)', borderRadius: 999, background: 'var(--surface, #fff)', fontWeight: 600, cursor: 'pointer', color: 'var(--foreground)', fontSize: 14 },
+  motivoBtnAtivo: { background: 'var(--accent-bg, #ece8fb)', borderColor: 'var(--primary)', color: 'var(--primary-dark)' },
+  checkLinha: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' },
 }

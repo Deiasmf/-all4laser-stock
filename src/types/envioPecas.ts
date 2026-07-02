@@ -28,6 +28,24 @@ export function estadoInfo(valor: string | null) {
 export const TRANSPORTADORAS = ['Nacex', 'UPS', 'FedEx', 'Outro'] as const
 export type Transportadora = (typeof TRANSPORTADORAS)[number]
 
+// ── Destinatário: cliente ou fornecedor ──
+export type DestinatarioTipo = 'cliente' | 'fornecedor'
+
+// ── Motivo do envio ──
+// semCusto: envios sem custo/valor associado (não faturáveis por natureza).
+export type MotivoEnvio = 'venda' | 'reparacao' | 'garantia' | 'pecas_falta'
+
+export const MOTIVOS_ENVIO: { valor: MotivoEnvio; label: string; semCusto: boolean }[] = [
+  { valor: 'venda', label: 'Venda', semCusto: false },
+  { valor: 'reparacao', label: 'Reparação', semCusto: false },
+  { valor: 'garantia', label: 'Peças em Garantia', semCusto: true },
+  { valor: 'pecas_falta', label: 'Peças em falta', semCusto: true },
+]
+
+export function motivoInfo(valor: string | null) {
+  return MOTIVOS_ENVIO.find((m) => m.valor === valor) ?? MOTIVOS_ENVIO[0]
+}
+
 // Links de tracking/abertura em nova aba por transportadora.
 export const TRANSPORTADORA_LINK: Record<string, string> = {
   Nacex: 'https://www.nacex.pt',
@@ -42,6 +60,11 @@ export type EnvioPeca = {
   id: string
   numero: string | null
   estado: EnvioEstado
+  destinatario_tipo: DestinatarioTipo | null
+  fornecedor_id: string | null
+  fornecedor_nome: string | null
+  motivo: MotivoEnvio | null
+  faturavel: boolean
   cliente_id: string | null
   cliente_nome: string | null
   cliente_email: string | null
@@ -75,6 +98,7 @@ export type EnvioItem = {
   envio_id: string
   peca_id: string | null
   peca_nome: string | null
+  serial_number: string | null
   quantidade: number
   preco_unitario: number
   preco_total: number
@@ -85,12 +109,18 @@ export type EnvioItem = {
 export type EnvioItemInput = {
   peca_id: string | null
   peca_nome: string
+  serial_number: string | null
   quantidade: number
   preco_unitario: number
 }
 
 // Campos editáveis do envio (criação)
 export type EnvioInput = {
+  destinatario_tipo: DestinatarioTipo
+  fornecedor_id: string | null
+  fornecedor_nome: string | null
+  motivo: MotivoEnvio
+  faturavel: boolean
   cliente_id: string | null
   cliente_nome: string | null
   cliente_email: string | null
