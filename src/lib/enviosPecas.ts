@@ -36,6 +36,7 @@ export async function criarEnvio(
       envio_id: envio.id,
       peca_id: i.peca_id,
       peca_nome: i.peca_nome,
+      serial_number: i.serial_number ?? null,
       quantidade: i.quantidade,
       preco_unitario: i.preco_unitario,
     }))
@@ -173,6 +174,18 @@ export async function listarClientesEnvio(): Promise<ClienteEnvioOpc[]> {
     .order('nome')
     .limit(2000)
   return (data as ClienteEnvioOpc[]) ?? []
+}
+
+export type FornecedorEnvioOpc = { id: string; nome: string }
+
+// Lista de fornecedores (destinatário = fornecedor).
+export async function listarFornecedoresEnvio(): Promise<FornecedorEnvioOpc[]> {
+  const { data } = await supabase
+    .from('fornecedores')
+    .select('id, nome')
+    .eq('ativo', true)
+    .order('nome')
+  return (data as FornecedorEnvioOpc[]) ?? []
 }
 
 // Adiciona um cliente novo (nome, email, país) à tabela clientes.

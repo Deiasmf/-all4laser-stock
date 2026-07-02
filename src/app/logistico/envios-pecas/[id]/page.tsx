@@ -9,7 +9,7 @@ import {
   type FuncionarioOpc,
 } from '@/lib/enviosPecas'
 import {
-  estadoInfo, transportadoraLabel, formatarEuro, TRANSPORTADORA_LINK, TRANSPORTADORAS, KEYINVOICE_URL,
+  estadoInfo, transportadoraLabel, formatarEuro, motivoInfo, TRANSPORTADORA_LINK, TRANSPORTADORAS, KEYINVOICE_URL,
   type EnvioPeca, type EnvioItem,
 } from '@/types/envioPecas'
 import BotaoPdf from '@/components/BotaoPdf'
@@ -167,11 +167,20 @@ export default function DetalheEnvioPage() {
                   ],
                 },
                 {
-                  titulo: 'Cliente',
+                  titulo: envio.destinatario_tipo === 'fornecedor' ? 'Fornecedor' : 'Cliente',
+                  linhas: envio.destinatario_tipo === 'fornecedor'
+                    ? [{ rotulo: 'Nome', valor: envio.fornecedor_nome }]
+                    : [
+                        { rotulo: 'Nome', valor: envio.cliente_nome },
+                        { rotulo: 'Email', valor: envio.cliente_email },
+                        { rotulo: 'Morada', valor: envio.morada_envio },
+                      ],
+                },
+                {
+                  titulo: 'Envio',
                   linhas: [
-                    { rotulo: 'Nome', valor: envio.cliente_nome },
-                    { rotulo: 'Email', valor: envio.cliente_email },
-                    { rotulo: 'Morada', valor: envio.morada_envio },
+                    { rotulo: 'Motivo', valor: motivoInfo(envio.motivo).label },
+                    { rotulo: 'Faturável', valor: envio.faturavel ? 'Sim' : 'Não' },
                   ],
                 },
                 {
@@ -204,10 +213,11 @@ export default function DetalheEnvioPage() {
               tabelas: itens.length
                 ? [{
                     titulo: 'Itens',
-                    colunas: ['Peça', 'Qtd', 'Preço unit.', 'Total'],
-                    larguras: [3, 1, 1, 1],
+                    colunas: ['Peça', 'S/N', 'Qtd', 'Preço unit.', 'Total'],
+                    larguras: [3, 2, 1, 1, 1],
                     linhas: itens.map((it) => [
                       it.peca_nome,
+                      it.serial_number ?? '',
                       it.quantidade,
                       formatarEuro(it.preco_unitario),
                       formatarEuro(it.preco_total),
@@ -238,10 +248,16 @@ export default function DetalheEnvioPage() {
 
       {/* Dados */}
       <section style={c.card}>
-        <div style={c.cardTitulo}>Cliente</div>
-        <Linha rotulo="Nome" valor={envio.cliente_nome} />
-        <Linha rotulo="Email" valor={envio.cliente_email} />
-        <Linha rotulo="Morada de envio" valor={envio.morada_envio} />
+        <div style={c.cardTitulo}>{envio.destinatario_tipo === 'fornecedor' ? 'Fornecedor' : 'Cliente'}</div>
+        {envio.destinatario_tipo === 'fornecedor' ? (
+          <Linha rotulo="Nome" valor={envio.fornecedor_nome} />
+        ) : (
+          <>
+            <Linha rotulo="Nome" valor={envio.cliente_nome} />
+            <Linha rotulo="Email" valor={envio.cliente_email} />
+            <Linha rotulo="Morada de envio" valor={envio.morada_envio} />
+          </>
+        )}
       </section>
 
       <section style={c.card}>
@@ -250,7 +266,10 @@ export default function DetalheEnvioPage() {
           <div style={c.itens}>
             {itens.map((it) => (
               <div key={it.id} style={c.itemLinha}>
-                <span>{it.peca_nome}</span>
+                <span>
+                  {it.peca_nome}
+                  {it.serial_number && <span style={c.snTag}> · S/N {it.serial_number}</span>}
+                </span>
                 <span style={c.muted}>{it.quantidade} × {formatarEuro(it.preco_unitario)}</span>
                 <span style={{ textAlign: 'right', fontWeight: 700 }}>{formatarEuro(it.preco_total)}</span>
               </div>
@@ -261,10 +280,12 @@ export default function DetalheEnvioPage() {
 
       <section style={c.card}>
         <div style={c.cardTitulo}>Envio</div>
+        <Linha rotulo="Motivo" valor={motivoInfo(envio.motivo).label} />
+        <Linha rotulo="Faturável" valor={envio.faturavel ? 'Sim' : 'Não (sem custo associado)'} />
         <Linha rotulo="Transportadora" valor={transportadoraLabel(envio)} />
         <Linha rotulo="Dimensões (C×L×A)" valor={dims.length ? dims.map((d) => `${d}`).join(' × ') + ' cm' : null} />
         <Linha rotulo="Peso" valor={envio.peso_kg != null ? `${envio.peso_kg} kg` : null} />
-        <Linha rotulo="Valor a faturar" valor={formatarEuro(envio.valor_a_faturar)} />
+        {envio.faturavel && <Linha rotulo="Valor a faturar" valor={formatarEuro(envio.valor_a_faturar)} />}
         {envio.notas && <Linha rotulo="Notas" valor={envio.notas} />}
       </section>
 
@@ -411,6 +432,7 @@ const c: Record<string, React.CSSProperties> = {
   linhaRotulo: { color: 'var(--muted)', fontWeight: 600 },
   itens: { display: 'flex', flexDirection: 'column', gap: 6 },
   itemLinha: { display: 'grid', gridTemplateColumns: '2fr 1.2fr 1fr', gap: 8, fontSize: 14, alignItems: 'center', borderBottom: '1px solid #f4f4f4', paddingBottom: 4 },
+  snTag: { color: 'var(--muted)', fontSize: 12.5, fontWeight: 600 },
   docLinha: { display: 'flex', justifyContent: 'space-between', fontSize: 14 },
   link: { color: 'var(--primary)', fontWeight: 600, textDecoration: 'none' },
   muted: { color: 'var(--muted)', fontSize: 14 },
