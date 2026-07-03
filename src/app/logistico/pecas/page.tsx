@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
-import { listarPecas, criarPeca, atualizarPeca, eliminarPeca } from '@/lib/pecas'
+import { listarPecas, criarPeca, atualizarPeca, eliminarPeca, atualizarStatusReparacao } from '@/lib/pecas'
 import { pecasComPedidoPendente } from '@/lib/compras'
 import { LOCALIZACOES_PECA } from '@/types/compras'
 import QrPeca from '@/components/QrPeca'
@@ -44,6 +44,17 @@ function StatusPecaBadge({ status }: { status: string | null }) {
   )
 }
 
+// Badge para peças avariadas que entraram no stock a aguardar reparação
+// (criadas automaticamente por um Processo de Peças / Receção).
+function ReparacaoBadge({ valor }: { valor: string | null }) {
+  if (valor !== 'aguarda_reparacao') return null
+  return (
+    <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '1px 6px', color: '#fff', background: '#EA580C' }}>
+      🔧 a aguardar reparação
+    </span>
+  )
+}
+
 // Badge de alerta de stock — só para peças GENÉRICAS (sem serial).
 // Peças com serial são unidades únicas (quantidade 1), por isso não têm alerta.
 // Genéricas: <= 5 = stock crítico (vermelho), <= 10 = stock baixo (laranja).
@@ -66,6 +77,7 @@ export default function StockPecasPage() {
   const [fMarca, setFMarca] = useState('')
   const [fGrupo, setFGrupo] = useState('')
   const [fStatus, setFStatus] = useState('')
+  const [fReparacao, setFReparacao] = useState(false)
   const [aberta, setAberta] = useState<Peca | null>(null)
   const [criar, setCriar] = useState(false)
   const [pendentes, setPendentes] = useState<Set<string>>(new Set())
@@ -105,13 +117,14 @@ export default function StockPecasPage() {
       .filter((p) => !fMarca || p.marca === fMarca)
       .filter((p) => !fGrupo || p.grupo === fGrupo)
       .filter((p) => !fStatus || p.status === fStatus)
+      .filter((p) => !fReparacao || p.status_reparacao === 'aguarda_reparacao')
       .filter((p) =>
         !q ||
         p.nome.toLowerCase().includes(q) ||
         (p.grupo ?? '').toLowerCase().includes(q) ||
         (p.serial_number ?? '').toLowerCase().includes(q)
       )
-  }, [pecas, pesquisa, fMarca, fGrupo, fStatus])
+  }, [pecas, pesquisa, fMarca, fGrupo, fStatus, fReparacao])
 
   const totalUnidades = filtradas.reduce((a, p) => a + (p.quantidade || 0), 0)
 
@@ -147,6 +160,7 @@ export default function StockPecasPage() {
             {p.nome}
             {pendentes.has(p.id) && <span title="Pedido de compra pendente" style={{ marginLeft: 6 }}>🛒</span>}
             <StatusPecaBadge status={p.status} />
+            <ReparacaoBadge valor={p.status_reparacao} />
             {p.serial_number && <span style={c.serialTag}>S/N: {p.serial_number}</span>}
           </span>
           <span style={{ textAlign: 'right', fontWeight: 700, color: p.quantidade <= 0 ? 'var(--danger, #c62828)' : 'inherit' }}>
@@ -185,6 +199,14 @@ export default function StockPecasPage() {
           <option value="">Todos os estados</option>
           {STATUS_PECA.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
+        <button
+          type="button"
+          onClick={() => setFReparacao((v) => !v)}
+          style={{ ...c.btnGhost, ...(fReparacao ? { borderColor: '#EA580C', color: '#EA580C', fontWeight: 700 } : {}) }}
+          title="Mostrar só peças a aguardar reparação"
+        >
+          🔧 A aguardar reparação
+        </button>
         <button
           style={c.btnGhost}
           onClick={() =>
@@ -261,9 +283,19 @@ function ModalPeca({
   const [notas, setNotas] = useState(peca?.notas ?? '')
   const [aGuardar, setAGuardar] = useState(false)
   const [aApagar, setAApagar] = useState(false)
+  const [aLimpar, setALimpar] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
   const soLeitura = !isAdmin
+
+  async function limparReparacao() {
+    if (!peca) return
+    setALimpar(true)
+    const { error } = await atualizarStatusReparacao(peca.id, null)
+    setALimpar(false)
+    if (error) { setErro('Erro: ' + error.message); return }
+    onGuardado()
+  }
 
   async function guardar() {
     setErro(null)
@@ -314,6 +346,17 @@ function ModalPeca({
         {pendente && (
           <div style={{ background: '#fdf2e3', border: '1px solid #D4820A', color: '#9a5b00', borderRadius: 8, padding: '8px 12px', marginTop: 8, fontSize: 13, fontWeight: 600 }}>
             🛒 Pedido de compra pendente para esta peça
+          </div>
+        )}
+
+        {peca?.status_reparacao === 'aguarda_reparacao' && (
+          <div style={{ background: '#fff3e8', border: '1px solid #EA580C', color: '#9a3b00', borderRadius: 8, padding: '8px 12px', marginTop: 8, fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+            <span>🔧 Peça avariada a aguardar reparação</span>
+            {isAdmin && (
+              <button onClick={limparReparacao} disabled={aLimpar} style={{ ...c.btnGhost, padding: '6px 10px', fontSize: 12 }}>
+                {aLimpar ? '...' : 'Marcar como tratada'}
+              </button>
+            )}
           </div>
         )}
 

@@ -5,6 +5,7 @@ export type Peca = {
   grupo: string | null
   serial_number: string | null
   status: string | null
+  status_reparacao: string | null   // 'aguarda_reparacao' quando entra por um processo/receção a aguardar reparação
   referencia: string | null
   preco_venda: number | null
   quantidade: number
