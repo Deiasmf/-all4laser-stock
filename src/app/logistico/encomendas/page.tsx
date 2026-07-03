@@ -22,6 +22,7 @@ function diasDesde(data: string): number {
 
 // Ficha detalhada ligada a um movimento (envio ou reparação), se existir.
 function fichaLink(m: RecepcaoMovimento): string | null {
+  if (m.referencia_tipo === 'processo' && m.referencia_id) return `/logistico/recepcao/${m.referencia_id}`
   if (m.referencia_tipo === 'envio_pecas' && m.referencia_id) return `/logistico/envios-pecas/${m.referencia_id}`
   if (m.referencia_tipo === 'reparacao' && m.referencia_id) return `/logistico/reparacao-pecas/${m.referencia_id}`
   return null
@@ -223,6 +224,7 @@ export default function EncomendasPage() {
         <select value={fRef} onChange={(e) => setFRef(e.target.value)} style={c.select}>
           <option value="">Todos os tipos</option>
           <option value="envio_pecas">Envios</option>
+          <option value="processo">Processos de peças</option>
           <option value="reparacao">Reparações</option>
           <option value="manual">Manuais</option>
           <option value="nota_encomenda">Notas de encomenda</option>

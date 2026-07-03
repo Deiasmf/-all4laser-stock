@@ -62,6 +62,9 @@ export async function alterarEstadoProcesso(id: string, estado: EstadoProcesso) 
 }
 
 export async function eliminarProcesso(id: string) {
+  // Remove também as linhas que este processo criou no livro de Encomendas.
+  await supabase.from('recepcao_movimentos').delete()
+    .eq('referencia_tipo', 'processo').eq('referencia_id', id)
   return supabase.from('processos_pecas').delete().eq('id', id)
 }
 
