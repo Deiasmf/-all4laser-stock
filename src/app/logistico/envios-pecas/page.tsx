@@ -82,7 +82,7 @@ export default function EnviosPecasPage() {
     <main style={c.page}>
       <div style={c.cabecalho}>
         <h1 style={c.titulo}>Envios de Encomendas</h1>
-        <Link href="/logistico/envios-pecas/novo" style={c.btnPrimario}>+ Novo Envio de Encomenda</Link>
+        <Link href="/logistico/encomendas/nova" style={c.btnPrimario}>+ Nova Encomenda</Link>
       </div>
 
       <div style={c.filtros}>
