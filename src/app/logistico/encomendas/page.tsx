@@ -6,9 +6,9 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 import { listarMovimentos, criarMatch, atualizarMovimento, eliminarMovimento } from '@/lib/recepcao'
 import { eliminarEnvio } from '@/lib/enviosPecas'
+import { eliminarRececao } from '@/lib/rececoesPecas'
 import type { RecepcaoMovimento } from '@/types/recepcao'
 import { matchStatusInfo, REFERENCIA_TIPO_LABEL } from '@/types/recepcao'
-import RecepcaoMovimentoModal from '@/components/RecepcaoMovimentoModal'
 
 const CHAVE_FILTROS = 'encomendas_filtros'
 
@@ -23,6 +23,7 @@ function diasDesde(data: string): number {
 
 // Ficha detalhada ligada a um movimento (envio ou reparação), se existir.
 function fichaLink(m: RecepcaoMovimento): string | null {
+  if (m.referencia_tipo === 'rececao' && m.referencia_id) return `/logistico/rececoes-pecas/${m.referencia_id}`
   if (m.referencia_tipo === 'envio_pecas' && m.referencia_id) return `/logistico/envios-pecas/${m.referencia_id}`
   if (m.referencia_tipo === 'reparacao' && m.referencia_id) return `/logistico/reparacao-pecas/${m.referencia_id}`
   return null
@@ -47,7 +48,6 @@ export default function EncomendasPage() {
   const { isAdmin } = useAuth()
   const [movimentos, setMovimentos] = useState<RecepcaoMovimento[]>([])
   const [carregando, setCarregando] = useState(true)
-  const [modalAberto, setModalAberto] = useState(false)
 
   // filtros
   const [pesquisa, setPesquisa] = useState('')
@@ -151,9 +151,12 @@ export default function EncomendasPage() {
 
   async function apagar(m: RecepcaoMovimento) {
     const eEnvio = m.referencia_tipo === 'envio_pecas' && m.referencia_id
+    const eRececao = m.referencia_tipo === 'rececao' && m.referencia_id
     const eReparacao = m.referencia_tipo === 'reparacao'
     const aviso = eEnvio
       ? 'Apagar este ENVIO? Remove a encomenda enviada (com itens) e a sua linha do livro.'
+      : eRececao
+      ? 'Apagar esta RECEÇÃO? Remove a receção (com peças) e a sua linha do livro.'
       : eReparacao
       ? 'Apagar esta linha do livro? A reparação em si mantém-se no módulo de Reparação.'
       : 'Apagar esta receção/movimento?'
@@ -164,6 +167,10 @@ export default function EncomendasPage() {
       if (error) { alert('Não foi possível apagar: ' + error.message); return }
       // Remove todas as linhas ligadas a este envio
       setMovimentos((prev) => prev.filter((x) => !(x.referencia_tipo === 'envio_pecas' && x.referencia_id === m.referencia_id)))
+    } else if (eRececao) {
+      const { error } = await eliminarRececao(m.referencia_id as string)
+      if (error) { alert('Não foi possível apagar: ' + error.message); return }
+      setMovimentos((prev) => prev.filter((x) => !(x.referencia_tipo === 'rececao' && x.referencia_id === m.referencia_id)))
     } else {
       const { error } = await eliminarMovimento(m.id)
       if (error) { alert('Não foi possível apagar: ' + error.message); return }
@@ -210,7 +217,7 @@ export default function EncomendasPage() {
       {/* Ações */}
       <div style={c.acoes}>
         {isAdmin && <Link href="/logistico/envios-pecas/novo" style={c.btnPrimario}>+ Novo Envio</Link>}
-        <button style={c.btnGhost} onClick={() => setModalAberto(true)}>+ Nova Receção</button>
+        <Link href="/logistico/rececoes-pecas/nova" style={c.btnGhost}>+ Nova Receção</Link>
         <Link href="/logistico/encomendas/scan" style={c.btnScan}>📷 Scan QR</Link>
       </div>
 
@@ -334,15 +341,6 @@ export default function EncomendasPage() {
           </div>
         )}
       </section>
-
-      <RecepcaoMovimentoModal
-        aberto={modalAberto}
-        onFechar={() => setModalAberto(false)}
-        onGravado={(m) => { setModalAberto(false); setMovimentos((prev) => [m, ...prev]) }}
-        prefill={{ tipo: 'entrada' }}
-        titulo="Nova Receção de Encomenda"
-        bloquearTipo
-      />
 
       <p style={c.dica}>Livro central de encomendas: envios, receções, reparações e movimentos manuais num só sítio.</p>
     </main>

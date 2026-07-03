@@ -119,6 +119,7 @@ export type MaterialOpc = {
   preco: number
   origem: 'stock' | 'preçário'
   detalhe: string | null
+  serial_number: string | null   // S/N do stock de peças (null no preçário)
 }
 
 // Procura itens faturáveis em ambas as fontes e junta os resultados.
@@ -128,7 +129,7 @@ export async function pesquisarMaterial(q: string): Promise<MaterialOpc[]> {
   const [pc, pr] = await Promise.all([
     supabase
       .from('pecas')
-      .select('id, nome, marca, grupo, preco_venda')
+      .select('id, nome, marca, grupo, preco_venda, serial_number')
       .or(`nome.ilike.%${termo}%,grupo.ilike.%${termo}%,serial_number.ilike.%${termo}%`)
       .order('nome')
       .limit(15),
@@ -146,13 +147,15 @@ export async function pesquisarMaterial(q: string): Promise<MaterialOpc[]> {
     preco: p.preco ?? 0,
     origem: 'preçário',
     detalhe: p.categoria,
+    serial_number: null,
   }))
-  const doStock: MaterialOpc[] = ((pc.data as { id: string; nome: string; marca: string | null; grupo: string | null; preco_venda: number | null }[]) ?? []).map((p) => ({
+  const doStock: MaterialOpc[] = ((pc.data as { id: string; nome: string; marca: string | null; grupo: string | null; preco_venda: number | null; serial_number: string | null }[]) ?? []).map((p) => ({
     peca_id: p.id,
     nome: p.nome,
     preco: p.preco_venda ?? 0,
     origem: 'stock',
     detalhe: [p.marca, p.grupo].filter(Boolean).join(' · ') || null,
+    serial_number: p.serial_number,
   }))
   return [...doPrecario, ...doStock]
 }
