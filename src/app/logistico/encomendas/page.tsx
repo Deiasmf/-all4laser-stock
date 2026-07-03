@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 import { listarMovimentos, criarMatch, atualizarMovimento, eliminarMovimento } from '@/lib/recepcao'
 import { eliminarEnvio } from '@/lib/enviosPecas'
-import { eliminarRececao } from '@/lib/rececoesPecas'
 import type { RecepcaoMovimento } from '@/types/recepcao'
 import { matchStatusInfo, REFERENCIA_TIPO_LABEL } from '@/types/recepcao'
 
@@ -23,7 +22,6 @@ function diasDesde(data: string): number {
 
 // Ficha detalhada ligada a um movimento (envio ou reparação), se existir.
 function fichaLink(m: RecepcaoMovimento): string | null {
-  if (m.referencia_tipo === 'rececao' && m.referencia_id) return `/logistico/rececoes-pecas/${m.referencia_id}`
   if (m.referencia_tipo === 'envio_pecas' && m.referencia_id) return `/logistico/envios-pecas/${m.referencia_id}`
   if (m.referencia_tipo === 'reparacao' && m.referencia_id) return `/logistico/reparacao-pecas/${m.referencia_id}`
   return null
@@ -151,12 +149,9 @@ export default function EncomendasPage() {
 
   async function apagar(m: RecepcaoMovimento) {
     const eEnvio = m.referencia_tipo === 'envio_pecas' && m.referencia_id
-    const eRececao = m.referencia_tipo === 'rececao' && m.referencia_id
     const eReparacao = m.referencia_tipo === 'reparacao'
     const aviso = eEnvio
       ? 'Apagar este ENVIO? Remove a encomenda enviada (com itens) e a sua linha do livro.'
-      : eRececao
-      ? 'Apagar esta RECEÇÃO? Remove a receção (com peças) e a sua linha do livro.'
       : eReparacao
       ? 'Apagar esta linha do livro? A reparação em si mantém-se no módulo de Reparação.'
       : 'Apagar esta receção/movimento?'
@@ -167,10 +162,6 @@ export default function EncomendasPage() {
       if (error) { alert('Não foi possível apagar: ' + error.message); return }
       // Remove todas as linhas ligadas a este envio
       setMovimentos((prev) => prev.filter((x) => !(x.referencia_tipo === 'envio_pecas' && x.referencia_id === m.referencia_id)))
-    } else if (eRececao) {
-      const { error } = await eliminarRececao(m.referencia_id as string)
-      if (error) { alert('Não foi possível apagar: ' + error.message); return }
-      setMovimentos((prev) => prev.filter((x) => !(x.referencia_tipo === 'rececao' && x.referencia_id === m.referencia_id)))
     } else {
       const { error } = await eliminarMovimento(m.id)
       if (error) { alert('Não foi possível apagar: ' + error.message); return }
@@ -217,7 +208,7 @@ export default function EncomendasPage() {
       {/* Ações */}
       <div style={c.acoes}>
         {isAdmin && <Link href="/logistico/envios-pecas/novo" style={c.btnPrimario}>+ Novo Envio</Link>}
-        <Link href="/logistico/rececoes-pecas/nova" style={c.btnGhost}>+ Nova Receção</Link>
+        <Link href="/logistico/recepcao/novo" style={c.btnGhost}>+ Novo Processo de Peças</Link>
         <Link href="/logistico/encomendas/scan" style={c.btnScan}>📷 Scan QR</Link>
       </div>
 
