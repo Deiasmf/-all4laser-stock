@@ -56,6 +56,11 @@ export function eliminarPeca(id: string) {
   return supabase.from('pecas').delete().eq('id', id)
 }
 
+// Marca o estado de reparação de uma peça (ex.: limpar 'aguarda_reparacao' quando já foi tratada)
+export function atualizarStatusReparacao(id: string, valor: string | null) {
+  return supabase.from('pecas').update({ status_reparacao: valor }).eq('id', id).select().single()
+}
+
 // ── Material das folhas de obra (desconta/repõe stock via trigger) ──
 
 export async function listarMateriaisFolha(folhaId: string): Promise<FolhaMaterialComPeca[]> {
