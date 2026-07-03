@@ -49,6 +49,7 @@ const NAV: Seccao[] = [
           { href: '/logistico', label: 'Stock', icon: '📦' },
           { href: '/logistico/pecas', label: 'Stock de peças', icon: '🔩' },
           { href: '/logistico/reparacao-pecas', label: 'Reparação de Peças', icon: '🔧' },
+          { href: '/logistico/encomendas', label: 'Encomendas', icon: '📦' },
           { href: '/logistico/recepcao', label: 'Processos de Peças', icon: '🔄' },
           { href: '/logistico/recepcao/scan', label: 'Scan QR', icon: '📷' },
           { href: '/logistico/preparacao', label: 'Em preparação', icon: '🧰' },

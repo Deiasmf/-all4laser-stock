@@ -3,7 +3,7 @@
 
 export type TipoMovimento = 'entrada' | 'saida'
 export type MatchStatus = 'pendente' | 'fechado' | 'parcial'
-export type ReferenciaTipo = 'reparacao' | 'envio_pecas' | 'nota_encomenda' | 'manual' | 'rececao'
+export type ReferenciaTipo = 'reparacao' | 'envio_pecas' | 'nota_encomenda' | 'manual' | 'rececao' | 'processo'
 export type ContraparteTipo = 'cliente' | 'fornecedor_reparacao' | 'interno'
 
 export type RecepcaoMovimento = {
@@ -61,4 +61,5 @@ export const REFERENCIA_TIPO_LABEL: Record<ReferenciaTipo, string> = {
   nota_encomenda: 'Nota de encomenda',
   manual: 'Manual',
   rececao: 'Receção',
+  processo: 'Processo de peças',
 }
