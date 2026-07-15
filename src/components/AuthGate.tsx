@@ -18,7 +18,8 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     ehLogin ||
     pathname === '/redefinir-password' ||
     pathname.startsWith('/assinar') ||
-    pathname.startsWith('/reservas')
+    pathname.startsWith('/reservas') ||
+    pathname.startsWith('/registo-cliente')
 
   // Rota interna: exige sessão E perfil de staff.
   const ehInterna = !ehPublico
