@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
 
@@ -36,6 +37,27 @@ export default function RegistosPage() {
   const [aProcessar, setAProcessar] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
   const [erro, setErro] = useState<string | null>(null)
+
+  // Link público do formulário + QR code
+  const [linkUrl, setLinkUrl] = useState('')
+  const [qr, setQr] = useState('')
+  const [copiado, setCopiado] = useState(false)
+
+  useEffect(() => {
+    const url = `${window.location.origin}/registo-cliente`
+    setLinkUrl(url)
+    QRCode.toDataURL(url, { width: 220, margin: 1 }).then(setQr).catch(() => setQr(''))
+  }, [])
+
+  async function copiarLink() {
+    try {
+      await navigator.clipboard.writeText(linkUrl)
+      setCopiado(true)
+      setTimeout(() => setCopiado(false), 2000)
+    } catch {
+      setCopiado(false)
+    }
+  }
 
   const carregar = useCallback(async () => {
     setACarregar(true)
@@ -147,6 +169,26 @@ export default function RegistosPage() {
       </div>
       <p style={s.sub}>Submissões do formulário público. Aprovar cria ou atualiza o cliente na CRM (sem duplicar) e as moradas de entrega.</p>
 
+      <div style={s.partilha}>
+        <div style={s.partilhaInfo}>
+          <div style={s.partilhaTit}>Formulário para enviar aos clientes</div>
+          <p style={s.partilhaTexto}>Partilha este link (ou o QR code) para os clientes preencherem os dados. As respostas aparecem aqui para aprovação.</p>
+          <div style={s.linkRow}>
+            <input style={s.linkInput} value={linkUrl} readOnly onFocus={(e) => e.target.select()} />
+            <button type="button" style={s.btnCopiar} onClick={copiarLink}>
+              {copiado ? '✓ Copiado' : 'Copiar link'}
+            </button>
+          </div>
+        </div>
+        {qr && (
+          <div style={s.qrBox}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={qr} alt="QR code do formulário" width={130} height={130} style={{ display: 'block' }} />
+            <a href={qr} download="formulario-registo-clientes.png" style={s.btnDescarregar}>Descarregar QR</a>
+          </div>
+        )}
+      </div>
+
       {msg && <div style={s.ok}>{msg}</div>}
       {erro && <div style={s.erro}>{erro}</div>}
 
@@ -209,6 +251,15 @@ const s: Record<string, React.CSSProperties> = {
   titulo: { fontSize: 22, fontWeight: 700, color: 'var(--primary)' },
   contador: { background: 'var(--accent-bg, #ede9fe)', color: 'var(--primary, #6d28d9)', fontWeight: 700, fontSize: 13, padding: '4px 10px', borderRadius: 999 },
   sub: { color: 'var(--muted)', fontSize: 14, margin: '6px 0 16px' },
+  partilha: { display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', border: '1px solid var(--border, #e5e7eb)', borderRadius: 12, padding: 16, marginBottom: 18, background: 'var(--accent-bg, #f5f3ff)' },
+  partilhaInfo: { flex: 1, minWidth: 240 },
+  partilhaTit: { fontWeight: 700, color: 'var(--primary)', fontSize: 15, marginBottom: 4 },
+  partilhaTexto: { color: 'var(--muted)', fontSize: 13, margin: '0 0 10px' },
+  linkRow: { display: 'flex', gap: 8, flexWrap: 'wrap' },
+  linkInput: { flex: 1, minWidth: 180, padding: 9, border: '1px solid #ccc', borderRadius: 8, fontSize: 14, background: '#fff' },
+  btnCopiar: { padding: '9px 16px', background: 'var(--primary, #6d28d9)', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: 'pointer', whiteSpace: 'nowrap' },
+  qrBox: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, background: '#fff', padding: 10, borderRadius: 10 },
+  btnDescarregar: { fontSize: 12.5, color: 'var(--primary, #6d28d9)', textDecoration: 'none', fontWeight: 600 },
   vazio: { color: 'var(--muted)', textAlign: 'center', padding: 30 },
   aviso: { color: 'var(--muted)', textAlign: 'center', padding: 40 },
   ok: { background: '#e8f5e9', border: '1px solid #a5d6a7', color: '#2e7d32', borderRadius: 8, padding: 12, marginBottom: 10 },
