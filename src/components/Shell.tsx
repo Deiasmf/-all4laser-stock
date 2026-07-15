@@ -30,6 +30,7 @@ const NAV: Seccao[] = [
         href: '/comercial', label: 'Comercial', icon: '🤝',
         filhos: [
           { href: '/comercial/clientes', label: 'Clientes', icon: '👥' },
+          { href: '/comercial/registos', label: 'Registos de clientes', icon: '📝' },
           { href: '/comercial/notas-encomenda', label: 'Notas de encomenda', icon: '📋' },
           { href: '/comercial/reservas-portal', label: 'Reservas Portal', icon: '📅' },
         ],
@@ -83,6 +84,7 @@ const TITULOS: { prefixo: string; titulo: string }[] = [
   { prefixo: '/comercial/notas-encomenda', titulo: 'Notas de Encomenda' },
   { prefixo: '/comercial/clientes', titulo: 'Clientes' },
   { prefixo: '/comercial/reservas-portal', titulo: 'Reservas Portal' },
+  { prefixo: '/comercial/registos', titulo: 'Registos de Clientes' },
   { prefixo: '/comercial', titulo: 'Comercial' },
   { prefixo: '/marketing', titulo: 'Marketing' },
   { prefixo: '/tecnico/preparacao', titulo: 'Em Preparação Técnica' },
