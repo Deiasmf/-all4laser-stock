@@ -151,7 +151,8 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     pathname === '/login' ||
     pathname === '/redefinir-password' ||
     pathname.startsWith('/assinar') ||
-    pathname.startsWith('/reservas')
+    pathname.startsWith('/reservas') ||
+    pathname.startsWith('/registo-cliente')
   ) {
     return <>{children}</>
   }
