@@ -17,11 +17,14 @@ import {
   type TipoFluxo, type TipoGarantia, type ResponsavelPagamento, type ProcessoItemInput,
 } from '@/types/processoPeca'
 
+const hoje = () => new Date().toISOString().slice(0, 10)
+
 export default function NovoProcessoPage() {
   const router = useRouter()
   const { perfil } = useAuth()
 
   const [fluxo, setFluxo] = useState<TipoFluxo | null>(null)
+  const [dataRececao, setDataRececao] = useState(hoje())
 
   // Cliente
   const [clientes, setClientes] = useState<ClienteEnvioOpc[]>([])
@@ -110,6 +113,7 @@ export default function NovoProcessoPage() {
         substituta_descricao: subDescricao.trim() || null,
         sn_substituto: subTemSn ? (subSn.trim() || null) : null,
         substituta_permanente: substitutaEhPermanente(fluxo),
+        data_rececao_avariada: fluxo === 'garantia_cliente_envia_primeiro' ? (dataRececao || null) : null,
         notas: [avaria.trim() ? `Avaria: ${avaria.trim()}` : '', notas.trim()].filter(Boolean).join('\n') || null,
       },
       temSn ? [] : itens,
@@ -168,6 +172,11 @@ export default function NovoProcessoPage() {
             <Campo rotulo="Descrição da avaria">
               <textarea value={avaria} onChange={(e) => setAvaria(e.target.value)} style={f.textarea} placeholder="O que se passa com a peça..." />
             </Campo>
+            {fluxo === 'garantia_cliente_envia_primeiro' && (
+              <Campo rotulo="Data de receção da avariada">
+                <input type="date" value={dataRececao} onChange={(e) => setDataRececao(e.target.value)} style={{ ...f.input, maxWidth: 220 }} />
+              </Campo>
+            )}
           </section>
 
           {/* PASSO 3 — Peça */}

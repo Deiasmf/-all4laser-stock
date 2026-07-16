@@ -136,6 +136,7 @@ export type ProcessoPeca = {
   substituta_peca_id: string | null
   substituta_descricao: string | null
   substituta_permanente: boolean
+  data_rececao_avariada: string | null
   notas: string | null
   criado_por: string | null
   criado_por_nome: string | null
@@ -189,6 +190,7 @@ export type ProcessoInput = {
   substituta_descricao: string | null
   sn_substituto: string | null
   substituta_permanente: boolean
+  data_rececao_avariada: string | null
   notas: string | null
 }
 
