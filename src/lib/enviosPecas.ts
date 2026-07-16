@@ -111,6 +111,37 @@ export async function carregarDocumento(
   return { ok: true }
 }
 
+// ─── Fotos do envio ──────────────────────────────────────────────────────────
+
+export type EnvioFoto = { id: string; envio_id: string; url: string; caminho: string; created_at: string }
+
+export async function listarFotos(envioId: string): Promise<EnvioFoto[]> {
+  const { data } = await supabase
+    .from('envios_pecas_fotos')
+    .select('*')
+    .eq('envio_id', envioId)
+    .order('created_at', { ascending: true })
+  return (data as EnvioFoto[]) ?? []
+}
+
+// Carrega uma foto para o bucket (prefixo fotos/) e regista-a na tabela.
+export async function carregarFoto(envioId: string, ficheiro: File): Promise<{ ok: boolean; motivo?: string }> {
+  const caminho = `${envioId}/fotos/${Date.now()}-${nomeSeguro(ficheiro.name)}`
+  const { error } = await supabase.storage.from(BUCKET_ENVIOS).upload(caminho, ficheiro)
+  if (error) return { ok: false, motivo: error.message }
+  const { data: pub } = supabase.storage.from(BUCKET_ENVIOS).getPublicUrl(caminho)
+  const { error: erroBd } = await supabase
+    .from('envios_pecas_fotos')
+    .insert({ envio_id: envioId, url: pub.publicUrl, caminho })
+  if (erroBd) return { ok: false, motivo: erroBd.message }
+  return { ok: true }
+}
+
+export async function apagarFoto(fotoId: string, caminho: string) {
+  await supabase.storage.from(BUCKET_ENVIOS).remove([caminho])
+  return supabase.from('envios_pecas_fotos').delete().eq('id', fotoId)
+}
+
 // ─── Pesquisa de material (Stock de Peças + Tabela de Preços) ────────────────
 
 export type MaterialOpc = {

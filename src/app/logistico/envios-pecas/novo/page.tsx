@@ -47,11 +47,6 @@ export default function NovoEnvioPage() {
   const [manualNome, setManualNome] = useState('')
   const [manualPreco, setManualPreco] = useState('')
 
-  // Dimensões / peso (a transportadora é escolhida depois, na fase de expedição)
-  const [comprimento, setComprimento] = useState('')
-  const [largura, setLargura] = useState('')
-  const [altura, setAltura] = useState('')
-  const [peso, setPeso] = useState('')
 
   // Faturação
   const [valorFaturar, setValorFaturar] = useState('')
@@ -156,10 +151,10 @@ export default function NovoEnvioPage() {
         responsavel_nome: funcionarios.find((f) => f.id === responsavelId)?.nome ?? null,
         transportadora: null,
         transportadora_outro: null,
-        peso_kg: num(peso),
-        comprimento_cm: num(comprimento),
-        largura_cm: num(largura),
-        altura_cm: num(altura),
+        peso_kg: null,
+        comprimento_cm: null,
+        largura_cm: null,
+        altura_cm: null,
         valor_a_faturar: (semCusto || !faturavel) ? null : num(valorFaturar),
         notas: notas.trim() || null,
       },
@@ -367,16 +362,7 @@ export default function NovoEnvioPage() {
         )}
       </section>
 
-      {/* 4. Dimensões e peso */}
-      <section style={f.seccao}>
-        <div style={f.seccaoTitulo}>Dimensões e peso</div>
-        <div style={f.grid4}>
-          <Campo rotulo="Comprimento (cm)"><input type="number" value={comprimento} onChange={(e) => setComprimento(e.target.value)} style={f.input} /></Campo>
-          <Campo rotulo="Largura (cm)"><input type="number" value={largura} onChange={(e) => setLargura(e.target.value)} style={f.input} /></Campo>
-          <Campo rotulo="Altura (cm)"><input type="number" value={altura} onChange={(e) => setAltura(e.target.value)} style={f.input} /></Campo>
-          <Campo rotulo="Peso (kg)"><input type="number" step="0.01" value={peso} onChange={(e) => setPeso(e.target.value)} style={f.input} /></Campo>
-        </div>
-      </section>
+      {/* Dimensões e peso preenchem-se na ficha depois de criar o envio */}
 
       {/* 6. Valor a faturar (só quando faturável) */}
       {faturavel && !semCusto ? (

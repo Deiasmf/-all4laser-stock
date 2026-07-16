@@ -52,10 +52,6 @@ export default function NovaEncomendaPage() {
   const [motivoEnvio, setMotivoEnvio] = useState<MotivoEnvio>('venda')
   const [faturavel, setFaturavel] = useState(true)
   const [moradaEnvio, setMoradaEnvio] = useState('')
-  const [comprimento, setComprimento] = useState('')
-  const [largura, setLargura] = useState('')
-  const [altura, setAltura] = useState('')
-  const [peso, setPeso] = useState('')
   const [valorFaturar, setValorFaturar] = useState('')
 
   // Receção
@@ -144,7 +140,7 @@ export default function NovaEncomendaPage() {
           responsavel_id: responsavelId || null,
           responsavel_nome: funcionarios.find((f) => f.id === responsavelId)?.nome ?? null,
           transportadora: null, transportadora_outro: null,
-          peso_kg: num(peso), comprimento_cm: num(comprimento), largura_cm: num(largura), altura_cm: num(altura),
+          peso_kg: null, comprimento_cm: null, largura_cm: null, altura_cm: null,
           valor_a_faturar: (semCusto || !faturavel) ? null : num(valorFaturar),
           notas: notas.trim() || null,
         },
@@ -336,18 +332,9 @@ export default function NovaEncomendaPage() {
         )}
       </section>
 
-      {/* Envio: dimensões + valor */}
+      {/* Envio: valor (dimensões e peso preenchem-se na ficha depois de criar) */}
       {modo === 'envio' && (
         <>
-          <section style={f.seccao}>
-            <div style={f.seccaoTitulo}>Dimensões e peso</div>
-            <div style={f.grid4}>
-              <Campo rotulo="Comprimento (cm)"><input type="number" value={comprimento} onChange={(e) => setComprimento(e.target.value)} style={f.input} /></Campo>
-              <Campo rotulo="Largura (cm)"><input type="number" value={largura} onChange={(e) => setLargura(e.target.value)} style={f.input} /></Campo>
-              <Campo rotulo="Altura (cm)"><input type="number" value={altura} onChange={(e) => setAltura(e.target.value)} style={f.input} /></Campo>
-              <Campo rotulo="Peso (kg)"><input type="number" step="0.01" value={peso} onChange={(e) => setPeso(e.target.value)} style={f.input} /></Campo>
-            </div>
-          </section>
           {faturavel && !semCusto && (
             <section style={f.seccao}>
               <div style={f.seccaoTitulo}>Valor a faturar</div>
