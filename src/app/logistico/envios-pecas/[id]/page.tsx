@@ -7,8 +7,8 @@ import { useAuth } from '@/lib/auth'
 import {
   obterEnvio, listarItens, alterarEstado, marcarPago,
   carregarDocumento, notificarProntoExpedir, atualizarEnvio, listarFuncionarios,
-  eliminarEnvio,
-  type FuncionarioOpc,
+  eliminarEnvio, listarFotos, carregarFoto, apagarFoto,
+  type FuncionarioOpc, type EnvioFoto,
 } from '@/lib/enviosPecas'
 import {
   estadoInfo, transportadoraLabel, formatarEuro, motivoInfo, TRANSPORTADORA_LINK, TRANSPORTADORAS, KEYINVOICE_URL,
@@ -31,6 +31,7 @@ export default function DetalheEnvioPage() {
   const { isAdmin } = useAuth()
   const [envio, setEnvio] = useState<EnvioPeca | null>(null)
   const [itens, setItens] = useState<EnvioItem[]>([])
+  const [fotos, setFotos] = useState<EnvioFoto[]>([])
   const [carregando, setCarregando] = useState(true)
   const [aTrabalhar, setATrabalhar] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
@@ -42,6 +43,7 @@ export default function DetalheEnvioPage() {
     const { data } = await obterEnvio(id)
     setEnvio((data as EnvioPeca) ?? null)
     setItens(await listarItens(id))
+    setFotos(await listarFotos(id))
     setCarregando(false)
   }, [id])
 
@@ -84,6 +86,41 @@ export default function DetalheEnvioPage() {
     setATrabalhar(true)
     await atualizarEnvio(id, { transportadora_outro: v.trim() || null })
     await recarregar()
+    setATrabalhar(false)
+  }
+
+  // Edição livre de campos do envio (dimensões, peso, morada, notas) — depois de criado.
+  async function guardarCampo(patch: Partial<EnvioPeca>) {
+    setATrabalhar(true); setMsg(null)
+    await atualizarEnvio(id, patch)
+    await recarregar()
+    setATrabalhar(false)
+  }
+  function guardarNum(campo: 'comprimento_cm' | 'largura_cm' | 'altura_cm' | 'peso_kg', v: string) {
+    const t = v.trim()
+    const n = t === '' ? null : Number(t.replace(',', '.'))
+    if (n !== null && (isNaN(n) || n < 0)) return
+    guardarCampo({ [campo]: n })
+  }
+  function guardarTexto(campo: 'morada_envio' | 'notas', v: string) {
+    guardarCampo({ [campo]: v.trim() || null })
+  }
+
+  async function uploadFotos(files: FileList | null) {
+    if (!files || files.length === 0) return
+    setATrabalhar(true); setMsg(null)
+    for (const f of Array.from(files)) {
+      const r = await carregarFoto(id, f)
+      if (!r.ok) { setMsg('Erro no upload da foto: ' + (r.motivo ?? '')); break }
+    }
+    setFotos(await listarFotos(id))
+    setATrabalhar(false)
+  }
+  async function removerFoto(foto: EnvioFoto) {
+    if (!confirm('Apagar esta foto?')) return
+    setATrabalhar(true); setMsg(null)
+    await apagarFoto(foto.id, foto.caminho)
+    setFotos(await listarFotos(id))
     setATrabalhar(false)
   }
 
@@ -270,7 +307,17 @@ export default function DetalheEnvioPage() {
           <>
             <Linha rotulo="Nome" valor={envio.cliente_nome} />
             <Linha rotulo="Email" valor={envio.cliente_email} />
-            <Linha rotulo="Morada de envio" valor={envio.morada_envio} />
+            <div style={c.campoEdit}>
+              <span style={c.rotulo}>Morada de envio</span>
+              <textarea
+                key={'morada' + (envio.morada_envio ?? '')}
+                defaultValue={envio.morada_envio ?? ''}
+                onBlur={(e) => guardarTexto('morada_envio', e.target.value)}
+                disabled={aTrabalhar}
+                placeholder="Morada de entrega"
+                style={{ ...c.input, minHeight: 56, resize: 'vertical', marginTop: 4 }}
+              />
+            </div>
           </>
         )}
       </section>
@@ -298,10 +345,70 @@ export default function DetalheEnvioPage() {
         <Linha rotulo="Motivo" valor={motivoInfo(envio.motivo).label} />
         <Linha rotulo="Faturável" valor={envio.faturavel ? 'Sim' : 'Não (sem custo associado)'} />
         <Linha rotulo="Transportadora" valor={transportadoraLabel(envio)} />
-        <Linha rotulo="Dimensões (C×L×A)" valor={dims.length ? dims.map((d) => `${d}`).join(' × ') + ' cm' : null} />
-        <Linha rotulo="Peso" valor={envio.peso_kg != null ? `${envio.peso_kg} kg` : null} />
         {envio.faturavel && <Linha rotulo="Valor a faturar" valor={formatarEuro(envio.valor_a_faturar)} />}
-        {envio.notas && <Linha rotulo="Notas" valor={envio.notas} />}
+      </section>
+
+      {/* Editável depois de criar: dimensões, peso e notas */}
+      <section style={c.card}>
+        <div style={c.cardTitulo}>Dimensões, peso e notas</div>
+        <p style={c.ajuda}>Preenche depois de criar o envio. Guarda automaticamente ao sair de cada campo.</p>
+        <div style={c.grelhaDim}>
+          {([
+            ['comprimento_cm', 'Comprimento (cm)'],
+            ['largura_cm', 'Largura (cm)'],
+            ['altura_cm', 'Altura (cm)'],
+            ['peso_kg', 'Peso (kg)'],
+          ] as const).map(([campo, rotulo]) => (
+            <label key={campo} style={c.campoEdit}>
+              <span style={c.rotulo}>{rotulo}</span>
+              <input
+                key={campo + (envio[campo] ?? '')}
+                type="number"
+                inputMode="decimal"
+                step="0.1"
+                min="0"
+                defaultValue={envio[campo] ?? ''}
+                onBlur={(e) => guardarNum(campo, e.target.value)}
+                disabled={aTrabalhar}
+                style={{ ...c.input, marginTop: 4 }}
+              />
+            </label>
+          ))}
+        </div>
+        <label style={{ ...c.campoEdit, marginTop: 6 }}>
+          <span style={c.rotulo}>Notas</span>
+          <textarea
+            key={'notas' + (envio.notas ?? '')}
+            defaultValue={envio.notas ?? ''}
+            onBlur={(e) => guardarTexto('notas', e.target.value)}
+            disabled={aTrabalhar}
+            placeholder="Notas do envio"
+            style={{ ...c.input, minHeight: 64, resize: 'vertical', marginTop: 4 }}
+          />
+        </label>
+      </section>
+
+      {/* Fotos */}
+      <section style={c.card}>
+        <div style={c.cardTitulo}>Fotos</div>
+        <p style={c.ajuda}>Fotos do envio (embalagem, etiqueta, conteúdo…). Podes carregar várias.</p>
+        {fotos.length > 0 && (
+          <div style={c.galeria}>
+            {fotos.map((foto) => (
+              <div key={foto.id} style={c.fotoBox}>
+                <a href={foto.url} target="_blank" rel="noopener noreferrer">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={foto.url} alt="Foto do envio" style={c.fotoImg} />
+                </a>
+                <button style={c.fotoRemover} disabled={aTrabalhar} onClick={() => removerFoto(foto)} title="Apagar foto">✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <label style={{ ...c.uploadLabel, marginTop: fotos.length ? 10 : 0, alignSelf: 'flex-start' }}>
+          + Adicionar fotos
+          <input type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={(e) => uploadFotos(e.target.files)} />
+        </label>
       </section>
 
       {/* Documentos */}
@@ -455,6 +562,12 @@ const c: Record<string, React.CSSProperties> = {
   ajuda: { color: 'var(--muted)', fontSize: 13, margin: 0 },
   rotulo: { fontSize: 13, fontWeight: 600, color: 'var(--muted)' },
   input: { width: '100%', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8, font: 'inherit', boxSizing: 'border-box' },
+  campoEdit: { display: 'flex', flexDirection: 'column' },
+  grelhaDim: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 },
+  galeria: { display: 'flex', flexWrap: 'wrap', gap: 10 },
+  fotoBox: { position: 'relative', width: 100, height: 100, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' },
+  fotoImg: { width: '100%', height: '100%', objectFit: 'cover', display: 'block', cursor: 'pointer' },
+  fotoRemover: { position: 'absolute', top: 2, right: 2, width: 22, height: 22, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.55)', color: '#fff', cursor: 'pointer', fontSize: 12, lineHeight: '22px', padding: 0 },
   aviso: { background: '#fff8e6', border: '1px solid #e6c34a', borderRadius: 8, padding: '10px 12px', fontSize: 14 },
   uploadLabel: { display: 'inline-block', background: 'var(--surface, #fff)', color: 'var(--primary)', border: '1px dashed var(--primary)', borderRadius: 8, padding: '10px 14px', fontWeight: 600, cursor: 'pointer', textAlign: 'center' },
   btnPrimario: { background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '12px 20px', fontWeight: 700, cursor: 'pointer', fontSize: 15 },
