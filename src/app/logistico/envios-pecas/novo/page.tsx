@@ -26,6 +26,7 @@ export default function NovoEnvioPage() {
   const [clienteId, setClienteId] = useState<string | null>(null)
   const [clienteNome, setClienteNome] = useState('')
   const [clienteEmail, setClienteEmail] = useState('')
+  const [clienteTelefone, setClienteTelefone] = useState('')
   const [pais, setPais] = useState('')
   const [moradaEnvio, setMoradaEnvio] = useState('')
 
@@ -100,7 +101,7 @@ export default function NovoEnvioPage() {
     setErro(null)
     const existente = clientes.find((c) => c.nome.trim().toLowerCase() === nome.trim().toLowerCase())
     if (existente) { escolherCliente(existente); return }
-    const novo = await criarClienteEnvio(nome, clienteEmail, pais)
+    const novo = await criarClienteEnvio(nome, clienteEmail, clienteTelefone, pais)
     if (!novo) { setErro('Não foi possível adicionar o cliente.'); return }
     setClientes((p) => [...p, novo].sort((a, b) => a.nome.localeCompare(b.nome)))
     escolherCliente(novo)
@@ -211,6 +212,9 @@ export default function NovoEnvioPage() {
               </Campo>
             </div>
             <div style={f.grid2}>
+              <Campo rotulo="Telefone do cliente">
+                <input value={clienteTelefone} onChange={(e) => setClienteTelefone(e.target.value)} style={f.input} placeholder="+351 ..." />
+              </Campo>
               <Campo rotulo="País">
                 <Autocomplete
                   valor={pais}

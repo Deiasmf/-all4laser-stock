@@ -85,6 +85,8 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [cliente, setCliente] = useState('')
   const [pais, setPais] = useState('Portugal')
+  const [clienteEmail, setClienteEmail] = useState('')
+  const [clienteTelefone, setClienteTelefone] = useState('')
 
   const [serial, setSerial] = useState('')
   const [sugestoes, setSugestoes] = useState<EquipResumo[]>([])
@@ -203,7 +205,7 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
     if (!clienteId) {
       const { data: novo, error: e1 } = await supabase
         .from('clientes')
-        .insert({ nome: cliente.trim(), pais: pais.trim() || 'Portugal', nacional: ehNacional(pais) })
+        .insert({ nome: cliente.trim(), pais: pais.trim() || 'Portugal', nacional: ehNacional(pais), email: clienteEmail.trim() || null, telefone: clienteTelefone.trim() || null })
         .select()
         .single()
       if (e1) {
@@ -240,6 +242,8 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
     // limpar para o próximo registo
     setCliente('')
     setPais('Portugal')
+    setClienteEmail('')
+    setClienteTelefone('')
     setSerial('')
     setEquipamentoId(null)
     setMarca('')
@@ -285,6 +289,10 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
             placeholder="Portugal"
           />
           <div style={s.nota}>{ehNacional(pais) ? 'Nacional' : 'Internacional'}</div>
+          <label style={s.label}>Email (cliente novo)</label>
+          <input style={s.input} type="email" value={clienteEmail} onChange={(e) => setClienteEmail(e.target.value)} placeholder="email@cliente.com" />
+          <label style={s.label}>Telefone (cliente novo)</label>
+          <input style={s.input} type="tel" value={clienteTelefone} onChange={(e) => setClienteTelefone(e.target.value)} placeholder="+351 ..." />
         </>
       ) : null}
 

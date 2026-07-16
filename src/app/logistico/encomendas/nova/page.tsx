@@ -33,6 +33,7 @@ export default function NovaEncomendaPage() {
   const [clienteId, setClienteId] = useState<string | null>(null)
   const [clienteNome, setClienteNome] = useState('')
   const [clienteEmail, setClienteEmail] = useState('')
+  const [clienteTelefone, setClienteTelefone] = useState('')
   const [pais, setPais] = useState('')
   const [fornecedores, setFornecedores] = useState<FornecedorEnvioOpc[]>([])
   const [fornecedorId, setFornecedorId] = useState<string | null>(null)
@@ -96,7 +97,7 @@ export default function NovaEncomendaPage() {
     setErro(null)
     const existente = clientes.find((c) => c.nome.trim().toLowerCase() === nome.trim().toLowerCase())
     if (existente) { escolherCliente(existente); return }
-    const novo = await criarClienteEnvio(nome, clienteEmail, pais)
+    const novo = await criarClienteEnvio(nome, clienteEmail, clienteTelefone, pais)
     if (!novo) { setErro('Não foi possível adicionar o cliente.'); return }
     setClientes((p) => [...p, novo].sort((a, b) => a.nome.localeCompare(b.nome)))
     escolherCliente(novo)
@@ -233,13 +234,18 @@ export default function NovaEncomendaPage() {
         </div>
 
         {modo === 'envio' && eCliente && (
-          <div style={f.grid2}>
-            <Campo rotulo="Email do cliente"><input value={clienteEmail} onChange={(e) => setClienteEmail(e.target.value)} style={f.input} placeholder="email@cliente.com" /></Campo>
-            <Campo rotulo="País">
-              <Autocomplete valor={pais} placeholder="Escolher da lista ou escrever..." buscar={buscarPais}
-                onChangeTexto={setPais} onEscolher={setPais} render={(p) => p} chaveTexto={(p) => p} onTextoNovo={setPais} textoNovoRotulo={(t) => `➕ Usar «${t}»`} />
-            </Campo>
-          </div>
+          <>
+            <div style={f.grid2}>
+              <Campo rotulo="Email do cliente"><input value={clienteEmail} onChange={(e) => setClienteEmail(e.target.value)} style={f.input} placeholder="email@cliente.com" /></Campo>
+              <Campo rotulo="Telefone do cliente"><input value={clienteTelefone} onChange={(e) => setClienteTelefone(e.target.value)} style={f.input} placeholder="+351 ..." /></Campo>
+            </div>
+            <div style={f.grid2}>
+              <Campo rotulo="País">
+                <Autocomplete valor={pais} placeholder="Escolher da lista ou escrever..." buscar={buscarPais}
+                  onChangeTexto={setPais} onEscolher={setPais} render={(p) => p} chaveTexto={(p) => p} onTextoNovo={setPais} textoNovoRotulo={(t) => `➕ Usar «${t}»`} />
+              </Campo>
+            </div>
+          </>
         )}
       </section>
 

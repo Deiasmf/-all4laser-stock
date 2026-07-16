@@ -67,7 +67,7 @@ export default function NovoProcessoPage() {
   async function adicionarCliente(nome: string) {
     const existente = clientes.find((cl) => cl.nome.trim().toLowerCase() === nome.trim().toLowerCase())
     if (existente) { setClienteId(existente.id); setClienteNome(existente.nome); return }
-    const novo = await criarClienteEnvio(nome, '', '')
+    const novo = await criarClienteEnvio(nome, '', '', '')
     if (!novo) { setErro('Não foi possível adicionar o cliente.'); return }
     setClientes((p) => [...p, novo].sort((a, b) => a.nome.localeCompare(b.nome)))
     setClienteId(novo.id); setClienteNome(novo.nome)
