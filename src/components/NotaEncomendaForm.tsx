@@ -44,6 +44,8 @@ export default function NotaEncomendaForm({ inicial, materiaisIniciais, acoes, a
   const [clienteId, setClienteId] = useState<string | null>(inicial?.cliente_id ?? null)
   const [clienteNome, setClienteNome] = useState(inicial?.cliente_nome ?? '')
   const [paisDestino, setPaisDestino] = useState(inicial?.pais_destino ?? '')
+  const [clienteEmail, setClienteEmail] = useState('')
+  const [clienteTelefone, setClienteTelefone] = useState('')
 
   // Equipamento
   const [equipamentoId, setEquipamentoId] = useState<string | null>(inicial?.equipamento_id ?? null)
@@ -107,7 +109,7 @@ export default function NotaEncomendaForm({ inicial, materiaisIniciais, acoes, a
     // Se já existir um com o mesmo nome (ignora maiúsculas), reutiliza-o.
     const existente = clientes.find((c) => c.nome.trim().toLowerCase() === nome.trim().toLowerCase())
     if (existente) { escolherCliente(existente); return }
-    const novo = await criarCliente(nome, paisDestino)
+    const novo = await criarCliente(nome, paisDestino, clienteEmail, clienteTelefone)
     if (!novo) { setErroLocal('Não foi possível adicionar o cliente à lista.'); return }
     setClientes((prev) => [...prev, novo].sort((a, b) => a.nome.localeCompare(b.nome)))
     setClienteId(novo.id)
@@ -227,6 +229,14 @@ export default function NotaEncomendaForm({ inicial, materiaisIniciais, acoes, a
               onTextoNovo={(t) => setPaisDestino(t)}
               textoNovoRotulo={(t) => `➕ Usar «${t}»`}
             />
+          </Campo>
+        </div>
+        <div style={f.grid2}>
+          <Campo rotulo="Email do cliente">
+            <input value={clienteEmail} onChange={(e) => setClienteEmail(e.target.value)} style={f.input} placeholder="email@cliente.com" />
+          </Campo>
+          <Campo rotulo="Telefone do cliente">
+            <input value={clienteTelefone} onChange={(e) => setClienteTelefone(e.target.value)} style={f.input} placeholder="+351 ..." />
           </Campo>
         </div>
       </section>

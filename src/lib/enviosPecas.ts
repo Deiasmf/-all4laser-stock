@@ -229,10 +229,11 @@ export async function listarFornecedoresEnvio(): Promise<FornecedorEnvioOpc[]> {
   return (data as FornecedorEnvioOpc[]) ?? []
 }
 
-// Adiciona um cliente novo (nome, email, país) à tabela clientes.
+// Adiciona um cliente novo (nome, email, telefone, país) à tabela clientes.
 export async function criarClienteEnvio(
   nome: string,
   email: string,
+  telefone: string,
   pais: string
 ): Promise<ClienteEnvioOpc | null> {
   const paisFinal = pais.trim() || 'Portugal'
@@ -241,6 +242,7 @@ export async function criarClienteEnvio(
     .insert({
       nome: nome.trim(),
       email: email.trim() || null,
+      telefone: telefone.trim() || null,
       pais: paisFinal,
       nacional: paisFinal.toLowerCase() === 'portugal',
     })
