@@ -11,7 +11,7 @@ import {
   type FuncionarioOpc, type EnvioFoto,
 } from '@/lib/enviosPecas'
 import {
-  estadoInfo, transportadoraLabel, formatarEuro, motivoInfo, TRANSPORTADORA_LINK, TRANSPORTADORAS, KEYINVOICE_URL,
+  estadoInfo, transportadoraLabel, formatarEuro, calcularIva, motivoInfo, TRANSPORTADORA_LINK, TRANSPORTADORAS, KEYINVOICE_URL,
   type EnvioPeca, type EnvioItem,
 } from '@/types/envioPecas'
 import BotaoPdf from '@/components/BotaoPdf'
@@ -104,6 +104,10 @@ export default function DetalheEnvioPage() {
   }
   function guardarTexto(campo: 'morada_envio' | 'notas', v: string) {
     guardarCampo({ [campo]: v.trim() || null })
+  }
+  function guardarIva(opcao: string) {
+    if (opcao === 'isento') guardarCampo({ iva_isento: true, iva_taxa: 0 })
+    else guardarCampo({ iva_isento: false, iva_taxa: Number(opcao) })
   }
 
   async function uploadFotos(files: FileList | null) {
@@ -249,7 +253,9 @@ export default function DetalheEnvioPage() {
                 {
                   titulo: 'Pagamento',
                   linhas: [
-                    { rotulo: 'Valor a faturar', valor: formatarEuro(envio.valor_a_faturar) },
+                    { rotulo: 'Valor (sem IVA)', valor: formatarEuro(envio.valor_a_faturar) },
+                    { rotulo: 'IVA', valor: calcularIva(envio).isento ? 'Isento de IVA' : `${formatarEuro(calcularIva(envio).iva)} (${calcularIva(envio).taxa}%)` },
+                    { rotulo: 'Total a faturar', valor: formatarEuro(calcularIva(envio).total) },
                     { rotulo: 'Pago', valor: envio.pago },
                     { rotulo: 'Data pagamento', valor: formatarData(envio.data_pagamento) },
                   ],
@@ -345,7 +351,29 @@ export default function DetalheEnvioPage() {
         <Linha rotulo="Motivo" valor={motivoInfo(envio.motivo).label} />
         <Linha rotulo="Faturável" valor={envio.faturavel ? 'Sim' : 'Não (sem custo associado)'} />
         <Linha rotulo="Transportadora" valor={transportadoraLabel(envio)} />
-        {envio.faturavel && <Linha rotulo="Valor a faturar" valor={formatarEuro(envio.valor_a_faturar)} />}
+        {envio.faturavel && (() => {
+          const b = calcularIva(envio)
+          return (
+            <>
+              <Linha rotulo="Valor (sem IVA)" valor={formatarEuro(envio.valor_a_faturar)} />
+              <div style={c.campoEdit}>
+                <span style={c.rotulo}>IVA</span>
+                <select
+                  value={envio.iva_isento ? 'isento' : String(Number(envio.iva_taxa))}
+                  onChange={(e) => guardarIva(e.target.value)}
+                  disabled={aTrabalhar}
+                  style={{ ...c.input, maxWidth: 200, marginTop: 4 }}
+                >
+                  <option value="23">23%</option>
+                  <option value="6">6%</option>
+                  <option value="isento">Isento de IVA</option>
+                </select>
+              </div>
+              <Linha rotulo="IVA" valor={b.isento ? 'Isento de IVA' : `${formatarEuro(b.iva)} (${b.taxa}%)`} />
+              <Linha rotulo="Total a faturar" valor={formatarEuro(b.total)} />
+            </>
+          )
+        })()}
       </section>
 
       {/* Editável depois de criar: dimensões, peso e notas */}
