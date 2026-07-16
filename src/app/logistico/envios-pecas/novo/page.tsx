@@ -10,7 +10,7 @@ import {
   listarFornecedoresEnvio,
   type ClienteEnvioOpc, type MaterialOpc, type FuncionarioOpc, type FornecedorEnvioOpc,
 } from '@/lib/enviosPecas'
-import { formatarEuro, MOTIVOS_ENVIO, motivoInfo, type EnvioItemInput, type DestinatarioTipo, type MotivoEnvio } from '@/types/envioPecas'
+import { formatarEuro, calcularIva, MOTIVOS_ENVIO, motivoInfo, type EnvioItemInput, type DestinatarioTipo, type MotivoEnvio } from '@/types/envioPecas'
 
 const num = (s: string) => (s.trim() === '' ? null : Number(s))
 
@@ -51,6 +51,7 @@ export default function NovoEnvioPage() {
 
   // Faturação
   const [valorFaturar, setValorFaturar] = useState('')
+  const [ivaOpcao, setIvaOpcao] = useState<'23' | '6' | 'isento'>('23')
   const [notas, setNotas] = useState('')
 
   const [aGuardar, setAGuardar] = useState(false)
@@ -157,6 +158,8 @@ export default function NovoEnvioPage() {
         largura_cm: null,
         altura_cm: null,
         valor_a_faturar: (semCusto || !faturavel) ? null : num(valorFaturar),
+        iva_isento: ivaOpcao === 'isento',
+        iva_taxa: ivaOpcao === 'isento' ? 0 : Number(ivaOpcao),
         notas: notas.trim() || null,
       },
       itens,
@@ -376,6 +379,24 @@ export default function NovoEnvioPage() {
             <input type="number" step="0.01" value={valorFaturar} onChange={(e) => setValorFaturar(e.target.value)} style={{ ...f.input, maxWidth: 200 }} placeholder="0.00" />
             <button type="button" style={f.btnAdd} onClick={() => setValorFaturar(String(totalItens))}>Usar total dos itens ({formatarEuro(totalItens)})</button>
           </div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 12 }}>
+            <span style={{ fontWeight: 600, fontSize: 14 }}>IVA</span>
+            <select value={ivaOpcao} onChange={(e) => setIvaOpcao(e.target.value as '23' | '6' | 'isento')} style={{ ...f.input, maxWidth: 180 }}>
+              <option value="23">23%</option>
+              <option value="6">6%</option>
+              <option value="isento">Isento de IVA</option>
+            </select>
+          </div>
+          {(() => {
+            const b = calcularIva({ valor_a_faturar: num(valorFaturar), iva_isento: ivaOpcao === 'isento', iva_taxa: ivaOpcao === 'isento' ? 0 : Number(ivaOpcao) })
+            return (
+              <div style={{ marginTop: 8, fontSize: 14 }}>
+                {b.isento
+                  ? <>Isento de IVA · Total: <strong>{formatarEuro(b.total)}</strong></>
+                  : <>IVA ({b.taxa}%): {formatarEuro(b.iva)} · Total: <strong>{formatarEuro(b.total)}</strong></>}
+              </div>
+            )
+          })()}
         </section>
       ) : (
         <section style={f.seccao}>

@@ -78,6 +78,8 @@ export type EnvioPeca = {
   largura_cm: number | null
   altura_cm: number | null
   valor_a_faturar: number | null
+  iva_isento: boolean
+  iva_taxa: number
   faturado: boolean
   pago: boolean
   data_pagamento: string | null
@@ -134,6 +136,8 @@ export type EnvioInput = {
   largura_cm: number | null
   altura_cm: number | null
   valor_a_faturar: number | null
+  iva_isento: boolean
+  iva_taxa: number
   notas: string | null
 }
 
@@ -147,4 +151,18 @@ export function transportadoraLabel(e: Pick<EnvioPeca, 'transportadora' | 'trans
 export function formatarEuro(v: number | null | undefined) {
   if (v == null) return '—'
   return v.toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' })
+}
+
+// Taxas de IVA disponíveis (além de "Isento").
+export const TAXAS_IVA = [23, 6] as const
+
+export type IvaBreakdown = { base: number; isento: boolean; taxa: number; iva: number; total: number }
+
+// Calcula o IVA e o total de um envio a partir do valor a faturar.
+export function calcularIva(e: Pick<EnvioPeca, 'valor_a_faturar' | 'iva_isento' | 'iva_taxa'>): IvaBreakdown {
+  const base = e.valor_a_faturar ?? 0
+  const isento = !!e.iva_isento
+  const taxa = isento ? 0 : (e.iva_taxa ?? 23)
+  const iva = isento ? 0 : (base * taxa) / 100
+  return { base, isento, taxa, iva, total: base + iva }
 }
