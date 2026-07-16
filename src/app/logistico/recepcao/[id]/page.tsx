@@ -64,7 +64,8 @@ export default function DetalheProcessoPage() {
   function abrirAccao(a: Accao) {
     setMsg(null)
     setAccaoAberta(a)
-    setFData(hoje())
+    // Ao registar a receção da avariada, pré-preenche com a data indicada na criação.
+    setFData((a.movimento === 'cliente_enviou_avariada' && processo?.data_rececao_avariada) ? processo.data_rececao_avariada : hoje())
     setFQtd('1')
     setFSn(a.pedeSn ? (processo?.sn_avariado ?? processo?.sn_substituto ?? '') : '')
     setFFornecedorId(processo?.fornecedor_reparacao_id ?? '')
@@ -179,6 +180,7 @@ export default function DetalheProcessoPage() {
         </div>
         <Linha rotulo="Cliente" valor={processo.cliente_nome} />
         <Linha rotulo="Peça" valor={`${processo.peca_descricao}${processo.sn_avariado ? ` · S/N avariado ${processo.sn_avariado}` : ''}`} />
+        {processo.data_rececao_avariada && <Linha rotulo="Receção da avariada" valor={processo.data_rececao_avariada} />}
         {processo.sn_substituto && <Linha rotulo="S/N substituta" valor={processo.sn_substituto} />}
         {processo.equipamento_sn && <Linha rotulo="Equipamento" valor={processo.equipamento_sn} />}
         <Linha rotulo="Garantia" valor={processo.em_garantia ? `Sim · ${TIPOS_GARANTIA.find((g) => g.valor === processo.tipo_garantia)?.label ?? ''}` : 'Não'} />
