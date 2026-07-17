@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import { listarPecas, criarPeca, atualizarPeca, eliminarPeca, atualizarStatusReparacao } from '@/lib/pecas'
+import { reparacoesAtivasPorPeca, type ReparacaoInfo } from '@/lib/enviosPecas'
 import { pecasComPedidoPendente } from '@/lib/compras'
 import { LOCALIZACOES_PECA } from '@/types/compras'
 import QrPeca from '@/components/QrPeca'
@@ -56,15 +57,25 @@ function ReparacaoBadge({ valor }: { valor: string | null }) {
   )
 }
 
-// Badge de unidades fora, em reparação num fornecedor (ex.: "🔧 −3 em reparação").
-function EmReparacaoBadge({ q }: { q: number | null | undefined }) {
+// Resumo dos fornecedores onde a peça está a reparar (nomes distintos)
+function resumoFornecedores(info?: ReparacaoInfo[]): string {
+  const forns = Array.from(new Set((info ?? []).map((r) => r.fornecedor).filter(Boolean)))
+  if (forns.length === 1) return forns[0]
+  if (forns.length > 1) return `${forns.length} fornecedores`
+  return ''
+}
+
+// Badge de unidades fora, em reparação (ex.: "🔧 −3 em reparação · Meditek").
+function EmReparacaoBadge({ q, info }: { q: number | null | undefined; info?: ReparacaoInfo[] }) {
   if (!q || q <= 0) return null
+  const resumo = resumoFornecedores(info)
+  const titulo = (info ?? []).map((r) => `${r.fornecedor}: ${r.quantidade}${r.numero ? ` (${r.numero})` : ''}`).join(' · ') || 'Em reparação num fornecedor'
   return (
     <span
-      title="Unidades fora, em reparação num fornecedor"
+      title={titulo}
       style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '1px 6px', color: '#fff', background: '#7C3AED' }}
     >
-      🔧 −{q} em reparação
+      🔧 −{q} em reparação{resumo ? ` · ${resumo}` : ''}
     </span>
   )
 }
@@ -95,6 +106,7 @@ export default function StockPecasPage() {
   const [aberta, setAberta] = useState<Peca | null>(null)
   const [criar, setCriar] = useState(false)
   const [pendentes, setPendentes] = useState<Set<string>>(new Set())
+  const [reparacoes, setReparacoes] = useState<Map<string, ReparacaoInfo[]>>(new Map())
   // Id da peça vinda de um QR Code (?peca=<id>), lido uma única vez
   const qrPecaId = useRef<string | null>(
     typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('peca') : null
@@ -117,6 +129,7 @@ export default function StockPecasPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     carregar()
     pecasComPedidoPendente().then(setPendentes)
+    reparacoesAtivasPorPeca().then(setReparacoes)
   }, [])
 
   const marcas = useMemo(() => Array.from(new Set(pecas.map((p) => p.marca).filter(Boolean))) as string[], [pecas])
@@ -176,7 +189,7 @@ export default function StockPecasPage() {
             {pendentes.has(p.id) && <span title="Pedido de compra pendente" style={{ marginLeft: 6 }}>🛒</span>}
             <StatusPecaBadge status={p.status} />
             <ReparacaoBadge valor={p.status_reparacao} />
-            <EmReparacaoBadge q={p.quantidade_reparacao} />
+            <EmReparacaoBadge q={p.quantidade_reparacao} info={reparacoes.get(p.id)} />
             {p.serial_number && <span style={c.serialTag}>S/N: {p.serial_number}</span>}
           </span>
           {/* Stock (quantidade) */}
@@ -285,6 +298,7 @@ export default function StockPecasPage() {
           peca={aberta}
           isAdmin={isAdmin}
           pendente={aberta ? pendentes.has(aberta.id) : false}
+          reparacoes={aberta ? (reparacoes.get(aberta.id) ?? []) : []}
           onFechar={() => { setAberta(null); setCriar(false) }}
           onGuardado={() => { setAberta(null); setCriar(false); carregar() }}
         />
@@ -294,11 +308,12 @@ export default function StockPecasPage() {
 }
 
 function ModalPeca({
-  peca, isAdmin, pendente, onFechar, onGuardado,
+  peca, isAdmin, pendente, reparacoes, onFechar, onGuardado,
 }: {
   peca: Peca | null
   isAdmin: boolean
   pendente: boolean
+  reparacoes: ReparacaoInfo[]
   onFechar: () => void
   onGuardado: () => void
 }) {
@@ -434,7 +449,14 @@ function ModalPeca({
 
         {peca && peca.quantidade_reparacao > 0 && (
           <div style={{ background: '#f3effc', border: '1px solid #7C3AED', color: '#5b21b6', borderRadius: 8, padding: '8px 12px', marginTop: 8, fontSize: 13, fontWeight: 600 }}>
-            🔧 {peca.quantidade_reparacao} em reparação num fornecedor · {peca.quantidade - peca.quantidade_reparacao} disponíveis
+            🔧 {peca.quantidade_reparacao} em reparação · {peca.quantidade - peca.quantidade_reparacao} disponíveis
+            {reparacoes.length > 0 && (
+              <div style={{ fontWeight: 500, marginTop: 4 }}>
+                {reparacoes.map((r, idx) => (
+                  <div key={idx}>• {r.quantidade}× no <strong>{r.fornecedor}</strong>{r.numero ? ` (${r.numero})` : ''}</div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

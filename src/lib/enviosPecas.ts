@@ -115,6 +115,34 @@ export async function recalcularReparacaoPeca(pecaId: string): Promise<number> {
   return total
 }
 
+// Fornecedor(es) onde cada peça está a ser reparada (envios expedidos, por voltar).
+export type ReparacaoInfo = { fornecedor: string; quantidade: number; numero: string | null }
+export async function reparacoesAtivasPorPeca(): Promise<Map<string, ReparacaoInfo[]>> {
+  const map = new Map<string, ReparacaoInfo[]>()
+  const { data: envios } = await supabase
+    .from('envios_pecas')
+    .select('id, numero, fornecedor_nome')
+    .eq('destinatario_tipo', 'fornecedor')
+    .eq('motivo', 'reparacao')
+    .eq('estado', 'expedido')
+    .is('reparacao_voltou_em', null)
+  const lista = (envios ?? []) as { id: string; numero: string | null; fornecedor_nome: string | null }[]
+  if (lista.length === 0) return map
+  const porId = new Map(lista.map((e) => [e.id, e]))
+  const { data: itens } = await supabase
+    .from('envios_pecas_itens')
+    .select('peca_id, quantidade, envio_id')
+    .in('envio_id', lista.map((e) => e.id))
+  for (const it of (itens ?? []) as { peca_id: string | null; quantidade: number; envio_id: string }[]) {
+    if (!it.peca_id) continue
+    const e = porId.get(it.envio_id)
+    const arr = map.get(it.peca_id) ?? []
+    arr.push({ fornecedor: e?.fornecedor_nome ?? '—', quantidade: it.quantidade, numero: e?.numero ?? null })
+    map.set(it.peca_id, arr)
+  }
+  return map
+}
+
 export async function marcarPago(id: string, pago: boolean, dataPagamento: string | null) {
   return supabase
     .from('envios_pecas')
