@@ -163,6 +163,9 @@ export default function StockPecasPage() {
             <ReparacaoBadge valor={p.status_reparacao} />
             {p.serial_number && <span style={c.serialTag}>S/N: {p.serial_number}</span>}
           </span>
+          <span style={{ textAlign: 'right', color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+            {p.preco_venda ? euroPeca(p.preco_venda) : '—'}
+          </span>
           <span style={{ textAlign: 'right', fontWeight: 700, color: p.quantidade <= 0 ? 'var(--danger, #c62828)' : 'inherit' }}>
             {p.quantidade}
             <StockBadge q={p.quantidade} temSerial={!!p.serial_number} />
@@ -241,6 +244,7 @@ export default function StockPecasPage() {
         <div style={c.tabela}>
           <div style={{ ...c.linha2col, ...c.cab }}>
             <span>Peça</span>
+            <span style={{ textAlign: 'right' }}>Preço unit.</span>
             <span style={{ textAlign: 'right' }}>Stock</span>
           </div>
           {linhasAgrupadas()}
@@ -481,7 +485,7 @@ const c: Record<string, React.CSSProperties> = {
   resumo: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--accent-bg, #eef1f6)', borderRadius: 10, padding: '10px 14px', marginBottom: 14, flexWrap: 'wrap', gap: 8 },
   estado: { color: 'var(--muted)', padding: 8 },
   tabela: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 8 },
-  linha2col: { display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center' },
+  linha2col: { display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 12, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center' },
   clicavel: { cursor: 'pointer' },
   cab: { fontWeight: 700, color: 'var(--muted)', fontSize: 12, borderBottom: '2px solid var(--border)' },
   grupoMarca: { fontWeight: 800, fontSize: 14, color: 'var(--primary)', background: 'var(--accent-bg, #eef1f6)', borderRadius: 6, padding: '8px', marginTop: 8 },
