@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 import {
-  obterEnvio, listarItens, alterarEstado, marcarPago,
+  obterEnvio, listarItens, alterarEstado, marcarPago, marcarReparacaoVoltou,
   carregarDocumento, notificarProntoExpedir, atualizarEnvio, listarFuncionarios,
   eliminarEnvio, listarFotos, carregarFoto, apagarFoto,
   type FuncionarioOpc, type EnvioFoto,
@@ -54,6 +54,14 @@ export default function DetalheEnvioPage() {
   async function mudar(estado: EnvioPeca['estado']) {
     setATrabalhar(true); setMsg(null)
     await alterarEstado(id, estado)
+    await recarregar()
+    setATrabalhar(false)
+  }
+
+  // Reparação: marcar/anular o regresso das peças (atualiza o "em reparação" no stock)
+  async function marcarVoltou(voltou: boolean) {
+    setATrabalhar(true); setMsg(null)
+    await marcarReparacaoVoltou(id, voltou)
     await recarregar()
     setATrabalhar(false)
   }
@@ -550,6 +558,24 @@ export default function DetalheEnvioPage() {
               </div>
             )}
           </div>
+        </section>
+      )}
+
+      {/* Reparação: regresso das peças (reflete no "em reparação" do Stock de Peças) */}
+      {envio.destinatario_tipo === 'fornecedor' && envio.motivo === 'reparacao' && envio.estado === 'expedido' && (
+        <section style={c.card}>
+          <div style={c.cardTitulo}>Reparação</div>
+          {envio.reparacao_voltou_em ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <span style={c.muted}>✅ Peças voltaram da reparação em {formatarData(envio.reparacao_voltou_em)}.</span>
+              <button style={c.btnSecundario} disabled={aTrabalhar} onClick={() => marcarVoltou(false)}>Anular</button>
+            </div>
+          ) : (
+            <>
+              <p style={c.ajuda}>Enquanto não voltam, as peças deste envio contam como “em reparação” no Stock de Peças.</p>
+              <button style={c.btnPrimario} disabled={aTrabalhar} onClick={() => marcarVoltou(true)}>🔧 Peças voltaram da reparação</button>
+            </>
+          )}
         </section>
       )}
 

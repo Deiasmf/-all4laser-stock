@@ -30,6 +30,7 @@ const colunasExport: ColunaExport<Peca>[] = [
   { cabecalho: 'Referência', valor: (p) => p.referencia },
   { cabecalho: 'Preço de venda', valor: (p) => euroPeca(p.preco_venda) },
   { cabecalho: 'Quantidade', valor: (p) => p.quantidade },
+  { cabecalho: 'Em reparação', valor: (p) => p.quantidade_reparacao || 0 },
   { cabecalho: 'Localização', valor: (p) => p.localizacao },
 ]
 
@@ -51,6 +52,19 @@ function ReparacaoBadge({ valor }: { valor: string | null }) {
   return (
     <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '1px 6px', color: '#fff', background: '#EA580C' }}>
       🔧 a aguardar reparação
+    </span>
+  )
+}
+
+// Badge de unidades fora, em reparação num fornecedor (ex.: "🔧 −3 em reparação").
+function EmReparacaoBadge({ q }: { q: number | null | undefined }) {
+  if (!q || q <= 0) return null
+  return (
+    <span
+      title="Unidades fora, em reparação num fornecedor"
+      style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '1px 6px', color: '#fff', background: '#7C3AED' }}
+    >
+      🔧 −{q} em reparação
     </span>
   )
 }
@@ -161,6 +175,7 @@ export default function StockPecasPage() {
             {pendentes.has(p.id) && <span title="Pedido de compra pendente" style={{ marginLeft: 6 }}>🛒</span>}
             <StatusPecaBadge status={p.status} />
             <ReparacaoBadge valor={p.status_reparacao} />
+            <EmReparacaoBadge q={p.quantidade_reparacao} />
             {p.serial_number && <span style={c.serialTag}>S/N: {p.serial_number}</span>}
           </span>
           <span style={{ textAlign: 'right', color: 'var(--muted)', whiteSpace: 'nowrap' }}>
@@ -168,6 +183,11 @@ export default function StockPecasPage() {
           </span>
           <span style={{ textAlign: 'right', fontWeight: 700, color: p.quantidade <= 0 ? 'var(--danger, #c62828)' : 'inherit' }}>
             {p.quantidade}
+            {p.quantidade_reparacao > 0 && (
+              <span style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>
+                {p.quantidade - p.quantidade_reparacao} disp.
+              </span>
+            )}
             <StockBadge q={p.quantidade} temSerial={!!p.serial_number} />
           </span>
         </div>
@@ -404,6 +424,12 @@ function ModalPeca({
             <input style={c.inputModal} type="number" inputMode="numeric" value={quantidade} onChange={(e) => setQuantidade(e.target.value)} disabled={soLeitura} />
           </div>
         </div>
+
+        {peca && peca.quantidade_reparacao > 0 && (
+          <div style={{ background: '#f3effc', border: '1px solid #7C3AED', color: '#5b21b6', borderRadius: 8, padding: '8px 12px', marginTop: 8, fontSize: 13, fontWeight: 600 }}>
+            🔧 {peca.quantidade_reparacao} em reparação num fornecedor · {peca.quantidade - peca.quantidade_reparacao} disponíveis
+          </div>
+        )}
 
         <label style={c.label}>Preço de venda (€)</label>
         <input style={c.inputModal} type="number" inputMode="decimal" step="0.01" value={precoVenda} onChange={(e) => setPrecoVenda(e.target.value)} placeholder="0" disabled={soLeitura} />

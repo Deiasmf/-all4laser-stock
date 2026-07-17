@@ -58,10 +58,61 @@ export async function eliminarEnvio(id: string) {
 }
 
 // Muda o estado; ao expedir regista a data de expedição.
+// Se for um envio para fornecedor com motivo "reparação", atualiza o
+// "em reparação" das peças (só contam enquanto expedidas e ainda por voltar).
 export async function alterarEstado(id: string, estado: EnvioEstado) {
   const patch: Partial<EnvioPeca> = { estado }
   if (estado === 'expedido') patch.expedido_em = new Date().toISOString()
-  return supabase.from('envios_pecas').update(patch).eq('id', id).select().single()
+  const res = await supabase.from('envios_pecas').update(patch).eq('id', id).select().single()
+  await aplicarReparacaoStock(id)
+  return res
+}
+
+// Marca (ou desmarca) que as peças de um envio de reparação voltaram do fornecedor.
+export async function marcarReparacaoVoltou(envioId: string, voltou: boolean) {
+  await supabase
+    .from('envios_pecas')
+    .update({ reparacao_voltou_em: voltou ? new Date().toISOString() : null })
+    .eq('id', envioId)
+  await aplicarReparacaoStock(envioId)
+  return obterEnvio(envioId)
+}
+
+// Recalcula o "em reparação" de todas as peças de um envio (se aplicável).
+async function aplicarReparacaoStock(envioId: string) {
+  const { data: envio } = await supabase
+    .from('envios_pecas')
+    .select('destinatario_tipo, motivo')
+    .eq('id', envioId)
+    .single()
+  if (!envio || envio.destinatario_tipo !== 'fornecedor' || envio.motivo !== 'reparacao') return
+  const { data: itens } = await supabase.from('envios_pecas_itens').select('peca_id').eq('envio_id', envioId)
+  const pecaIds = Array.from(new Set((itens ?? []).map((i) => (i as { peca_id: string | null }).peca_id).filter(Boolean))) as string[]
+  for (const pid of pecaIds) await recalcularReparacaoPeca(pid)
+}
+
+// Soma as unidades desta peça que estão fora em reparação (envios a fornecedor,
+// motivo reparação, expedidos e ainda por voltar) e grava em pecas.quantidade_reparacao.
+export async function recalcularReparacaoPeca(pecaId: string): Promise<number> {
+  const { data: envios } = await supabase
+    .from('envios_pecas')
+    .select('id')
+    .eq('destinatario_tipo', 'fornecedor')
+    .eq('motivo', 'reparacao')
+    .eq('estado', 'expedido')
+    .is('reparacao_voltou_em', null)
+  const ids = (envios ?? []).map((e) => (e as { id: string }).id)
+  let total = 0
+  if (ids.length > 0) {
+    const { data: itens } = await supabase
+      .from('envios_pecas_itens')
+      .select('quantidade')
+      .eq('peca_id', pecaId)
+      .in('envio_id', ids)
+    total = (itens ?? []).reduce((a, i) => a + ((i as { quantidade: number }).quantidade || 0), 0)
+  }
+  await supabase.from('pecas').update({ quantidade_reparacao: total }).eq('id', pecaId)
+  return total
 }
 
 export async function marcarPago(id: string, pago: boolean, dataPagamento: string | null) {

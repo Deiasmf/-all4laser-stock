@@ -9,6 +9,7 @@ export type Peca = {
   referencia: string | null
   preco_venda: number | null
   quantidade: number
+  quantidade_reparacao: number       // unidades fora, em reparação num fornecedor (disponível = quantidade - quantidade_reparacao)
   notas: string | null
   localizacao: string | null
   stock_minimo_alerta1: number | null

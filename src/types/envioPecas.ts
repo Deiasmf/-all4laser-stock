@@ -91,6 +91,7 @@ export type EnvioPeca = {
   criado_por: string | null
   criado_por_nome: string | null
   expedido_em: string | null
+  reparacao_voltou_em: string | null   // envios de reparação: quando as peças voltaram do fornecedor
   created_at: string
   updated_at: string
 }
