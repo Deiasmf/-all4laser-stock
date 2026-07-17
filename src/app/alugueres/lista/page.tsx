@@ -104,19 +104,11 @@ export default function ListaAlugueres() {
     })
   }, [])
 
-  // Alugueres ativos no mês escolhido + a faturação desse mês
+  // Cada aluguer conta no mês da sua DATA DE ENTREGA (independente da recolha)
   const linhas = useMemo<LinhaMes[]>(() => {
     const q = pesquisa.trim().toLowerCase()
-    const mesHoje = mesAtual()
-    const ativo = (a: Aluguer) => {
-      if (!a.data_entrega) return false
-      const ini = a.data_entrega.slice(0, 7)
-      // Aberto (sem recolha) conta até ao mês atual; com recolha, até ao mês da recolha
-      const fim = a.data_recolha ? a.data_recolha.slice(0, 7) : mesHoje
-      return ini <= mes && mes <= fim
-    }
     const lista = alugueres
-      .filter(ativo)
+      .filter((a) => (a.data_entrega ?? '').slice(0, 7) === mes)
       .filter((a) => !q || (a.cliente_nome ?? '').toLowerCase().includes(q))
       .map((a) => ({ aluguer: a, fat: faturacao.get(`${a.id}|${mes}`) ?? fatVazia(a.id, mes) }))
 
@@ -295,7 +287,7 @@ export default function ListaAlugueres() {
         </div>
       )}
 
-      {isAdmin && <p style={c.dica}>Toca num aluguer para editar ou apagar. Cada mês tem a sua própria faturação.</p>}
+      {isAdmin && <p style={c.dica}>Toca num aluguer para editar ou apagar.</p>}
 
       {editar && (
         <ModalEditar
