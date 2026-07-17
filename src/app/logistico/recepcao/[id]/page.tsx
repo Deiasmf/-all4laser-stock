@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth'
 import {
   obterProcesso, listarMovimentosProcesso, listarItensProcesso,
   criarMovimentoProcesso, atualizarMovimentoProcesso, alterarEstadoProcesso, atualizarProcesso,
-  eliminarProcesso, entrarAvariadaNoStock, devolverCortesiaAoStock,
+  eliminarProcesso, entrarAvariadaNoStock, devolverCortesiaAoStock, registarRececaoItem,
 } from '@/lib/processosPecas'
 import { listarFornecedoresReparacao } from '@/lib/reparacaoPecas'
 import type { FornecedorReparacao } from '@/types/reparacaoPeca'
@@ -15,7 +15,7 @@ import {
   ESTADOS, TIPOS_GARANTIA, RESPONSAVEIS_PAGAMENTO,
   estadoInfo, fluxoInfo, movimentoInfo, accoesProcesso, formatarEuro,
   type ProcessoPeca, type ProcessoMovimento, type ProcessoItem, type Accao,
-  type TipoGarantia, type ResponsavelPagamento,
+  type TipoGarantia, type ResponsavelPagamento, type MovimentoTipo,
 } from '@/types/processoPeca'
 
 const hoje = () => new Date().toISOString().slice(0, 10)
@@ -93,6 +93,21 @@ export default function DetalheProcessoPage() {
       // Ligar fornecedor de reparação ao processo
       if (a.pedeFornecedor && forn) {
         await atualizarProcesso(id, { fornecedor_reparacao_id: forn.id, fornecedor_reparacao_nome: forn.nome })
+      }
+
+      // Receção de itens: quando recebemos peças de volta do cliente, marca os
+      // itens (sem S/N) como recebidos, distribuindo a quantidade pelos pendentes.
+      const RECECAO_ITENS: MovimentoTipo[] = ['cliente_enviou_avariada', 'cliente_devolveu_cortesia']
+      if (a.pedeItens && RECECAO_ITENS.includes(a.movimento) && itens.length > 0) {
+        let restante = quantidade
+        for (const it of itens) {
+          if (restante <= 0) break
+          const porReceber = it.quantidade_total - it.quantidade_recebida
+          if (porReceber <= 0) continue
+          const q = Math.min(porReceber, restante)
+          await registarRececaoItem(it, q)
+          restante -= q
+        }
       }
 
       // Efeitos no stock
