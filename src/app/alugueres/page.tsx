@@ -18,6 +18,16 @@ function hoje() {
   return new Date().toISOString().slice(0, 10)
 }
 
+// Soma k meses a uma data 'YYYY-MM-DD', mantendo o dia (ajusta se o mês for mais curto)
+function adicionarMeses(iso: string, k: number): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  if (!y || !m || !d) return iso
+  const alvo = new Date(y, m - 1 + k, 1)
+  const ultimoDia = new Date(alvo.getFullYear(), alvo.getMonth() + 1, 0).getDate()
+  const dt = new Date(alvo.getFullYear(), alvo.getMonth(), Math.min(d, ultimoDia))
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+}
+
 function ehNacional(pais: string) {
   return pais.trim().toLowerCase() === 'portugal'
 }
@@ -100,6 +110,7 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
   const [valor, setValor] = useState('')
   const [metodo, setMetodo] = useState<string>('')
   const [dataEntrega, setDataEntrega] = useState(hoje())
+  const [meses, setMeses] = useState('1')
 
   // Tabela de preços: chave `${grupo}|${tipo}` -> valor
   const [precos, setPrecos] = useState<Map<string, number>>(new Map())
@@ -218,8 +229,11 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
       nacional = (novo as Cliente).nacional
     }
 
-    // 2) criar o aluguer (aberto — recolha por preencher)
-    const { error: e2 } = await supabase.from('alugueres').insert({
+    // 2) criar o(s) aluguer(es). Para vários meses, cria uma entrada por mês,
+    // cada uma com a entrega no mesmo dia (08/06, 08/07, 08/08, ...).
+    const nMeses = Math.max(1, Math.min(36, Math.round(Number(meses) || 1)))
+    const entregaBase = dataEntrega || hoje()
+    const linhas = Array.from({ length: nMeses }, (_, k) => ({
       cliente_id: clienteId,
       cliente_nome: clienteNome,
       equipamento_id: equipamentoId,
@@ -231,16 +245,21 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
       valor: valorNum,
       metodo_pagamento: metodo,
       nacional,
-      data_entrega: dataEntrega || hoje(),
+      data_entrega: adicionarMeses(entregaBase, k),
       data_recolha: null,
       criado_por: uid,
       criado_por_nome: nome,
-    })
+    }))
+    const { error: e2 } = await supabase.from('alugueres').insert(linhas)
 
     setAGuardar(false)
     if (e2) return setErro('Erro a registar o aluguer: ' + e2.message)
 
-    setOkMsg(`Entrega registada para ${clienteNome} (${serial.trim()}).`)
+    setOkMsg(
+      nMeses > 1
+        ? `Entrega registada para ${clienteNome} (${serial.trim()}) — ${nMeses} meses criados.`
+        : `Entrega registada para ${clienteNome} (${serial.trim()}).`
+    )
     // limpar para o próximo registo
     setCliente('')
     setPais('Portugal')
@@ -255,6 +274,7 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
     setValor('')
     setMetodo('')
     setDataEntrega(hoje())
+    setMeses('1')
     // recarregar clientes (pode ter sido criado um novo)
     supabase.from('clientes').select('*').order('nome').then(({ data }) => setClientes((data as Cliente[]) ?? []))
   }
@@ -365,8 +385,26 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
         </div>
       </div>
 
-      <label style={s.label}>Data de entrega</label>
-      <input style={s.input} type="date" value={dataEntrega} onChange={(e) => setDataEntrega(e.target.value)} />
+      <div style={s.linha2}>
+        <div>
+          <label style={s.label}>Data de entrega</label>
+          <input style={s.input} type="date" value={dataEntrega} onChange={(e) => setDataEntrega(e.target.value)} />
+        </div>
+        <div>
+          <label style={s.label}>Número de meses</label>
+          <input
+            style={s.input}
+            type="number"
+            min={1}
+            max={36}
+            value={meses}
+            onChange={(e) => setMeses(e.target.value)}
+          />
+          {Number(meses) > 1 && (
+            <div style={s.nota}>Cria {Math.round(Number(meses))} entradas (uma por mês, no mesmo dia).</div>
+          )}
+        </div>
+      </div>
 
       <button style={{ ...s.botao, opacity: aGuardar ? 0.6 : 1 }} disabled={aGuardar} onClick={guardar}>
         {aGuardar ? 'A guardar...' : 'Registar entrega'}
