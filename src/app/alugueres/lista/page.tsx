@@ -17,6 +17,34 @@ import {
 
 const BUCKET_FATURAS = 'faturas-alugueres'
 
+// Faturação de um aluguer num mês específico (tabela alugueres_faturacao_mensal).
+// id === null representa uma linha ainda por criar (mês por definir).
+type Fat = {
+  id: string | null
+  aluguer_id: string
+  mes: string
+  valor_a_faturar: number | null
+  nao_faturar: boolean
+  validado: boolean
+  fatura_url: string | null
+  fatura_caminho: string | null
+  fatura_nome: string | null
+  fatura_enviada_em: string | null
+  fatura_enviada_para: string | null
+}
+
+// Linha da lista = um aluguer ativo num mês + a faturação desse mês
+type LinhaMes = { aluguer: Aluguer; fat: Fat }
+
+// Faturação vazia (mês ainda por definir)
+function fatVazia(aluguerId: string, mes: string): Fat {
+  return {
+    id: null, aluguer_id: aluguerId, mes, valor_a_faturar: null,
+    nao_faturar: false, validado: false, fatura_url: null, fatura_caminho: null,
+    fatura_nome: null, fatura_enviada_em: null, fatura_enviada_para: null,
+  }
+}
+
 function formatarData(d: string | null) {
   if (!d) return '—'
   const dt = new Date(d)
@@ -29,24 +57,24 @@ function nomeSeguro(nome: string) {
 }
 
 // Texto do "Valor a Faturar" (espelha a célula da tabela)
-function valorAFaturarTexto(a: Aluguer): string {
-  if (a.nao_faturar) return 'Não faturar'
-  if (a.valor_a_faturar != null) return formatarEuro(a.valor_a_faturar)
+function valorAFaturarTexto(fat: Fat): string {
+  if (fat.nao_faturar) return 'Não faturar'
+  if (fat.valor_a_faturar != null) return formatarEuro(fat.valor_a_faturar)
   return '—'
 }
 
-// Colunas para exportação (espelham a tabela de alugueres)
-const colunasExport: ColunaExport<Aluguer>[] = [
-  { cabecalho: 'Cliente', valor: (a) => a.cliente_nome },
-  { cabecalho: 'Mercado', valor: (a) => (a.nacional ? 'Nacional' : 'Internacional') },
-  { cabecalho: 'Serial Number', valor: (a) => a.serial_number },
-  { cabecalho: 'Marca', valor: (a) => a.marca },
-  { cabecalho: 'Modelo', valor: (a) => a.modelo },
-  { cabecalho: 'Data', valor: (a) => formatarData(a.data_entrega) },
-  { cabecalho: 'Valor', valor: (a) => formatarEuro(a.valor || 0) },
-  { cabecalho: 'Valor a Faturar', valor: (a) => valorAFaturarTexto(a) },
-  { cabecalho: 'Fatura', valor: (a) => a.fatura_nome ?? '—' },
-  { cabecalho: 'Validado', valor: (a) => (a.validado ? 'Sim' : 'Não') },
+// Colunas para exportação (espelham a tabela do mês mostrado)
+const colunasExport: ColunaExport<LinhaMes>[] = [
+  { cabecalho: 'Cliente', valor: (l) => l.aluguer.cliente_nome },
+  { cabecalho: 'Mercado', valor: (l) => (l.aluguer.nacional ? 'Nacional' : 'Internacional') },
+  { cabecalho: 'Serial Number', valor: (l) => l.aluguer.serial_number },
+  { cabecalho: 'Marca', valor: (l) => l.aluguer.marca },
+  { cabecalho: 'Modelo', valor: (l) => l.aluguer.modelo },
+  { cabecalho: 'Entrega', valor: (l) => formatarData(l.aluguer.data_entrega) },
+  { cabecalho: 'Valor', valor: (l) => formatarEuro(l.aluguer.valor || 0) },
+  { cabecalho: 'Valor a Faturar', valor: (l) => valorAFaturarTexto(l.fat) },
+  { cabecalho: 'Fatura', valor: (l) => l.fat.fatura_nome ?? '—' },
+  { cabecalho: 'Validado', valor: (l) => (l.fat.validado ? 'Sim' : 'Não') },
 ]
 
 // Opções de ordenação da lista
@@ -55,74 +83,94 @@ type Ordenacao = 'cliente-asc' | 'cliente-desc' | 'valor-desc' | 'valor-asc' | '
 export default function ListaAlugueres() {
   const { isAdmin } = useAuth()
   const [alugueres, setAlugueres] = useState<Aluguer[]>([])
+  const [faturacao, setFaturacao] = useState<Map<string, Fat>>(new Map())
   const [mes, setMes] = useState(mesAtual())
   const [pesquisa, setPesquisa] = useState('')
   const [ordenar, setOrdenar] = useState<Ordenacao>('cliente-asc')
   const [carregando, setCarregando] = useState(true)
   const [editar, setEditar] = useState<Aluguer | null>(null)
-  const [enviarFatura, setEnviarFatura] = useState<Aluguer | null>(null)
+  const [enviarFatura, setEnviarFatura] = useState<{ aluguer: Aluguer; mes: string; fat: Fat } | null>(null)
 
   useEffect(() => {
-    supabase
-      .from('alugueres')
-      .select('*')
-      .order('data_entrega', { ascending: false })
-      .then(({ data }) => {
-        const lista = (data as Aluguer[]) ?? []
-        setAlugueres(lista)
-        setCarregando(false)
-        // abrir no mês mais recente que tenha registos
-        const ms = lista.map((a) => (a.data_entrega ?? '').slice(0, 7)).filter(Boolean).sort()
-        if (ms.length) setMes(ms[ms.length - 1])
-      })
+    Promise.all([
+      supabase.from('alugueres').select('*').order('data_entrega', { ascending: false }),
+      supabase.from('alugueres_faturacao_mensal').select('*'),
+    ]).then(([ra, rf]) => {
+      setAlugueres((ra.data as Aluguer[]) ?? [])
+      const m = new Map<string, Fat>()
+      for (const f of (rf.data as Fat[]) ?? []) m.set(`${f.aluguer_id}|${f.mes}`, f)
+      setFaturacao(m)
+      setCarregando(false)
+    })
   }, [])
 
-  const filtrados = useMemo(() => {
+  // Alugueres ativos no mês escolhido + a faturação desse mês
+  const linhas = useMemo<LinhaMes[]>(() => {
     const q = pesquisa.trim().toLowerCase()
+    const mesHoje = mesAtual()
+    const ativo = (a: Aluguer) => {
+      if (!a.data_entrega) return false
+      const ini = a.data_entrega.slice(0, 7)
+      // Aberto (sem recolha) conta até ao mês atual; com recolha, até ao mês da recolha
+      const fim = a.data_recolha ? a.data_recolha.slice(0, 7) : mesHoje
+      return ini <= mes && mes <= fim
+    }
     const lista = alugueres
-      .filter((a) => (a.data_entrega ?? '').startsWith(mes))
+      .filter(ativo)
       .filter((a) => !q || (a.cliente_nome ?? '').toLowerCase().includes(q))
+      .map((a) => ({ aluguer: a, fat: faturacao.get(`${a.id}|${mes}`) ?? fatVazia(a.id, mes) }))
 
-    return [...lista].sort((a, b) => {
+    return lista.sort((x, y) => {
+      const a = x.aluguer, b = y.aluguer
       switch (ordenar) {
-        case 'cliente-asc':
-          return (a.cliente_nome ?? '').localeCompare(b.cliente_nome ?? '', 'pt')
-        case 'cliente-desc':
-          return (b.cliente_nome ?? '').localeCompare(a.cliente_nome ?? '', 'pt')
-        case 'valor-desc':
-          return (b.valor ?? 0) - (a.valor ?? 0)
-        case 'valor-asc':
-          return (a.valor ?? 0) - (b.valor ?? 0)
-        case 'data-desc':
-          return (b.data_entrega ?? '').localeCompare(a.data_entrega ?? '')
-        case 'data-asc':
-          return (a.data_entrega ?? '').localeCompare(b.data_entrega ?? '')
-        default:
-          return 0
+        case 'cliente-asc': return (a.cliente_nome ?? '').localeCompare(b.cliente_nome ?? '', 'pt')
+        case 'cliente-desc': return (b.cliente_nome ?? '').localeCompare(a.cliente_nome ?? '', 'pt')
+        case 'valor-desc': return (b.valor ?? 0) - (a.valor ?? 0)
+        case 'valor-asc': return (a.valor ?? 0) - (b.valor ?? 0)
+        case 'data-desc': return (b.data_entrega ?? '').localeCompare(a.data_entrega ?? '')
+        case 'data-asc': return (a.data_entrega ?? '').localeCompare(b.data_entrega ?? '')
+        default: return 0
       }
     })
-  }, [alugueres, mes, pesquisa, ordenar])
+  }, [alugueres, faturacao, mes, pesquisa, ordenar])
 
-  const total = somar(filtrados, (a) => a.valor)
+  const total = somar(linhas, (l) => l.aluguer.valor)
 
   // Resumo de faturação do mês mostrado
-  const totalFaturar = somar(filtrados, (a) => (a.nao_faturar ? 0 : a.valor_a_faturar))
-  const numNaoFaturar = filtrados.filter((a) => a.nao_faturar).length
-  const numPorDefinir = filtrados.filter((a) => a.valor_a_faturar == null && !a.nao_faturar).length
+  const totalFaturar = somar(linhas, (l) => (l.fat.nao_faturar ? 0 : l.fat.valor_a_faturar))
+  const numNaoFaturar = linhas.filter((l) => l.fat.nao_faturar).length
+  const numPorDefinir = linhas.filter((l) => l.fat.valor_a_faturar == null && !l.fat.nao_faturar).length
 
-  // Atualiza a faturação de um aluguer (otimista + persistência imediata)
-  async function atualizarFaturacao(id: string, patch: Partial<Aluguer>) {
-    setAlugueres((prev) => prev.map((a) => (a.id === id ? { ...a, ...patch } : a)))
-    const { error } = await supabase
-      .from('alugueres')
-      .update({ ...patch, updated_at: new Date().toISOString() })
-      .eq('id', id)
-    if (error) alert('Erro a guardar: ' + error.message)
+  // Atualiza a faturação de um aluguer num mês (otimista + persistência imediata).
+  // Cria a linha do mês se ainda não existir.
+  async function atualizarFaturacao(aluguerId: string, mesX: string, patch: Partial<Fat>) {
+    const chave = `${aluguerId}|${mesX}`
+    const atual = faturacao.get(chave) ?? fatVazia(aluguerId, mesX)
+    setFaturacao((prev) => new Map(prev).set(chave, { ...atual, ...patch }))
+
+    if (atual.id) {
+      const { data, error } = await supabase
+        .from('alugueres_faturacao_mensal')
+        .update({ ...patch, updated_at: new Date().toISOString() })
+        .eq('id', atual.id)
+        .select()
+        .single()
+      if (error) return alert('Erro a guardar: ' + error.message)
+      setFaturacao((prev) => new Map(prev).set(chave, data as Fat))
+    } else {
+      const { data, error } = await supabase
+        .from('alugueres_faturacao_mensal')
+        .insert({ aluguer_id: aluguerId, mes: mesX, ...patch })
+        .select()
+        .single()
+      if (error) return alert('Erro a guardar: ' + error.message)
+      setFaturacao((prev) => new Map(prev).set(chave, data as Fat))
+    }
   }
 
   // Após enviar a fatura com sucesso: marca como enviada e guarda o email no cliente
-  async function aoEnviadaFatura(aluguer: Aluguer, email: string) {
-    await atualizarFaturacao(aluguer.id, {
+  async function aoEnviadaFatura(aluguer: Aluguer, mesX: string, email: string) {
+    await atualizarFaturacao(aluguer.id, mesX, {
       fatura_enviada_em: new Date().toISOString(),
       fatura_enviada_para: email,
     })
@@ -171,12 +219,12 @@ export default function ListaAlugueres() {
           <option value="data-desc">Data (mais recente)</option>
           <option value="data-asc">Data (mais antiga)</option>
         </select>
-        <BotaoExportar nome="alugueres" colunas={colunasExport} linhas={filtrados} />
+        <BotaoExportar nome="alugueres" colunas={colunasExport} linhas={linhas} />
       </div>
 
       <div style={c.resumo}>
         <span style={{ textTransform: 'capitalize' }}>{nomeMes(mes)}</span>
-        <span>{filtrados.length} aluguer(es) · <strong>{formatarEuro(total)}</strong></span>
+        <span>{linhas.length} aluguer(es) · <strong>{formatarEuro(total)}</strong></span>
       </div>
 
       <div style={c.resumoFaturar}>
@@ -185,7 +233,7 @@ export default function ListaAlugueres() {
           <span style={c.resumoFaturarValor}>{formatarEuro(totalFaturar)}</span>
         </div>
         <div style={c.resumoFaturarLinha}>
-          <span>Nº de alugueres: <strong>{filtrados.length}</strong></span>
+          <span>Nº de alugueres: <strong>{linhas.length}</strong></span>
           <span>Não faturar: <strong>{numNaoFaturar}</strong></span>
           <span>Por definir: <strong>{numPorDefinir}</strong></span>
         </div>
@@ -193,7 +241,7 @@ export default function ListaAlugueres() {
 
       {carregando ? (
         <p style={c.estado}>A carregar...</p>
-      ) : filtrados.length === 0 ? (
+      ) : linhas.length === 0 ? (
         <p style={c.estado}>Sem alugueres neste mês.</p>
       ) : (
         <div style={c.tabela}>
@@ -201,43 +249,53 @@ export default function ListaAlugueres() {
             <span style={{ textAlign: 'center' }} title="Validado">✓</span>
             <span>Cliente</span>
             <span>Equipamento</span>
-            <span>Data</span>
+            <span>Entrega</span>
             <span style={{ textAlign: 'right' }}>Valor</span>
             <span>Valor a Faturar</span>
             <span>Fatura</span>
           </div>
-          {filtrados.map((a) => (
-            <div
-              key={a.id}
-              style={{ ...c.linha, ...(isAdmin ? c.linhaClicavel : {}) }}
-              onClick={isAdmin ? () => setEditar(a) : undefined}
-              title={isAdmin ? 'Clica para editar ou apagar' : undefined}
-            >
-              <span style={{ ...c.celula, justifyContent: 'center' }} onClick={(e) => e.stopPropagation()}>
-                <VistoValidado aluguer={a} podeEditar={isAdmin} onChange={atualizarFaturacao} />
-              </span>
-              <span style={{ fontWeight: 600 }}>
-                {a.cliente_nome ?? '—'}
-                {!a.nacional && <span style={c.intl}>Internacional</span>}
-              </span>
-              <span style={c.equip}>
-                <span style={c.equipSn}>{a.serial_number ?? '—'}</span>
-                <span style={c.equipMarca}>{[a.marca, a.modelo].filter(Boolean).join(' ') || '—'}</span>
-              </span>
-              <span>{formatarData(a.data_entrega)}</span>
-              <span style={{ textAlign: 'right', fontWeight: 700 }}>{formatarEuro(a.valor || 0)}</span>
-              <span style={c.celula} onClick={(e) => e.stopPropagation()}>
-                <CelulaFaturar aluguer={a} podeEditar={isAdmin} onChange={atualizarFaturacao} />
-              </span>
-              <span style={c.celula} onClick={(e) => e.stopPropagation()}>
-                <CelulaFatura aluguer={a} podeEditar={isAdmin} onChange={atualizarFaturacao} onEnviar={setEnviarFatura} />
-              </span>
-            </div>
-          ))}
+          {linhas.map((l) => {
+            const a = l.aluguer
+            return (
+              <div
+                key={`${a.id}|${mes}`}
+                style={{ ...c.linha, ...(isAdmin ? c.linhaClicavel : {}) }}
+                onClick={isAdmin ? () => setEditar(a) : undefined}
+                title={isAdmin ? 'Clica para editar ou apagar' : undefined}
+              >
+                <span style={{ ...c.celula, justifyContent: 'center' }} onClick={(e) => e.stopPropagation()}>
+                  <VistoValidado fat={l.fat} podeEditar={isAdmin} onChange={(patch) => atualizarFaturacao(a.id, mes, patch)} />
+                </span>
+                <span style={{ fontWeight: 600 }}>
+                  {a.cliente_nome ?? '—'}
+                  {!a.nacional && <span style={c.intl}>Internacional</span>}
+                </span>
+                <span style={c.equip}>
+                  <span style={c.equipSn}>{a.serial_number ?? '—'}</span>
+                  <span style={c.equipMarca}>{[a.marca, a.modelo].filter(Boolean).join(' ') || '—'}</span>
+                </span>
+                <span>{formatarData(a.data_entrega)}</span>
+                <span style={{ textAlign: 'right', fontWeight: 700 }}>{formatarEuro(a.valor || 0)}</span>
+                <span style={c.celula} onClick={(e) => e.stopPropagation()}>
+                  <CelulaFaturar valorTotal={a.valor ?? 0} fat={l.fat} podeEditar={isAdmin} onChange={(patch) => atualizarFaturacao(a.id, mes, patch)} />
+                </span>
+                <span style={c.celula} onClick={(e) => e.stopPropagation()}>
+                  <CelulaFatura
+                    aluguerId={a.id}
+                    mes={mes}
+                    fat={l.fat}
+                    podeEditar={isAdmin}
+                    onChange={(patch) => atualizarFaturacao(a.id, mes, patch)}
+                    onEnviar={() => setEnviarFatura({ aluguer: a, mes, fat: l.fat })}
+                  />
+                </span>
+              </div>
+            )
+          })}
         </div>
       )}
 
-      {isAdmin && <p style={c.dica}>Toca num aluguer para editar ou apagar.</p>}
+      {isAdmin && <p style={c.dica}>Toca num aluguer para editar ou apagar. Cada mês tem a sua própria faturação.</p>}
 
       {editar && (
         <ModalEditar
@@ -250,7 +308,9 @@ export default function ListaAlugueres() {
 
       {enviarFatura && (
         <ModalEnviarFatura
-          aluguer={enviarFatura}
+          aluguer={enviarFatura.aluguer}
+          mes={enviarFatura.mes}
+          fat={enviarFatura.fat}
           onFechar={() => setEnviarFatura(null)}
           onEnviada={aoEnviadaFatura}
         />
@@ -261,45 +321,45 @@ export default function ListaAlugueres() {
 
 // ------------------------------------------------------ CÉLULA: VALOR A FATURAR
 function CelulaFaturar({
-  aluguer, podeEditar, onChange,
+  valorTotal, fat, podeEditar, onChange,
 }: {
-  aluguer: Aluguer
+  valorTotal: number
+  fat: Fat
   podeEditar: boolean
-  onChange: (id: string, patch: Partial<Aluguer>) => void
+  onChange: (patch: Partial<Fat>) => void
 }) {
-  const definido = aluguer.valor_a_faturar != null
-  const naoFaturar = !!aluguer.nao_faturar
-  const valorTotal = aluguer.valor ?? 0
+  const definido = fat.valor_a_faturar != null
+  const naoFaturar = !!fat.nao_faturar
 
   // Modo atual a partir dos dados guardados
   let modo: '' | 'total' | '50' | 'outro' | 'nao' = ''
   if (naoFaturar) modo = 'nao'
   else if (definido) {
-    if (aluguer.valor_a_faturar === valorTotal) modo = 'total'
-    else if (aluguer.valor_a_faturar === 50) modo = '50'
+    if (fat.valor_a_faturar === valorTotal) modo = 'total'
+    else if (fat.valor_a_faturar === 50) modo = '50'
     else modo = 'outro'
   }
 
   const [editarOutro, setEditarOutro] = useState(false)
-  const [manual, setManual] = useState(definido ? String(aluguer.valor_a_faturar) : '')
+  const [manual, setManual] = useState(definido ? String(fat.valor_a_faturar) : '')
 
   const mostrarInput = modo === 'outro' || editarOutro
 
   // Viewers só veem o resultado, sem controlos
   if (!podeEditar) {
     if (naoFaturar) return <span style={c.badgeCinza}>Não faturar</span>
-    if (definido) return <span style={c.valorVerde}>{formatarEuro(aluguer.valor_a_faturar!)}</span>
+    if (definido) return <span style={c.valorVerde}>{formatarEuro(fat.valor_a_faturar!)}</span>
     return <span style={c.semDef}>—</span>
   }
 
-  function aplicar(patch: Partial<Aluguer>) {
-    onChange(aluguer.id, patch)
+  function aplicar(patch: Partial<Fat>) {
+    onChange(patch)
     setEditarOutro(false)
   }
 
   function aoMudar(v: string) {
     if (v === 'outro') {
-      setManual(definido ? String(aluguer.valor_a_faturar) : '')
+      setManual(definido ? String(fat.valor_a_faturar) : '')
       setEditarOutro(true)
       return
     }
@@ -349,19 +409,21 @@ function CelulaFaturar({
 
 // ------------------------------------------------------------- CÉLULA: FATURA
 function CelulaFatura({
-  aluguer, podeEditar, onChange, onEnviar,
+  aluguerId, mes, fat, podeEditar, onChange, onEnviar,
 }: {
-  aluguer: Aluguer
+  aluguerId: string
+  mes: string
+  fat: Fat
   podeEditar: boolean
-  onChange: (id: string, patch: Partial<Aluguer>) => void
-  onEnviar: (a: Aluguer) => void
+  onChange: (patch: Partial<Fat>) => void
+  onEnviar: () => void
 }) {
   const [aCarregar, setACarregar] = useState(false)
-  const temFatura = !!aluguer.fatura_url
+  const temFatura = !!fat.fatura_url
 
   async function carregar(file: File) {
     setACarregar(true)
-    const caminho = `${aluguer.id}/${Date.now()}-${nomeSeguro(file.name)}`
+    const caminho = `${aluguerId}/${mes}/${Date.now()}-${nomeSeguro(file.name)}`
     const { error: erroUp } = await supabase.storage.from(BUCKET_FATURAS).upload(caminho, file)
     if (erroUp) {
       setACarregar(false)
@@ -369,30 +431,30 @@ function CelulaFatura({
       return
     }
     const { data: pub } = supabase.storage.from(BUCKET_FATURAS).getPublicUrl(caminho)
-    onChange(aluguer.id, { fatura_url: pub.publicUrl, fatura_caminho: caminho, fatura_nome: file.name })
+    onChange({ fatura_url: pub.publicUrl, fatura_caminho: caminho, fatura_nome: file.name })
     setACarregar(false)
   }
 
   async function remover() {
-    if (!window.confirm(`Remover a fatura “${aluguer.fatura_nome ?? ''}”?`)) return
-    if (aluguer.fatura_caminho) await supabase.storage.from(BUCKET_FATURAS).remove([aluguer.fatura_caminho])
-    onChange(aluguer.id, { fatura_url: null, fatura_caminho: null, fatura_nome: null })
+    if (!window.confirm(`Remover a fatura “${fat.fatura_nome ?? ''}”?`)) return
+    if (fat.fatura_caminho) await supabase.storage.from(BUCKET_FATURAS).remove([fat.fatura_caminho])
+    onChange({ fatura_url: null, fatura_caminho: null, fatura_nome: null })
   }
 
   if (temFatura) {
-    const enviada = !!aluguer.fatura_enviada_em
+    const enviada = !!fat.fatura_enviada_em
     return (
       <span style={c.faturaLinha}>
-        <a href={aluguer.fatura_url!} target="_blank" rel="noopener noreferrer" style={c.faturaLink}>
-          📄 {aluguer.fatura_nome ?? 'fatura'}
+        <a href={fat.fatura_url!} target="_blank" rel="noopener noreferrer" style={c.faturaLink}>
+          📄 {fat.fatura_nome ?? 'fatura'}
         </a>
         {podeEditar && (
           <button
             style={enviada ? c.btnEnviada : c.btnEnviar}
-            onClick={() => onEnviar(aluguer)}
+            onClick={onEnviar}
             title={
               enviada
-                ? `Enviada em ${formatarData(aluguer.fatura_enviada_em)}${aluguer.fatura_enviada_para ? ' para ' + aluguer.fatura_enviada_para : ''} — clica para reenviar`
+                ? `Enviada em ${formatarData(fat.fatura_enviada_em)}${fat.fatura_enviada_para ? ' para ' + fat.fatura_enviada_para : ''} — clica para reenviar`
                 : 'Enviar fatura ao cliente por email'
             }
           >
@@ -427,13 +489,13 @@ function CelulaFatura({
 
 // ------------------------------------------------------------- CÉLULA: VISTO
 function VistoValidado({
-  aluguer, podeEditar, onChange,
+  fat, podeEditar, onChange,
 }: {
-  aluguer: Aluguer
+  fat: Fat
   podeEditar: boolean
-  onChange: (id: string, patch: Partial<Aluguer>) => void
+  onChange: (patch: Partial<Fat>) => void
 }) {
-  const validado = !!aluguer.validado
+  const validado = !!fat.validado
   // Viewers só veem o estado (sem clicar)
   if (!podeEditar) {
     return <span style={validado ? c.vistoVerde : c.vistoCinza} title={validado ? 'Validado' : 'Por validar'}>✓</span>
@@ -442,7 +504,7 @@ function VistoValidado({
     <button
       type="button"
       style={validado ? c.vistoVerde : c.vistoCinza}
-      onClick={() => onChange(aluguer.id, { validado: !validado })}
+      onClick={() => onChange({ validado: !validado })}
       title={validado ? 'Validado — clica para desmarcar' : 'Marcar como validado'}
     >
       ✓
@@ -452,13 +514,15 @@ function VistoValidado({
 
 // ------------------------------------------------------ ENVIAR FATURA (EMAIL)
 function ModalEnviarFatura({
-  aluguer, onFechar, onEnviada,
+  aluguer, mes, fat, onFechar, onEnviada,
 }: {
   aluguer: Aluguer
+  mes: string
+  fat: Fat
   onFechar: () => void
-  onEnviada: (aluguer: Aluguer, email: string) => void
+  onEnviada: (aluguer: Aluguer, mes: string, email: string) => void
 }) {
-  const [email, setEmail] = useState(aluguer.fatura_enviada_para ?? '')
+  const [email, setEmail] = useState(fat.fatura_enviada_para ?? '')
   const [aCarregar, setACarregar] = useState(true)
   const [aEnviar, setAEnviar] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
@@ -467,7 +531,7 @@ function ModalEnviarFatura({
   useEffect(() => {
     let ativo = true
     async function buscar() {
-      if (aluguer.cliente_id && !aluguer.fatura_enviada_para) {
+      if (aluguer.cliente_id && !fat.fatura_enviada_para) {
         const { data } = await supabase
           .from('clientes')
           .select('email')
@@ -479,7 +543,7 @@ function ModalEnviarFatura({
     }
     buscar()
     return () => { ativo = false }
-  }, [aluguer.cliente_id, aluguer.fatura_enviada_para])
+  }, [aluguer.cliente_id, fat.fatura_enviada_para])
 
   async function enviar() {
     setErro(null)
@@ -494,8 +558,8 @@ function ModalEnviarFatura({
         body: JSON.stringify({
           para,
           clienteNome: aluguer.cliente_nome ?? 'cliente',
-          faturaUrl: aluguer.fatura_url,
-          faturaNome: aluguer.fatura_nome ?? 'fatura',
+          faturaUrl: fat.fatura_url,
+          faturaNome: fat.fatura_nome ?? 'fatura',
         }),
       })
       const dados = await r.json().catch(() => ({}))
@@ -503,7 +567,7 @@ function ModalEnviarFatura({
       if (!r.ok || !dados.enviado) {
         return setErro(dados.motivo ?? 'Não foi possível enviar a fatura.')
       }
-      onEnviada(aluguer, para)
+      onEnviada(aluguer, mes, para)
     } catch {
       setAEnviar(false)
       setErro('Erro de rede ao enviar.')
@@ -522,7 +586,8 @@ function ModalEnviarFatura({
 
         <p style={c.envInfo}>
           <strong>Cliente:</strong> {aluguer.cliente_nome ?? '—'}<br />
-          <strong>Ficheiro:</strong> {aluguer.fatura_nome ?? 'fatura'} (em anexo)
+          <strong>Mês:</strong> {nomeMes(mes)}<br />
+          <strong>Ficheiro:</strong> {fat.fatura_nome ?? 'fatura'} (em anexo)
         </p>
 
         <label style={c.label}>Email do cliente</label>
@@ -536,10 +601,10 @@ function ModalEnviarFatura({
         />
         <span style={c.envNota}>O email fica guardado no cliente para a próxima vez.</span>
 
-        {aluguer.fatura_enviada_em && (
+        {fat.fatura_enviada_em && (
           <span style={c.envNota}>
-            Já enviada em {formatarData(aluguer.fatura_enviada_em)}
-            {aluguer.fatura_enviada_para ? ` para ${aluguer.fatura_enviada_para}` : ''}.
+            Já enviada em {formatarData(fat.fatura_enviada_em)}
+            {fat.fatura_enviada_para ? ` para ${fat.fatura_enviada_para}` : ''}.
           </span>
         )}
 
@@ -676,7 +741,7 @@ function ModalEditar({
 
         <div style={c.linha2}>
           <div>
-            <label style={c.label}>Valor (€)</label>
+            <label style={c.label}>Valor mensal (€)</label>
             <input
               style={c.input}
               type="number"
