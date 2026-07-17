@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/lib/auth'
 import AlugueresNav from '@/components/AlugueresNav'
 import BotaoExportar from '@/components/BotaoExportar'
 import type { ColunaExport } from '@/lib/exportar'
@@ -78,6 +79,7 @@ const colunasExport: ColunaExport<Aluguer>[] = [
 ]
 
 export default function AlugueresInternacional() {
+  const { isAdmin } = useAuth()
   const [alugueres, setAlugueres] = useState<Aluguer[]>([])
   const [pesquisa, setPesquisa] = useState('')
   const [fEstado, setFEstado] = useState('')
@@ -132,7 +134,10 @@ export default function AlugueresInternacional() {
     <main style={c.page}>
       <div style={c.cabecalho}>
         <h1 style={c.titulo}>Alugueres · Internacional</h1>
-        <Link href="/" style={c.voltar}>← Stock</Link>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          {isAdmin && <Link href="/alugueres" style={c.btnAdd}>+ Adicionar</Link>}
+          <Link href="/" style={c.voltar}>← Stock</Link>
+        </div>
       </div>
       <AlugueresNav />
 
@@ -215,6 +220,7 @@ const c: Record<string, React.CSSProperties> = {
   cabecalho: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   titulo: { fontSize: 22, fontWeight: 700, color: 'var(--primary)' },
   voltar: { color: 'var(--muted)', textDecoration: 'none' },
+  btnAdd: { background: 'var(--primary)', color: '#fff', padding: '8px 14px', borderRadius: 8, fontWeight: 700, fontSize: 14, textDecoration: 'none', whiteSpace: 'nowrap' },
   link: { color: 'var(--primary)', fontWeight: 600 },
   filtros: { display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' },
   inputPesq: { flex: 1, minWidth: 160, padding: 10, border: '1px solid #ccc', borderRadius: 8, fontSize: 15 },
