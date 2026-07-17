@@ -24,6 +24,12 @@ function formatarEuro(v: number | null) {
   return v.toLocaleString('pt-PT', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })
 }
 
+function formatarData(d: string | null) {
+  if (!d) return '—'
+  const dt = new Date(d)
+  return isNaN(dt.getTime()) ? d : dt.toLocaleDateString('pt-PT')
+}
+
 // Lista ordenada de valores distintos de um campo
 function distintos(lista: Equipamento[], campo: keyof Equipamento) {
   return Array.from(
@@ -55,6 +61,7 @@ const colunasExport: ColunaExport<Equipamento>[] = [
   { cabecalho: 'Status', valor: (e) => e.status },
   { cabecalho: 'Origem', valor: (e) => e.origem },
   { cabecalho: 'Destino', valor: (e) => clienteDe(e) },
+  { cabecalho: 'Data de entrada', valor: (e) => e.data_entrada },
   { cabecalho: 'Preço de compra', valor: (e) => formatarEuro(e.valor_compra) },
   { cabecalho: 'Preço de venda', valor: (e) => formatarEuro(e.preco_venda) },
 ]
@@ -281,7 +288,7 @@ export default function Home() {
         const recolhida = recolhidas.has(m)
         linhas.push(
           <tr key={`marca-${m}`} className={styles.grupoMarca} onClick={() => alternarMarca(m)}>
-            <td colSpan={5}>
+            <td colSpan={8}>
               <span className={styles.seta}>{recolhida ? '▸' : '▾'}</span>
               {m}
             </td>
@@ -296,7 +303,7 @@ export default function Home() {
       if (mod !== ultimoModelo) {
         linhas.push(
           <tr key={`modelo-${m}-${mod}`} className={styles.grupoModelo}>
-            <td colSpan={5}>{mod}</td>
+            <td colSpan={8}>{mod}</td>
           </tr>
         )
         ultimoModelo = mod
@@ -308,6 +315,9 @@ export default function Home() {
           <td className={styles.serialCell}>{e.serial_number ?? '—'}</td>
           <td>{e.ano ?? '—'}</td>
           <td>{e.status ? <StatusEquipamento status={e.status} /> : '—'}</td>
+          <td>{e.origem ?? '—'}</td>
+          <td>{clienteDe(e) || '—'}</td>
+          <td>{formatarData(e.data_entrada)}</td>
           <td>{formatarEuro(e.valor_compra)}</td>
           <td>{falta.length > 0 && <span className={styles.badgeFalta}>{falta.length} em falta</span>}</td>
         </tr>
@@ -356,6 +366,8 @@ export default function Home() {
             {e.status ? <StatusEquipamento status={e.status} /> : 'Sem status'}
             {e.ano ? ` · ${e.ano}` : ''}
           </div>
+          <div className={styles.cardLinha}>Origem: {e.origem ?? '—'} · Destino: {clienteDe(e) || '—'}</div>
+          <div className={styles.cardLinha}>Entrada: {formatarData(e.data_entrada)}</div>
           <div className={styles.cardLinha}>Compra: {formatarEuro(e.valor_compra)}</div>
         </div>
       )
@@ -445,6 +457,9 @@ export default function Home() {
                   <th>Serial Number</th>
                   <th>Ano</th>
                   <th>Status</th>
+                  <th>Origem</th>
+                  <th>Destino</th>
+                  <th>Data de entrada</th>
                   <th>Preço de compra</th>
                   <th></th>
                 </tr>
