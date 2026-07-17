@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth'
 import AlugueresNav from '@/components/AlugueresNav'
 import BotaoExportar from '@/components/BotaoExportar'
 import type { ColunaExport } from '@/lib/exportar'
-import { formatarEuro, mesAtual, nomeMes, somar } from '@/lib/alugueres'
+import { formatarEuro, mesAtual, nomeMes, somar, parseNumeroPt } from '@/lib/alugueres'
 import {
   TIPOS_ALUGUER,
   TIPOS_INTERNACIONAL,
@@ -310,9 +310,9 @@ function CelulaFaturar({
   }
 
   function guardarManual() {
-    const v = manual.trim()
-    if (v === '' || isNaN(Number(v))) { setEditarOutro(false); return }
-    aplicar({ valor_a_faturar: Number(v), nao_faturar: false })
+    const v = parseNumeroPt(manual)
+    if (v === null) { setEditarOutro(false); return }
+    aplicar({ valor_a_faturar: v, nao_faturar: false })
   }
 
   const estiloSelect = naoFaturar ? c.selectCinza : definido ? c.selectVerde : c.selectFaturar
@@ -587,7 +587,8 @@ function ModalEditar({
     setErro(null)
     if (!clienteNome.trim()) return setErro('Indica o cliente.')
     if (!serial.trim()) return setErro('Indica o serial number.')
-    if (valor.trim() && isNaN(Number(valor))) return setErro('O valor não é válido.')
+    const valorNum = valor.trim() ? parseNumeroPt(valor) : null
+    if (valor.trim() && valorNum === null) return setErro('O valor não é válido.')
 
     setAGuardar(true)
     const patch = {
@@ -598,7 +599,7 @@ function ModalEditar({
       ano: ano.trim() || null,
       nacional,
       tipo_aluguer: tipo || null,
-      valor: valor.trim() ? Number(valor) : null,
+      valor: valorNum,
       metodo_pagamento: metodo || null,
       data_entrega: dataEntrega || null,
       data_recolha: dataRecolha || null,

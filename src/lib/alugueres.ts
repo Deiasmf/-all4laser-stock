@@ -31,3 +31,17 @@ export function ultimosMeses(n: number): string[] {
 export function somar<T>(lista: T[], fn: (x: T) => number | null | undefined): number {
   return lista.reduce((acc, x) => acc + (fn(x) || 0), 0)
 }
+
+// Converte texto de valor escrito à portuguesa num número.
+// Aceita vírgula decimal (1500,50), ponto de milhares (1.500,50) e símbolo €.
+// Devolve null se o texto não representar um número válido.
+export function parseNumeroPt(texto: string): number | null {
+  let s = texto.trim().replace(/[€\s]/g, '')
+  if (!s) return null
+  // Se houver vírgula, é o separador decimal; os pontos são de milhares.
+  if (s.includes(',')) {
+    s = s.replace(/\./g, '').replace(',', '.')
+  }
+  const n = Number(s)
+  return isNaN(n) ? null : n
+}

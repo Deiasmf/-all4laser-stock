@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
 import AlugueresNav from '@/components/AlugueresNav'
+import { parseNumeroPt } from '@/lib/alugueres'
 import {
   TIPOS_ALUGUER,
   TIPOS_INTERNACIONAL,
@@ -192,7 +193,8 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
     if (!cliente.trim()) return setErro('Indica o cliente.')
     if (!serial.trim()) return setErro('Indica o serial number.')
     if (!tipo) return setErro('Escolhe o tipo de aluguer.')
-    if (!valor.trim() || isNaN(Number(valor))) return setErro('Indica um valor válido.')
+    const valorNum = parseNumeroPt(valor)
+    if (valorNum === null) return setErro('Indica um valor válido.')
     if (!metodo) return setErro('Escolhe o método de pagamento.')
 
     setAGuardar(true)
@@ -226,7 +228,7 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
       modelo: modelo.trim() || null,
       ano: ano.trim() || null,
       tipo_aluguer: tipo,
-      valor: Number(valor),
+      valor: valorNum,
       metodo_pagamento: metodo,
       nacional,
       data_entrega: dataEntrega || hoje(),
