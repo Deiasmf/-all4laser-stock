@@ -26,6 +26,7 @@ type Fat = {
   valor_a_faturar: number | null
   nao_faturar: boolean
   validado: boolean
+  pago: boolean
   fatura_url: string | null
   fatura_caminho: string | null
   fatura_nome: string | null
@@ -40,7 +41,7 @@ type LinhaMes = { aluguer: Aluguer; fat: Fat }
 function fatVazia(aluguerId: string, mes: string): Fat {
   return {
     id: null, aluguer_id: aluguerId, mes, valor_a_faturar: null,
-    nao_faturar: false, validado: false, fatura_url: null, fatura_caminho: null,
+    nao_faturar: false, validado: false, pago: false, fatura_url: null, fatura_caminho: null,
     fatura_nome: null, fatura_enviada_em: null, fatura_enviada_para: null,
   }
 }
@@ -75,6 +76,7 @@ const colunasExport: ColunaExport<LinhaMes>[] = [
   { cabecalho: 'Valor a Faturar', valor: (l) => valorAFaturarTexto(l.fat) },
   { cabecalho: 'Fatura', valor: (l) => l.fat.fatura_nome ?? '—' },
   { cabecalho: 'Validado', valor: (l) => (l.fat.validado ? 'Sim' : 'Não') },
+  { cabecalho: 'Pago', valor: (l) => (l.fat.pago ? 'Pago' : 'Não pago') },
 ]
 
 // Opções de ordenação da lista
@@ -245,6 +247,7 @@ export default function ListaAlugueres() {
             <span style={{ textAlign: 'right' }}>Valor</span>
             <span>Valor a Faturar</span>
             <span>Fatura</span>
+            <span style={{ textAlign: 'center' }}>Pago</span>
           </div>
           {linhas.map((l) => {
             const a = l.aluguer
@@ -280,6 +283,9 @@ export default function ListaAlugueres() {
                     onChange={(patch) => atualizarFaturacao(a.id, mes, patch)}
                     onEnviar={() => setEnviarFatura({ aluguer: a, mes, fat: l.fat })}
                   />
+                </span>
+                <span style={{ ...c.celula, justifyContent: 'center' }} onClick={(e) => e.stopPropagation()}>
+                  <EstadoPago fat={l.fat} podeEditar={isAdmin} onChange={(patch) => atualizarFaturacao(a.id, mes, patch)} />
                 </span>
               </div>
             )
@@ -500,6 +506,31 @@ function VistoValidado({
       title={validado ? 'Validado — clica para desmarcar' : 'Marcar como validado'}
     >
       ✓
+    </button>
+  )
+}
+
+// -------------------------------------------------------------- CÉLULA: PAGO
+function EstadoPago({
+  fat, podeEditar, onChange,
+}: {
+  fat: Fat
+  podeEditar: boolean
+  onChange: (patch: Partial<Fat>) => void
+}) {
+  const pago = !!fat.pago
+  // Viewers só veem o estado (sem clicar)
+  if (!podeEditar) {
+    return <span style={pago ? c.pagoVerde : c.pagoVermelho}>{pago ? 'Pago' : 'Não pago'}</span>
+  }
+  return (
+    <button
+      type="button"
+      style={pago ? c.pagoVerde : c.pagoVermelho}
+      onClick={() => onChange({ pago: !pago })}
+      title={pago ? 'Pago — clica para marcar como não pago' : 'Não pago — clica para marcar como pago'}
+    >
+      {pago ? 'Pago' : 'Não pago'}
     </button>
   )
 }
@@ -798,7 +829,7 @@ const c: Record<string, React.CSSProperties> = {
 
   estado: { color: 'var(--muted)', padding: 8 },
   tabela: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 8, overflowX: 'auto' },
-  linha: { display: 'grid', gridTemplateColumns: '0.5fr 1.3fr 1.4fr 0.9fr 0.75fr 1.25fr 2fr', gap: 10, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center', minWidth: 820 },
+  linha: { display: 'grid', gridTemplateColumns: '0.5fr 1.3fr 1.4fr 0.9fr 0.75fr 1.25fr 2fr 0.9fr', gap: 10, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center', minWidth: 920 },
   linhaClicavel: { cursor: 'pointer' },
   cab: { fontWeight: 700, color: 'var(--muted)', fontSize: 12, borderBottom: '2px solid var(--border)' },
   intl: { marginLeft: 6, fontSize: 10, fontWeight: 700, color: '#fff', background: 'var(--accent, #3552eb)', borderRadius: 999, padding: '1px 6px' },
@@ -812,6 +843,10 @@ const c: Record<string, React.CSSProperties> = {
   // Célula "Visto" (validado)
   vistoVerde: { width: 26, height: 26, borderRadius: 999, border: 'none', background: '#1b873f', color: '#fff', fontSize: 14, lineHeight: 1, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   vistoCinza: { width: 26, height: 26, borderRadius: 999, border: '1px solid #ccc', background: '#fff', color: '#bbb', fontSize: 14, lineHeight: 1, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+
+  // Célula "Pago" (verde = pago, vermelho = por pagar)
+  pagoVerde: { border: '1px solid #1b873f', background: '#e8f5ec', color: '#1b873f', fontWeight: 700, fontSize: 12, borderRadius: 999, padding: '4px 12px', cursor: 'pointer', whiteSpace: 'nowrap', lineHeight: 1 },
+  pagoVermelho: { border: '1px solid #c62828', background: '#ffebee', color: '#c62828', fontWeight: 700, fontSize: 12, borderRadius: 999, padding: '4px 12px', cursor: 'pointer', whiteSpace: 'nowrap', lineHeight: 1 },
 
   // Célula "Valor a Faturar"
   celula: { display: 'flex', alignItems: 'center', minWidth: 0 },
