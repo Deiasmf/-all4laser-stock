@@ -24,6 +24,17 @@ export async function POST(req: Request) {
     return Response.json({ ok: false, erro: 'JSON inválido' }, { status: 400, headers: corsHeaders })
   }
 
+  // Formulários Wix (Velo) enviam { source, fields: [{fieldName, fieldValue}, ...] }.
+  // Cada página tem rótulos diferentes (Nome/Name, Localidade/Country, Assunto...),
+  // por isso achatamos os fields para os campos que já usamos, adivinhando pelo
+  // rótulo (e pelo conteúdo, ex.: algo com "@" é email). Nada se perde: campos
+  // desconhecidos vão para a mensagem.
+  if (Array.isArray(corpo.fields)) {
+    Object.assign(corpo, normalizarCamposWix(corpo.fields as WixCampo[]))
+  }
+  // Log para diagnóstico (aparece nos logs de runtime do Vercel).
+  try { console.log('[leads/website] payload', JSON.stringify(corpo).slice(0, 2000)) } catch {}
+
   // Aceita nomes de campo em português OU inglês (o formulário do site usa
   // name/phone/message; mantemos nome/telefone/mensagem por compatibilidade).
   const nome = String(corpo.nome ?? corpo.name ?? '').trim()
@@ -49,9 +60,13 @@ export async function POST(req: Request) {
   //   acrescentados ao fim da mensagem (sem alterar o schema da BD).
   const modalidade = texto(corpo.modalidade)
   const datas = texto(corpo.datas)
+  const assunto = campo('assunto', 'subject')
+  const origem = campo('source', 'origem')
   const extras = [
+    assunto ? `Assunto: ${assunto}` : null,
     modalidade ? `Modalidade: ${modalidade}` : null,
     datas ? `Datas pretendidas: ${datas}` : null,
+    origem ? `Formulário: ${origem}` : null,
   ].filter(Boolean)
   const mensagem = [campo('mensagem', 'message'), ...extras].filter(Boolean).join('\n') || null
 
@@ -92,6 +107,37 @@ export async function POST(req: Request) {
     { success: true, ok: true, id: (data as { id: string }).id },
     { status: 201, headers: corsHeaders }
   )
+}
+
+// Um campo submetido num formulário Wix. Aceitamos várias formas possíveis
+// (fieldName/fieldValue, name/value, label/id) para ser robusto entre versões.
+type WixCampo = {
+  fieldName?: string; fieldValue?: unknown
+  name?: string; value?: unknown
+  label?: string; id?: string
+}
+
+// Achata os fields do Wix para as chaves que o resto do endpoint já entende.
+// Adivinha pelo rótulo do campo e, no caso do email, também pelo conteúdo.
+function normalizarCamposWix(fields: WixCampo[]): Record<string, string> {
+  const out: Record<string, string> = {}
+  const set = (k: string, v: string) => { if (v && !out[k]) out[k] = v }
+
+  for (const f of Array.isArray(fields) ? fields : []) {
+    const rotulo = String(f?.fieldName ?? f?.name ?? f?.label ?? f?.id ?? '').toLowerCase()
+    const bruto = f?.fieldValue ?? f?.value
+    const v = (Array.isArray(bruto) ? bruto.join(', ') : bruto == null ? '' : String(bruto)).trim()
+    if (!v) continue
+
+    if (/mail/.test(rotulo) || (!out.email && v.includes('@') && v.length < 100)) set('email', v)
+    else if (/phone|whats|telef|telem|contact/.test(rotulo)) set('telefone', v)
+    else if (/nome|name/.test(rotulo)) set('nome', v)
+    else if (/local|cidade|city|country|pa[ií]s/.test(rotulo)) set('cidade', v)
+    else if (/assunto|subject/.test(rotulo)) set('assunto', v)
+    else if (/mensagem|message|coment|d[uú]vida|nota|texto/.test(rotulo)) set('mensagem', v)
+    else set('mensagem', [out.mensagem, `${f?.fieldName ?? rotulo}: ${v}`].filter(Boolean).join('\n'))
+  }
+  return out
 }
 
 async function notificarEquipa(lead: {
