@@ -103,6 +103,7 @@ export default function ListaAlugueres() {
   const [faturacao, setFaturacao] = useState<Map<string, Fat>>(new Map())
   const [mes, setMes] = useState(mesAtual())
   const [pesquisa, setPesquisa] = useState('')
+  const [fPago, setFPago] = useState<'' | 'nao-pagos' | 'pagos'>('')
   const [ordenar, setOrdenar] = useState<Ordenacao>('cliente-asc')
   const [carregando, setCarregando] = useState(true)
   const [editar, setEditar] = useState<Aluguer | null>(null)
@@ -128,6 +129,10 @@ export default function ListaAlugueres() {
       .filter((a) => (a.data_entrega ?? '').slice(0, 7) === mes)
       .filter((a) => !q || (a.cliente_nome ?? '').toLowerCase().includes(q))
       .map((a) => ({ aluguer: a, fat: faturacao.get(`${a.id}|${mes}`) ?? fatVazia(a.id, mes) }))
+      .filter((l) =>
+        fPago === '' ||
+        (fPago === 'pagos' ? l.fat.pago : !l.fat.pago)
+      )
 
     return lista.sort((x, y) => {
       const a = x.aluguer, b = y.aluguer
@@ -141,7 +146,7 @@ export default function ListaAlugueres() {
         default: return 0
       }
     })
-  }, [alugueres, faturacao, mes, pesquisa, ordenar])
+  }, [alugueres, faturacao, mes, pesquisa, fPago, ordenar])
 
   const total = somar(linhas, (l) => l.aluguer.valor)
 
@@ -215,6 +220,16 @@ export default function ListaAlugueres() {
           onChange={(e) => setPesquisa(e.target.value)}
           style={c.inputPesq}
         />
+        <select
+          value={fPago}
+          onChange={(e) => setFPago(e.target.value as '' | 'nao-pagos' | 'pagos')}
+          style={fPago === 'nao-pagos' ? c.inputPagoAtivo : c.inputOrden}
+          title="Filtrar por pagamento"
+        >
+          <option value="">Pagos e não pagos</option>
+          <option value="nao-pagos">Só não pagos</option>
+          <option value="pagos">Só pagos</option>
+        </select>
         <select
           value={ordenar}
           onChange={(e) => setOrdenar(e.target.value as Ordenacao)}
@@ -888,6 +903,7 @@ const c: Record<string, React.CSSProperties> = {
   inputMes: { padding: 10, border: '1px solid #ccc', borderRadius: 8, fontSize: 15 },
   inputPesq: { flex: 1, minWidth: 160, padding: 10, border: '1px solid #ccc', borderRadius: 8, fontSize: 15 },
   inputOrden: { padding: 10, border: '1px solid #ccc', borderRadius: 8, fontSize: 15, background: '#fff', cursor: 'pointer' },
+  inputPagoAtivo: { padding: 10, border: '1px solid #c62828', borderRadius: 8, fontSize: 15, background: '#ffebee', color: '#c62828', fontWeight: 700, cursor: 'pointer' },
   resumo: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--accent-bg, #eef1f6)', borderRadius: 10, padding: '10px 14px', marginBottom: 14, flexWrap: 'wrap', gap: 8 },
 
   // Resumo de faturação do mês
