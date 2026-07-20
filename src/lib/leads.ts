@@ -9,6 +9,19 @@ export async function listarLeads(): Promise<Lead[]> {
   return (data as Lead[]) ?? []
 }
 
+// Criação manual de uma lead pela equipa (canais sem entrada automática:
+// email, bimedis, telefone, referência...). Devolve { data, error }.
+export async function criarLead(
+  campos: Pick<Lead, 'nome' | 'canal'> &
+    Partial<Pick<Lead, 'email' | 'telefone' | 'cidade' | 'modelo_interesse' | 'data_inicio' | 'data_fim' | 'mensagem'>>
+) {
+  return supabase
+    .from('leads')
+    .insert({ ...campos, estado: 'nova' })
+    .select('*')
+    .single()
+}
+
 export async function atualizarLead(
   id: string,
   campos: Partial<Pick<Lead, 'estado' | 'nota_interna'>>

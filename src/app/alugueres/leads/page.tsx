@@ -5,7 +5,7 @@ import Link from 'next/link'
 import AlugueresNav from '@/components/AlugueresNav'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
-import { atualizarLead, eliminarLead } from '@/lib/leads'
+import { criarLead, atualizarLead, eliminarLead } from '@/lib/leads'
 import BotaoExportar from '@/components/BotaoExportar'
 import type { ColunaExport } from '@/lib/exportar'
 import {
@@ -54,6 +54,7 @@ export default function LeadsPage() {
   const [fCanal, setFCanal] = useState('')
   const [fEstado, setFEstado] = useState('')
   const [aberta, setAberta] = useState<Lead | null>(null)
+  const [nova, setNova] = useState(false)
 
   useEffect(() => {
     supabase
@@ -82,7 +83,10 @@ export default function LeadsPage() {
     <main style={c.page}>
       <div style={c.cabecalho}>
         <h1 style={c.titulo}>Leads</h1>
-        <Link href="/alugueres/lista" style={c.voltar}>← Alugueres</Link>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <button onClick={() => setNova(true)} style={c.btnNova}>+ Nova lead</button>
+          <Link href="/alugueres/lista" style={c.voltar}>← Alugueres</Link>
+        </div>
       </div>
       <AlugueresNav />
 
@@ -151,6 +155,17 @@ export default function LeadsPage() {
         </div>
       )}
 
+      {nova && (
+        <NovaLeadDrawer
+          onClose={() => setNova(false)}
+          onCriada={(l) => {
+            setLeads((prev) => [l, ...prev])
+            setNova(false)
+            setAberta(l)
+          }}
+        />
+      )}
+
       {aberta && (
         <LeadDrawer
           key={aberta.id}
@@ -168,6 +183,111 @@ export default function LeadsPage() {
         />
       )}
     </main>
+  )
+}
+
+function NovaLeadDrawer({
+  onClose, onCriada,
+}: {
+  onClose: () => void
+  onCriada: (l: Lead) => void
+}) {
+  const [nome, setNome] = useState('')
+  const [canal, setCanal] = useState<Lead['canal']>('email')
+  const [email, setEmail] = useState('')
+  const [telefone, setTelefone] = useState('')
+  const [cidade, setCidade] = useState('')
+  const [interesse, setInteresse] = useState('')
+  const [dataInicio, setDataInicio] = useState('')
+  const [dataFim, setDataFim] = useState('')
+  const [mensagem, setMensagem] = useState('')
+  const [aGravar, setAGravar] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+
+  async function guardar() {
+    if (!nome.trim()) { setMsg('Indica o nome.'); return }
+    setAGravar(true)
+    setMsg(null)
+    const { data, error } = await criarLead({
+      nome: nome.trim(),
+      canal,
+      email: email.trim() || null,
+      telefone: telefone.trim() || null,
+      cidade: cidade.trim() || null,
+      modelo_interesse: interesse.trim() || null,
+      data_inicio: dataInicio || null,
+      data_fim: dataFim || null,
+      mensagem: mensagem.trim() || null,
+    })
+    setAGravar(false)
+    if (error) { setMsg('Erro ao criar: ' + error.message); return }
+    onCriada(data as Lead)
+  }
+
+  return (
+    <div style={c.backdrop} onClick={onClose}>
+      <div style={c.drawer} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+          <h2 style={{ fontSize: 20, fontWeight: 800 }}>Nova lead</h2>
+          <button onClick={onClose} style={c.fechar}>✕</button>
+        </div>
+        <p style={{ ...c.meta, marginTop: 4 }}>Registar manualmente uma lead (email, Bimedis, telefone, referência...).</p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
+          <div>
+            <label style={c.rotulo}>Nome *</label>
+            <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome do contacto" style={c.campo} />
+          </div>
+          <div>
+            <label style={c.rotulo}>Canal</label>
+            <select value={canal} onChange={(e) => setCanal(e.target.value as Lead['canal'])} style={{ ...c.select, width: '100%', marginTop: 6 }}>
+              {CANAL_OPCOES.map((v) => <option key={v} value={v}>{CANAL_CONFIG[v].label}</option>)}
+            </select>
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 160 }}>
+              <label style={c.rotulo}>Email</label>
+              <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="email@exemplo.com" style={c.campo} />
+            </div>
+            <div style={{ flex: 1, minWidth: 140 }}>
+              <label style={c.rotulo}>Telefone</label>
+              <input value={telefone} onChange={(e) => setTelefone(e.target.value)} placeholder="9xx xxx xxx" style={c.campo} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 140 }}>
+              <label style={c.rotulo}>Cidade</label>
+              <input value={cidade} onChange={(e) => setCidade(e.target.value)} placeholder="Cidade" style={c.campo} />
+            </div>
+            <div style={{ flex: 1, minWidth: 160 }}>
+              <label style={c.rotulo}>Interesse</label>
+              <input value={interesse} onChange={(e) => setInteresse(e.target.value)} placeholder="Modelo / equipamento" style={c.campo} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 140 }}>
+              <label style={c.rotulo}>Data início</label>
+              <input value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} type="date" style={c.campo} />
+            </div>
+            <div style={{ flex: 1, minWidth: 140 }}>
+              <label style={c.rotulo}>Data fim</label>
+              <input value={dataFim} onChange={(e) => setDataFim(e.target.value)} type="date" style={c.campo} />
+            </div>
+          </div>
+          <div>
+            <label style={c.rotulo}>Mensagem / notas</label>
+            <textarea value={mensagem} onChange={(e) => setMensagem(e.target.value)} placeholder="O que pediu, contexto..." style={c.textarea} />
+          </div>
+        </div>
+
+        {msg && <div style={{ marginTop: 10, fontSize: 13, color: 'var(--danger)', fontWeight: 600 }}>{msg}</div>}
+
+        <div style={{ display: 'flex', gap: 10, marginTop: 16, alignItems: 'center' }}>
+          <button onClick={guardar} disabled={aGravar} style={c.btnPrimario}>{aGravar ? 'A criar...' : 'Criar lead'}</button>
+          <button onClick={onClose} style={c.btnSecundario}>Cancelar</button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -271,6 +391,8 @@ const c: Record<string, React.CSSProperties> = {
   cabecalho: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   titulo: { fontSize: 22, fontWeight: 700, color: 'var(--primary)' },
   voltar: { color: 'var(--muted)', textDecoration: 'none' },
+  btnNova: { background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontWeight: 700, fontSize: 14, cursor: 'pointer', whiteSpace: 'nowrap' },
+  campo: { width: '100%', marginTop: 6, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8, font: 'inherit', boxSizing: 'border-box' },
   resumoLinha: { display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 },
   pill: { border: '1px solid var(--border)', borderRadius: 999, padding: '5px 12px', fontSize: 13, fontWeight: 700, cursor: 'pointer' },
   filtros: { display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' },
