@@ -52,6 +52,20 @@ function formatarData(d: string | null) {
   return isNaN(dt.getTime()) ? d : dt.toLocaleDateString('pt-PT')
 }
 
+// Verdadeiro em ecrãs estreitos (telemóvel/tablet). Nesses casos a lista
+// mostra cartões empilhados em vez da tabela larga, para não precisar de
+// barra de scroll horizontal.
+function useEcraEstreito(limite = 960) {
+  const [estreito, setEstreito] = useState(false)
+  useEffect(() => {
+    const verificar = () => setEstreito(window.innerWidth < limite)
+    verificar()
+    window.addEventListener('resize', verificar)
+    return () => window.removeEventListener('resize', verificar)
+  }, [limite])
+  return estreito
+}
+
 // Limpa o nome do ficheiro (só letras, números, ponto e traço)
 function nomeSeguro(nome: string) {
   return nome.normalize('NFD').replace(/[^\w.\-]/g, '_')
@@ -84,6 +98,7 @@ type Ordenacao = 'cliente-asc' | 'cliente-desc' | 'valor-desc' | 'valor-asc' | '
 
 export default function ListaAlugueres() {
   const { isAdmin } = useAuth()
+  const estreito = useEcraEstreito()
   const [alugueres, setAlugueres] = useState<Aluguer[]>([])
   const [faturacao, setFaturacao] = useState<Map<string, Fat>>(new Map())
   const [mes, setMes] = useState(mesAtual())
@@ -237,6 +252,61 @@ export default function ListaAlugueres() {
         <p style={c.estado}>A carregar...</p>
       ) : linhas.length === 0 ? (
         <p style={c.estado}>Sem alugueres neste mês.</p>
+      ) : estreito ? (
+        <div style={c.cartoes}>
+          {linhas.map((l) => {
+            const a = l.aluguer
+            return (
+              <div
+                key={`${a.id}|${mes}`}
+                style={{ ...c.cartao, ...(isAdmin ? c.linhaClicavel : {}) }}
+                onClick={isAdmin ? () => setEditar(a) : undefined}
+                title={isAdmin ? 'Toca para editar ou apagar' : undefined}
+              >
+                <div style={c.cartaoTopo}>
+                  <span style={c.cartaoCliente}>
+                    {a.cliente_nome ?? '—'}
+                    {!a.nacional && <span style={c.intl}>Internacional</span>}
+                  </span>
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <EstadoPago fat={l.fat} podeEditar={isAdmin} onChange={(patch) => atualizarFaturacao(a.id, mes, patch)} />
+                  </span>
+                </div>
+                <div style={c.cartaoEquip}>
+                  <span style={c.equipSn}>{a.serial_number ?? '—'}</span>
+                  <span style={c.equipMarca}>{[a.marca, a.modelo].filter(Boolean).join(' ') || '—'}</span>
+                </div>
+                <div style={c.cartaoLinha}>
+                  <span style={c.cartaoLabel}>Entrega</span>
+                  <span>{formatarData(a.data_entrega)}</span>
+                </div>
+                <div style={c.cartaoLinha}>
+                  <span style={c.cartaoLabel}>Valor</span>
+                  <span style={{ fontWeight: 700 }}>{formatarEuro(a.valor || 0)}</span>
+                </div>
+                <div style={c.cartaoLinha} onClick={(e) => e.stopPropagation()}>
+                  <span style={c.cartaoLabel}>Valor a Faturar</span>
+                  <CelulaFaturar valorTotal={a.valor ?? 0} fat={l.fat} podeEditar={isAdmin} onChange={(patch) => atualizarFaturacao(a.id, mes, patch)} />
+                </div>
+                <div style={c.cartaoLinha} onClick={(e) => e.stopPropagation()}>
+                  <span style={c.cartaoLabel}>Fatura</span>
+                  <CelulaFatura
+                    aluguerId={a.id}
+                    mes={mes}
+                    fat={l.fat}
+                    podeEditar={isAdmin}
+                    onChange={(patch) => atualizarFaturacao(a.id, mes, patch)}
+                    onEnviar={() => setEnviarFatura({ aluguer: a, mes, fat: l.fat })}
+                  />
+                </div>
+                <div style={c.cartaoLinha} onClick={(e) => e.stopPropagation()}>
+                  <span style={c.cartaoLabel}>Validado</span>
+                  <VistoValidado fat={l.fat} podeEditar={isAdmin} onChange={(patch) => atualizarFaturacao(a.id, mes, patch)} />
+                </div>
+              </div>
+            )
+          })}
+        </div>
       ) : (
         <div style={c.tabela}>
           <div style={{ ...c.linha, ...c.cab }}>
@@ -810,7 +880,7 @@ function ModalEditar({
 }
 
 const c: Record<string, React.CSSProperties> = {
-  page: { maxWidth: 900, margin: '0 auto', padding: 20 },
+  page: { maxWidth: 980, margin: '0 auto', padding: 20 },
   cabecalho: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   titulo: { fontSize: 22, fontWeight: 700, color: 'var(--primary)' },
   voltar: { color: 'var(--muted)', textDecoration: 'none' },
@@ -828,6 +898,16 @@ const c: Record<string, React.CSSProperties> = {
   resumoFaturarLinha: { display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 13, color: 'var(--muted)' },
 
   estado: { color: 'var(--muted)', padding: 8 },
+
+  // Vista em cartões (ecrã estreito / telemóvel) — sem scroll horizontal
+  cartoes: { display: 'flex', flexDirection: 'column', gap: 10 },
+  cartao: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 8 },
+  cartaoTopo: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
+  cartaoCliente: { fontWeight: 700, fontSize: 16, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 },
+  cartaoEquip: { display: 'flex', flexDirection: 'column', gap: 2, paddingBottom: 6, borderBottom: '1px solid #f2f2f2' },
+  cartaoLinha: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, minHeight: 30 },
+  cartaoLabel: { color: 'var(--muted)', fontSize: 13, fontWeight: 600, flexShrink: 0 },
+
   tabela: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 8, overflowX: 'auto' },
   linha: { display: 'grid', gridTemplateColumns: '0.5fr 1.3fr 1.4fr 0.9fr 0.75fr 1.25fr 2fr 0.9fr', gap: 10, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center', minWidth: 920 },
   linhaClicavel: { cursor: 'pointer' },
