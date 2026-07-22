@@ -50,19 +50,38 @@ export async function atualizarEnvio(id: string, patch: Partial<EnvioPeca>) {
   return supabase.from('envios_pecas').update(patch).eq('id', id).select().single()
 }
 
-// Apaga um envio (os itens caem em cascata) e a respetiva linha no livro de Encomendas.
-export async function eliminarEnvio(id: string) {
-  await supabase.from('recepcao_movimentos').delete()
-    .eq('referencia_tipo', 'envio_pecas').eq('referencia_id', id)
-  return supabase.from('envios_pecas').delete().eq('id', id)
+// Quem está a executar a ação (para o histórico de movimentos de stock).
+export type UserRef = { id: string | null; nome: string | null }
+
+// Anula um envio (soft delete): muda o estado para "cancelado" e, via RPC
+// transacional, cria movimentos de REVERSÃO que repõem o stock que a expedição
+// tinha descontado. O histórico de movimentos nunca é apagado (auditável).
+// EPs já expedidas não podem ser apagadas a sério (trigger na BD bloqueia).
+export async function anularEnvio(id: string, user?: UserRef, motivo?: string) {
+  return supabase.rpc('anular_envio_pecas', {
+    p_envio_id: id,
+    p_user_id: user?.id ?? null,
+    p_user_nome: user?.nome ?? null,
+    p_motivo: motivo ?? null,
+  })
 }
 
-// Muda o estado; ao expedir regista a data de expedição.
-// Se for um envio para fornecedor com motivo "reparação", atualiza o
-// "em reparação" das peças (só contam enquanto expedidas e ainda por voltar).
-export async function alterarEstado(id: string, estado: EnvioEstado) {
+// Muda o estado. Ao EXPEDIR, a baixa de stock é feita de forma transacional na
+// BD (RPC expedir_envio_pecas): ou expede e desconta tudo, ou nada mexe.
+// Se for um envio para fornecedor com motivo "reparação", a RPC não desconta o
+// stock total — atualizamos o "em reparação" das peças (aplicarReparacaoStock).
+export async function alterarEstado(id: string, estado: EnvioEstado, user?: UserRef) {
+  if (estado === 'expedido') {
+    const { error } = await supabase.rpc('expedir_envio_pecas', {
+      p_envio_id: id,
+      p_user_id: user?.id ?? null,
+      p_user_nome: user?.nome ?? null,
+    })
+    if (error) return { data: null, error }
+    await aplicarReparacaoStock(id)
+    return obterEnvio(id)
+  }
   const patch: Partial<EnvioPeca> = { estado }
-  if (estado === 'expedido') patch.expedido_em = new Date().toISOString()
   const res = await supabase.from('envios_pecas').update(patch).eq('id', id).select().single()
   await aplicarReparacaoStock(id)
   return res

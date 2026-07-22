@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 import { listarMovimentos, criarMatch, atualizarMovimento, eliminarMovimento } from '@/lib/recepcao'
-import { eliminarEnvio } from '@/lib/enviosPecas'
+import { anularEnvio } from '@/lib/enviosPecas'
 import { eliminarRececao } from '@/lib/rececoesPecas'
 import type { RecepcaoMovimento } from '@/types/recepcao'
 import { matchStatusInfo, REFERENCIA_TIPO_LABEL } from '@/types/recepcao'
@@ -46,7 +46,7 @@ function MatchBadge({ status }: { status: string | null }) {
 
 export default function EncomendasPage() {
   const router = useRouter()
-  const { isAdmin } = useAuth()
+  const { isAdmin, perfil } = useAuth()
   const [movimentos, setMovimentos] = useState<RecepcaoMovimento[]>([])
   const [carregando, setCarregando] = useState(true)
 
@@ -155,19 +155,19 @@ export default function EncomendasPage() {
     const eRececao = m.referencia_tipo === 'rececao' && m.referencia_id
     const eReparacao = m.referencia_tipo === 'reparacao'
     const aviso = eEnvio
-      ? 'Apagar este ENVIO? Remove a encomenda enviada (com itens) e a sua linha do livro.'
+      ? 'Anular este ENVIO? Repõe no stock as peças descontadas na expedição e marca a encomenda como Anulada. O histórico fica registado.'
       : eRececao
       ? 'Apagar esta RECEÇÃO? Remove a receção (com peças) e a sua linha do livro.'
       : eReparacao
       ? 'Apagar esta linha do livro? A reparação em si mantém-se no módulo de Reparação.'
       : 'Apagar esta receção/movimento?'
-    if (!confirm(aviso + '\n\nEsta ação não pode ser revertida.')) return
+    if (!confirm(aviso + (eEnvio ? '' : '\n\nEsta ação não pode ser revertida.'))) return
 
     if (eEnvio) {
-      const { error } = await eliminarEnvio(m.referencia_id as string)
-      if (error) { alert('Não foi possível apagar: ' + error.message); return }
-      // Remove todas as linhas ligadas a este envio
-      setMovimentos((prev) => prev.filter((x) => !(x.referencia_tipo === 'envio_pecas' && x.referencia_id === m.referencia_id)))
+      const { error } = await anularEnvio(m.referencia_id as string, { id: perfil?.id ?? null, nome: perfil?.nome ?? null })
+      if (error) { alert('Não foi possível anular: ' + error.message); return }
+      // O envio fica como Anulado e o stock é reposto; recarrega o livro.
+      await carregar()
     } else if (eRececao) {
       const { error } = await eliminarRececao(m.referencia_id as string)
       if (error) { alert('Não foi possível apagar: ' + error.message); return }

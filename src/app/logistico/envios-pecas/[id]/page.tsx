@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth'
 import {
   obterEnvio, listarItens, alterarEstado, marcarPago, marcarReparacaoVoltou,
   carregarDocumento, notificarProntoExpedir, atualizarEnvio, listarFuncionarios,
-  eliminarEnvio, listarFotos, carregarFoto, apagarFoto,
+  anularEnvio, listarFotos, carregarFoto, apagarFoto,
   type FuncionarioOpc, type EnvioFoto,
 } from '@/lib/enviosPecas'
 import {
@@ -28,7 +28,7 @@ export default function DetalheEnvioPage() {
   const params = useParams<{ id: string }>()
   const id = params.id
   const router = useRouter()
-  const { isAdmin } = useAuth()
+  const { isAdmin, perfil } = useAuth()
   const [envio, setEnvio] = useState<EnvioPeca | null>(null)
   const [itens, setItens] = useState<EnvioItem[]>([])
   const [fotos, setFotos] = useState<EnvioFoto[]>([])
@@ -51,9 +51,12 @@ export default function DetalheEnvioPage() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { recarregar() }, [recarregar])
 
+  const utilizador = { id: perfil?.id ?? null, nome: perfil?.nome ?? null }
+
   async function mudar(estado: EnvioPeca['estado']) {
     setATrabalhar(true); setMsg(null)
-    await alterarEstado(id, estado)
+    const { error } = await alterarEstado(id, estado, utilizador)
+    if (error) { setMsg('Não foi possível mudar o estado: ' + error.message); setATrabalhar(false); return }
     await recarregar()
     setATrabalhar(false)
   }
@@ -69,7 +72,7 @@ export default function DetalheEnvioPage() {
   // Logística → handoff para o Administrativo
   async function marcarProntoExpedir() {
     setATrabalhar(true); setMsg(null)
-    await alterarEstado(id, 'pronto_a_expedir')
+    await alterarEstado(id, 'pronto_a_expedir', utilizador)
     const { data } = await obterEnvio(id)
     if (data) await notificarProntoExpedir(data as EnvioPeca).catch(() => {})
     await recarregar()
@@ -139,7 +142,8 @@ export default function DetalheEnvioPage() {
   async function confirmarExpedicao() {
     if (!envio?.carta_porte_url) { setMsg('Carrega a carta de porte antes de expedir.'); return }
     setATrabalhar(true); setMsg(null)
-    await alterarEstado(id, 'expedido')
+    const { error } = await alterarEstado(id, 'expedido', utilizador)
+    if (error) { setMsg('Não foi possível expedir: ' + error.message); setATrabalhar(false); return }
     await recarregar()
     setATrabalhar(false)
   }
@@ -177,10 +181,10 @@ export default function DetalheEnvioPage() {
   }
 
   async function apagarEnvio() {
-    if (!confirm('Apagar este envio? Remove a encomenda enviada (com itens) e a sua linha do livro de Encomendas.\n\nEsta ação não pode ser revertida.')) return
+    if (!confirm('Anular este envio? Repõe no stock as peças que tinham sido descontadas na expedição e marca a encomenda como Anulada. O histórico fica registado.')) return
     setATrabalhar(true); setMsg(null)
-    const { error } = await eliminarEnvio(id)
-    if (error) { setMsg('Não foi possível apagar: ' + error.message); setATrabalhar(false); return }
+    const { error } = await anularEnvio(id, utilizador)
+    if (error) { setMsg('Não foi possível anular: ' + error.message); setATrabalhar(false); return }
     router.push('/logistico/encomendas')
   }
 
@@ -290,7 +294,7 @@ export default function DetalheEnvioPage() {
             })}
           />
           {isAdmin && (
-            <button style={c.btnApagar} disabled={aTrabalhar} onClick={apagarEnvio}>🗑 Apagar</button>
+            <button style={c.btnApagar} disabled={aTrabalhar} onClick={apagarEnvio}>🚫 Anular</button>
           )}
           <Link href="/logistico/encomendas" style={c.voltar}>← Encomendas</Link>
         </div>
