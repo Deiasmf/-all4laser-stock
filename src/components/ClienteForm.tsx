@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { TIPO_CLIENTE_OPCOES, type Cliente, type ClienteInput, type TipoCliente } from '@/types/cliente'
 import { useFormDraft, RascunhoAviso } from '@/lib/useFormDraft'
 
@@ -51,11 +51,14 @@ export default function ClienteForm({ inicial, aGuardar, erro, submitLabel, onSu
   const [avisoEmail, setAvisoEmail] = useState(false)
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm((f) => ({ ...f, [k]: v }))
 
+  // Base = estado inicial (vazio em "novo", valores da BD em edição). Serve para
+  // não gravar rascunho sem alterações e para o "Descartar" repor o inicial.
+  const baseline = useRef(form).current
   const { rascunhoRecuperado, descartar } = useFormDraft<FormState>(
     rascunhoKey ?? 'cliente:novo',
     form,
     setForm,
-    { enabled: !!rascunhoKey, emptyState: estadoInicial(undefined) }
+    { enabled: !!rascunhoKey, emptyState: baseline }
   )
 
   function submeter(e: React.FormEvent) {

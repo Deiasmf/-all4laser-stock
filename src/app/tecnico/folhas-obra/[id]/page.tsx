@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth'
 import { obterFolha, atualizarFolha, eliminarFolha, guardarPdfFolha } from '@/lib/folhasObra'
 import { gerarPdfFolha } from '@/lib/folhaPdf'
 import FolhaObraForm from '@/components/FolhaObraForm'
+import { limparRascunho } from '@/lib/useFormDraft'
 import AssinaturasFolha from '@/components/AssinaturasFolha'
 import FolhasObraFotos from '@/components/FolhasObraFotos'
 import FolhaMateriais from '@/components/FolhaMateriais'
@@ -26,6 +27,8 @@ export default function EditarFolhaPage() {
   const [erro, setErro] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
   const [aGerarPdf, setAGerarPdf] = useState(false)
+  // Muda ao gravar para remontar o formulário (repõe a base do rascunho).
+  const [versaoForm, setVersaoForm] = useState(0)
 
   useEffect(() => {
     let activo = true
@@ -46,6 +49,8 @@ export default function EditarFolhaPage() {
     setAGuardar(false)
     if (error) { setErro('Erro ao guardar: ' + error.message); return }
     if (data) setFolha(data as FolhaObra)
+    limparRascunho(`folha-obra:edit:${id}`)
+    setVersaoForm((v) => v + 1)
     setMsg('Guardado ✓')
   }
 
@@ -123,7 +128,7 @@ export default function EditarFolhaPage() {
 
       {msg && <div style={s.ok}>{msg}</div>}
 
-      <FolhaObraForm inicial={folha} submitLabel="Guardar alterações" aGuardar={aGuardar} erro={erro} onSubmit={guardar} />
+      <FolhaObraForm key={versaoForm} inicial={folha} submitLabel="Guardar alterações" aGuardar={aGuardar} erro={erro} onSubmit={guardar} rascunhoKey={`folha-obra:edit:${id}`} />
 
       <FolhaMateriais folhaId={folha.id} />
 

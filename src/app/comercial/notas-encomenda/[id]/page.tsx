@@ -9,6 +9,7 @@ import {
   alterarEstadoNota, eliminarNota,
 } from '@/lib/notasEncomenda'
 import NotaEncomendaForm from '@/components/NotaEncomendaForm'
+import { limparRascunho } from '@/lib/useFormDraft'
 import BotaoPdf from '@/components/BotaoPdf'
 import {
   ESTADO_NOTA_CONFIG,
@@ -70,6 +71,7 @@ export default function DetalheNotaPage() {
     setMateriais(await listarMateriais(id))
     setAGuardar(false)
     setEditar(false)
+    limparRascunho(`nota-encomenda:edit:${id}`)
     setMsg('Alterações guardadas ✓')
   }
 
@@ -115,6 +117,7 @@ export default function DetalheNotaPage() {
           aGuardar={aGuardar}
           erro={erro}
           onSubmit={guardarEdicao}
+          rascunhoKey={`nota-encomenda:edit:${id}`}
         />
       </main>
     )

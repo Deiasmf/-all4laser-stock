@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFormDraft, RascunhoAviso } from '@/lib/useFormDraft'
 import {
   listarClientes, criarCliente, pesquisarEquipamentosStock,
@@ -47,11 +47,6 @@ type NotaDraft = {
   observacoes: string
   mostrarTodasCats: boolean
 }
-const notaVazia = (): NotaDraft => ({
-  dataPedido: hoje(), clienteId: null, clienteNome: '', paisDestino: '', clienteEmail: '', clienteTelefone: '',
-  equipamentoId: null, equipamentoModelo: '', equipamentoSn: '', equipamentoAno: '', marca: null,
-  detalhes: '', selecionados: [], outros: [], capas: '', observacoes: '', mostrarTodasCats: false,
-})
 
 // Reparte o material já gravado (modo edição) entre checkboxes e texto livre.
 function repartirMateriais(mats?: NotaMaterial[]): { sel: Set<string>; livres: string[] } {
@@ -221,9 +216,11 @@ export default function NotaEncomendaForm({ inicial, materiaisIniciais, acoes, a
     setObservacoes(d.observacoes)
     setMostrarTodasCats(d.mostrarTodasCats)
   }
+  // Base = estado inicial (vazio em "novo", valores da BD em edição).
+  const baseline = useRef(valores).current
   const { rascunhoRecuperado, descartar } = useFormDraft<NotaDraft>(
     rascunhoKey ?? 'nota-encomenda:novo', valores, restaurar,
-    { enabled: !!rascunhoKey, emptyState: notaVazia() }
+    { enabled: !!rascunhoKey, emptyState: baseline }
   )
 
   function submeter(emitir: boolean) {

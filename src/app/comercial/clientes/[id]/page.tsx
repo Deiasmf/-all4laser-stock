@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 import ClienteForm from '@/components/ClienteForm'
+import { limparRascunho } from '@/lib/useFormDraft'
 import BotaoPdf from '@/components/BotaoPdf'
 import { obterCliente, atualizarCliente, eliminarCliente, historicoCliente } from '@/lib/clientes'
 import type { Cliente, ClienteInput, HistoricoItem } from '@/types/cliente'
@@ -65,6 +66,7 @@ export default function FichaClientePage() {
     setHistorico(await historicoCliente(cl))
     setAGuardar(false)
     setEditar(false)
+    limparRascunho(`cliente:edit:${id}`)
     setMsg('Ficha guardada ✓')
   }
 
@@ -92,7 +94,7 @@ export default function FichaClientePage() {
           <h1 style={s.titulo}>Editar {cliente.nome}</h1>
           <button onClick={() => setEditar(false)} style={s.voltarBtn}>← Cancelar edição</button>
         </div>
-        <ClienteForm inicial={cliente} aGuardar={aGuardar} erro={erro} submitLabel="Guardar alterações" onSubmit={guardar} />
+        <ClienteForm inicial={cliente} aGuardar={aGuardar} erro={erro} submitLabel="Guardar alterações" onSubmit={guardar} rascunhoKey={`cliente:edit:${id}`} />
       </main>
     )
   }

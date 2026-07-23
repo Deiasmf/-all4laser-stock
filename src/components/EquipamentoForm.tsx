@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useFormDraft, RascunhoAviso } from '@/lib/useFormDraft'
 import {
@@ -285,10 +285,13 @@ export default function EquipamentoForm({
     setForm((f) => ({ ...f, [campo]: valor }))
   }
 
-  // Rascunho automático (só em modo "novo", via rascunhoKey).
+  // Rascunho automático (via rascunhoKey). Base = estado inicial (vazio em
+  // "novo", valores da BD em edição) — não grava sem alterações e o "Descartar"
+  // repõe o inicial.
+  const baseline = useRef(form).current
   const { rascunhoRecuperado, descartar } = useFormDraft<FormState>(
     rascunhoKey ?? 'equipamento:novo', form, setForm,
-    { enabled: !!rascunhoKey, emptyState: formVazio() }
+    { enabled: !!rascunhoKey, emptyState: baseline }
   )
 
   function validar(f: FormState): Record<string, string> {

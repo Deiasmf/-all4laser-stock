@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useFormDraft, RascunhoAviso } from '@/lib/useFormDraft'
 import {
   listarTecnicos, pesquisarClientes, pesquisarEquipamentos,
@@ -48,14 +48,6 @@ type FolhaDraft = {
   material: string
   observacoes: string
 }
-const folhaVazia = (): FolhaDraft => ({
-  dataIntervencao: hoje(), tipoServico: '', estado: 'rascunho', tecnicoId: '',
-  clienteId: null, clienteNome: '', clientePais: '',
-  equipamentoId: null, equipamentoModelo: '', equipamentoSn: '', equipamentoAno: '',
-  codigosErro: '', problema: '', trabalho: '',
-  forcarAlex: false, cabecaAlex: '', transmissaoAlex: '', cabecaYag: '', transmissaoYag: '',
-  material: '', observacoes: '',
-})
 
 export default function FolhaObraForm({ inicial, submitLabel, aGuardar, erro, onSubmit, rascunhoKey }: Props) {
   // Identificação
@@ -154,9 +146,11 @@ export default function FolhaObraForm({ inicial, submitLabel, aGuardar, erro, on
     setMaterial(d.material)
     setObservacoes(d.observacoes)
   }
+  // Base = estado inicial (vazio em "novo", valores da BD em edição).
+  const baseline = useRef(valores).current
   const { rascunhoRecuperado, descartar } = useFormDraft<FolhaDraft>(
     rascunhoKey ?? 'folha-obra:novo', valores, restaurar,
-    { enabled: !!rascunhoKey, emptyState: folhaVazia() }
+    { enabled: !!rascunhoKey, emptyState: baseline }
   )
 
   function submeter() {

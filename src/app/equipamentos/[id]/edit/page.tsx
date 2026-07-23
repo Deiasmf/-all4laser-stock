@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
 import type { Equipamento } from '@/types/equipamento'
 import EquipamentoForm, { equipamentoParaForm, type FormState } from '@/components/EquipamentoForm'
+import { limparRascunho } from '@/lib/useFormDraft'
 import styles from '@/components/equipamentoForm.module.css'
 
 export default function EditarEquipamento() {
@@ -57,6 +58,7 @@ export default function EditarEquipamento() {
     }
     const { error } = await supabase.from('equipamentos').update(dados).eq('id', id)
     if (error) return error.message
+    limparRascunho(`equipamento:edit:${id}`)
     router.push(`/equipamentos/${id}`)
     return null
   }
@@ -79,6 +81,7 @@ export default function EditarEquipamento() {
         valoresIniciais={inicial}
         urlCancelar={`/equipamentos/${id}`}
         aoGuardar={aoGuardar}
+        rascunhoKey={`equipamento:edit:${id}`}
       />
     </main>
   )
