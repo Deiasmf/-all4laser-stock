@@ -119,11 +119,12 @@ export function criarMovimento(m: Partial<ReparacaoMovimento>) {
 }
 
 // ── Fornecedores de reparação ──
+// Consolidado na tabela única `fornecedores` (deixou de existir tabela própria).
 
 export async function listarFornecedoresReparacao(): Promise<FornecedorReparacao[]> {
   const { data } = await supabase
-    .from('fornecedores_reparacao')
-    .select('*')
+    .from('fornecedores')
+    .select('id, nome, email, telefone, notas, ativo, created_at')
     .eq('ativo', true)
     .order('nome')
   return (data as FornecedorReparacao[]) ?? []
@@ -131,9 +132,9 @@ export async function listarFornecedoresReparacao(): Promise<FornecedorReparacao
 
 export async function criarFornecedorReparacao(nome: string): Promise<FornecedorReparacao | null> {
   const { data } = await supabase
-    .from('fornecedores_reparacao')
+    .from('fornecedores')
     .insert({ nome: nome.trim() })
-    .select()
+    .select('id, nome, email, telefone, notas, ativo, created_at')
     .single()
   return (data as FornecedorReparacao) ?? null
 }
