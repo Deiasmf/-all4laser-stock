@@ -25,8 +25,14 @@ export function estadoInfo(valor: string | null) {
   return ESTADOS_ENVIO.find((e) => e.valor === valor) ?? ESTADOS_ENVIO[0]
 }
 
-export const TRANSPORTADORAS = ['Nacex', 'UPS', 'FedEx', 'Outro'] as const
+export const TRANSPORTADORAS = ['Nacex', 'UPS', 'FedEx', 'Entrega em Mãos', 'Outro'] as const
 export type Transportadora = (typeof TRANSPORTADORAS)[number]
+
+// Método de envio "Entrega em Mãos": não há transportadora nem carta de porte.
+export const ENTREGA_EM_MAOS = 'Entrega em Mãos'
+export function ehEntregaEmMaos(transportadora: string | null | undefined): boolean {
+  return transportadora === ENTREGA_EM_MAOS
+}
 
 // ── Destinatário: cliente ou fornecedor ──
 export type DestinatarioTipo = 'cliente' | 'fornecedor'
@@ -87,6 +93,8 @@ export type EnvioPeca = {
   fatura_caminho: string | null
   carta_porte_url: string | null
   carta_porte_caminho: string | null
+  entregue_a: string | null       // Entrega em Mãos: nome de quem recebeu
+  entregue_em: string | null       // Entrega em Mãos: data da entrega
   notas: string | null
   criado_por: string | null
   criado_por_nome: string | null

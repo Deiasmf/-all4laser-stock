@@ -11,7 +11,7 @@ import {
   type FuncionarioOpc, type EnvioFoto,
 } from '@/lib/enviosPecas'
 import {
-  estadoInfo, transportadoraLabel, formatarEuro, calcularIva, motivoInfo, TRANSPORTADORA_LINK, TRANSPORTADORAS, KEYINVOICE_URL,
+  estadoInfo, transportadoraLabel, formatarEuro, calcularIva, motivoInfo, TRANSPORTADORA_LINK, TRANSPORTADORAS, KEYINVOICE_URL, ehEntregaEmMaos,
   type EnvioPeca, type EnvioItem,
 } from '@/types/envioPecas'
 import BotaoPdf from '@/components/BotaoPdf'
@@ -140,7 +140,10 @@ export default function DetalheEnvioPage() {
   }
 
   async function confirmarExpedicao() {
-    if (!envio?.carta_porte_url) { setMsg('Carrega a carta de porte antes de expedir.'); return }
+    // "Entrega em Mãos" não exige carta de porte.
+    if (!ehEntregaEmMaos(envio?.transportadora) && !envio?.carta_porte_url) {
+      setMsg('Carrega a carta de porte antes de expedir.'); return
+    }
     setATrabalhar(true); setMsg(null)
     const { error } = await alterarEstado(id, 'expedido', utilizador)
     if (error) { setMsg('Não foi possível expedir: ' + error.message); setATrabalhar(false); return }
@@ -363,6 +366,13 @@ export default function DetalheEnvioPage() {
         <Linha rotulo="Motivo" valor={motivoInfo(envio.motivo).label} />
         <Linha rotulo="Faturável" valor={envio.faturavel ? 'Sim' : 'Não (sem custo associado)'} />
         <Linha rotulo="Transportadora" valor={transportadoraLabel(envio)} />
+        {ehEntregaEmMaos(envio.transportadora) && (
+          <>
+            <Linha rotulo="Carta de porte" valor="Entrega em Mãos — sem carta de porte" />
+            {envio.entregue_a && <Linha rotulo="Entregue a" valor={envio.entregue_a} />}
+            {envio.entregue_em && <Linha rotulo="Data de entrega" valor={envio.entregue_em.split('-').reverse().join('/')} />}
+          </>
+        )}
         {envio.faturavel && (() => {
           const b = calcularIva(envio)
           return (
@@ -458,7 +468,9 @@ export default function DetalheEnvioPage() {
           <span>Carta de porte</span>
           {envio.carta_porte_url
             ? <a href={envio.carta_porte_url} target="_blank" rel="noopener noreferrer" style={c.link}>Ver documento ↗</a>
-            : <span style={c.muted}>— por carregar</span>}
+            : ehEntregaEmMaos(envio.transportadora)
+              ? <span style={c.muted}>Entrega em Mãos — sem carta de porte</span>
+              : <span style={c.muted}>— por carregar</span>}
         </div>
         <div style={c.docLinha}>
           <span>Fatura</span>
@@ -506,19 +518,45 @@ export default function DetalheEnvioPage() {
                 style={{ ...c.input, maxWidth: 240, marginTop: 8, display: 'block' }}
               />
             )}
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
-              {(['Nacex', 'UPS', 'FedEx'] as const).map((t) => (
-                <a key={t} href={TRANSPORTADORA_LINK[t]} target="_blank" rel="noopener noreferrer" style={c.btnTrans}>Abrir {t} ↗</a>
-              ))}
-            </div>
+            {!ehEntregaEmMaos(envio.transportadora) && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                {(['Nacex', 'UPS', 'FedEx'] as const).map((t) => (
+                  <a key={t} href={TRANSPORTADORA_LINK[t]} target="_blank" rel="noopener noreferrer" style={c.btnTrans}>Abrir {t} ↗</a>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* 3. Adicionar carta de porte e fatura */}
+          {/* Entrega em Mãos: sem carta de porte; regista opcionalmente quem recebeu e quando */}
+          {ehEntregaEmMaos(envio.transportadora) && (
+            <div style={{ marginTop: 12 }}>
+              <div style={c.rotulo}>Entregue a (nome) — opcional</div>
+              <input
+                key={`ea-${envio.entregue_a ?? ''}`}
+                defaultValue={envio.entregue_a ?? ''}
+                placeholder="Nome de quem recebeu"
+                onBlur={(e) => guardarCampo({ entregue_a: e.target.value.trim() || null })}
+                style={{ ...c.input, maxWidth: 240, marginTop: 4, display: 'block' }}
+              />
+              <div style={{ ...c.rotulo, marginTop: 8 }}>Data de entrega — opcional</div>
+              <input
+                type="date"
+                key={`ee-${envio.entregue_em ?? ''}`}
+                defaultValue={envio.entregue_em ?? ''}
+                onBlur={(e) => guardarCampo({ entregue_em: e.target.value || null })}
+                style={{ ...c.input, maxWidth: 240, marginTop: 4, display: 'block' }}
+              />
+            </div>
+          )}
+
+          {/* 3. Adicionar carta de porte (exceto entrega em mãos) e fatura */}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
-            <label style={c.uploadLabel}>
-              {envio.carta_porte_url ? 'Substituir carta de porte ✓' : 'Carregar carta de porte'}
-              <input type="file" style={{ display: 'none' }} onChange={(e) => upload('carta_porte', e.target.files?.[0])} />
-            </label>
+            {!ehEntregaEmMaos(envio.transportadora) && (
+              <label style={c.uploadLabel}>
+                {envio.carta_porte_url ? 'Substituir carta de porte ✓' : 'Carregar carta de porte'}
+                <input type="file" style={{ display: 'none' }} onChange={(e) => upload('carta_porte', e.target.files?.[0])} />
+              </label>
+            )}
             <label style={c.uploadLabel}>
               {envio.fatura_url ? 'Substituir fatura ✓' : 'Carregar fatura'}
               <input type="file" style={{ display: 'none' }} onChange={(e) => upload('fatura', e.target.files?.[0])} />
@@ -526,10 +564,12 @@ export default function DetalheEnvioPage() {
           </div>
 
           {/* 4. Confirmar expedição */}
-          <button style={{ ...c.btnPrimario, marginTop: 14 }} disabled={aTrabalhar || !envio.carta_porte_url} onClick={confirmarExpedicao}>
+          <button style={{ ...c.btnPrimario, marginTop: 14 }} disabled={aTrabalhar || (!ehEntregaEmMaos(envio.transportadora) && !envio.carta_porte_url)} onClick={confirmarExpedicao}>
             Confirmar Expedição
           </button>
-          {!envio.carta_porte_url && <p style={c.ajuda}>Carrega a carta de porte para poder expedir.</p>}
+          {ehEntregaEmMaos(envio.transportadora)
+            ? <p style={c.ajuda}>Entrega em Mãos — sem carta de porte.</p>
+            : !envio.carta_porte_url && <p style={c.ajuda}>Carrega a carta de porte para poder expedir.</p>}
         </section>
       )}
 
