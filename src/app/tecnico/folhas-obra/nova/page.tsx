@@ -6,7 +6,10 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 import { criarFolha } from '@/lib/folhasObra'
 import { obterNota } from '@/lib/notasEncomenda'
+import { limparRascunho } from '@/lib/useFormDraft'
 import FolhaObraForm from '@/components/FolhaObraForm'
+
+const RASCUNHO = 'folha-obra:novo'
 import type { FolhaInput, FolhaObra } from '@/types/folhaObra'
 import type { NotaEncomenda } from '@/types/notaEncomenda'
 
@@ -60,6 +63,7 @@ export default function NovaFolhaPage() {
       setErro('Erro ao criar a folha: ' + error.message)
       return
     }
+    limparRascunho(RASCUNHO)
     router.push(`/tecnico/folhas-obra/${data!.id}`)
   }
 
@@ -74,7 +78,7 @@ export default function NovaFolhaPage() {
       {!pronto ? (
         <p style={{ color: 'var(--muted)' }}>A carregar...</p>
       ) : (
-        <FolhaObraForm inicial={prefill} submitLabel="Criar folha" aGuardar={aGuardar} erro={erro} onSubmit={guardar} />
+        <FolhaObraForm inicial={prefill} submitLabel="Criar folha" aGuardar={aGuardar} erro={erro} onSubmit={guardar} rascunhoKey={notaId ? undefined : RASCUNHO} />
       )}
     </main>
   )

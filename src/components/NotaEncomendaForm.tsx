@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useFormDraft, RascunhoAviso } from '@/lib/useFormDraft'
 import {
   listarClientes, criarCliente, pesquisarEquipamentosStock,
   type ClienteOpc, type EquipStockOpc,
@@ -18,10 +19,39 @@ type Props = {
   aGuardar: boolean
   erro: string | null
   onSubmit: (input: NotaInput, materiais: MaterialEscolhido[], emitir: boolean) => void
+  // Quando definido, ativa o rascunho automático (usar só em modo "novo").
+  rascunhoKey?: string
 }
 
 const hoje = () => new Date().toISOString().slice(0, 10)
 const chave = (cat: string, item: string) => `${cat}__${item}`
+
+// Campos que o rascunho automático guarda. O Set `selecionados` é guardado como
+// array (o JSON não serializa Sets); os estados de controlo ficam de fora.
+type NotaDraft = {
+  dataPedido: string
+  clienteId: string | null
+  clienteNome: string
+  paisDestino: string
+  clienteEmail: string
+  clienteTelefone: string
+  equipamentoId: string | null
+  equipamentoModelo: string
+  equipamentoSn: string
+  equipamentoAno: string
+  marca: string | null
+  detalhes: string
+  selecionados: string[]
+  outros: string[]
+  capas: CapasOpcao | ''
+  observacoes: string
+  mostrarTodasCats: boolean
+}
+const notaVazia = (): NotaDraft => ({
+  dataPedido: hoje(), clienteId: null, clienteNome: '', paisDestino: '', clienteEmail: '', clienteTelefone: '',
+  equipamentoId: null, equipamentoModelo: '', equipamentoSn: '', equipamentoAno: '', marca: null,
+  detalhes: '', selecionados: [], outros: [], capas: '', observacoes: '', mostrarTodasCats: false,
+})
 
 // Reparte o material já gravado (modo edição) entre checkboxes e texto livre.
 function repartirMateriais(mats?: NotaMaterial[]): { sel: Set<string>; livres: string[] } {
@@ -35,7 +65,7 @@ function repartirMateriais(mats?: NotaMaterial[]): { sel: Set<string>; livres: s
   return { sel, livres }
 }
 
-export default function NotaEncomendaForm({ inicial, materiaisIniciais, acoes, aGuardar, erro, onSubmit }: Props) {
+export default function NotaEncomendaForm({ inicial, materiaisIniciais, acoes, aGuardar, erro, onSubmit, rascunhoKey }: Props) {
   // Pedido
   const [dataPedido, setDataPedido] = useState(inicial?.data_pedido ?? hoje())
 
@@ -166,6 +196,36 @@ export default function NotaEncomendaForm({ inicial, materiaisIniciais, acoes, a
     return itens
   }
 
+  // Rascunho automático (só em modo "novo", via rascunhoKey). O Set vai/volta como array.
+  const valores: NotaDraft = {
+    dataPedido, clienteId, clienteNome, paisDestino, clienteEmail, clienteTelefone,
+    equipamentoId, equipamentoModelo, equipamentoSn, equipamentoAno, marca,
+    detalhes, selecionados: Array.from(selecionados), outros, capas, observacoes, mostrarTodasCats,
+  }
+  function restaurar(d: NotaDraft) {
+    setDataPedido(d.dataPedido)
+    setClienteId(d.clienteId)
+    setClienteNome(d.clienteNome)
+    setPaisDestino(d.paisDestino)
+    setClienteEmail(d.clienteEmail)
+    setClienteTelefone(d.clienteTelefone)
+    setEquipamentoId(d.equipamentoId)
+    setEquipamentoModelo(d.equipamentoModelo)
+    setEquipamentoSn(d.equipamentoSn)
+    setEquipamentoAno(d.equipamentoAno)
+    setMarca(d.marca)
+    setDetalhes(d.detalhes)
+    setSelecionados(new Set(d.selecionados ?? []))
+    setOutros(d.outros ?? [])
+    setCapas(d.capas)
+    setObservacoes(d.observacoes)
+    setMostrarTodasCats(d.mostrarTodasCats)
+  }
+  const { rascunhoRecuperado, descartar } = useFormDraft<NotaDraft>(
+    rascunhoKey ?? 'nota-encomenda:novo', valores, restaurar,
+    { enabled: !!rascunhoKey, emptyState: notaVazia() }
+  )
+
   function submeter(emitir: boolean) {
     setErroLocal(null)
     if (!dataPedido) { setErroLocal('Indica a data do pedido.'); return }
@@ -192,6 +252,7 @@ export default function NotaEncomendaForm({ inicial, materiaisIniciais, acoes, a
 
   return (
     <div style={f.form}>
+      {rascunhoRecuperado && <RascunhoAviso onDescartar={descartar} />}
       {/* 1. Data do pedido */}
       <section style={f.seccao}>
         <div style={f.seccaoTitulo}>Data do pedido</div>

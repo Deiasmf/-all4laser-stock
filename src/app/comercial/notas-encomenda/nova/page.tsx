@@ -8,8 +8,11 @@ import {
   criarNota, guardarMateriais, marcarEquipamentoEmPreparacao, notificarNovaNota,
 } from '@/lib/notasEncomenda'
 import { criarFluxoInicial } from '@/lib/neFluxo'
+import { limparRascunho } from '@/lib/useFormDraft'
 import NotaEncomendaForm from '@/components/NotaEncomendaForm'
 import type { NotaInput, MaterialEscolhido, NotaEncomenda } from '@/types/notaEncomenda'
+
+const RASCUNHO = 'nota-encomenda:novo'
 
 export default function NovaNotaPage() {
   const router = useRouter()
@@ -41,6 +44,7 @@ export default function NovaNotaPage() {
     }
 
     setAGuardar(false)
+    limparRascunho(RASCUNHO)
     router.push(`/comercial/notas-encomenda/${nota.id}`)
   }
 
@@ -58,6 +62,7 @@ export default function NovaNotaPage() {
         aGuardar={aGuardar}
         erro={erro}
         onSubmit={guardar}
+        rascunhoKey={RASCUNHO}
       />
     </main>
   )

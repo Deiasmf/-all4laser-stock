@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useFormDraft, RascunhoAviso } from '@/lib/useFormDraft'
 import {
   listarTecnicos, pesquisarClientes, pesquisarEquipamentos,
   type TecnicoOpc, type ClienteOpc, type EquipOpc,
@@ -16,12 +17,47 @@ type Props = {
   aGuardar: boolean
   erro: string | null
   onSubmit: (input: FolhaInput) => void
+  // Quando definido, ativa o rascunho automático (usar só em modo "novo").
+  rascunhoKey?: string
 }
 
 const hoje = () => new Date().toISOString().slice(0, 10)
 const numOuNull = (s: string) => (s.trim() === '' || isNaN(Number(s)) ? null : Number(s))
 
-export default function FolhaObraForm({ inicial, submitLabel, aGuardar, erro, onSubmit }: Props) {
+// Campos que o rascunho automático guarda (sem a lista de técnicos nem o erro).
+type FolhaDraft = {
+  dataIntervencao: string
+  tipoServico: TipoServico | ''
+  estado: EstadoFolha
+  tecnicoId: string
+  clienteId: string | null
+  clienteNome: string
+  clientePais: string
+  equipamentoId: string | null
+  equipamentoModelo: string
+  equipamentoSn: string
+  equipamentoAno: string
+  codigosErro: string
+  problema: string
+  trabalho: string
+  forcarAlex: boolean
+  cabecaAlex: string
+  transmissaoAlex: string
+  cabecaYag: string
+  transmissaoYag: string
+  material: string
+  observacoes: string
+}
+const folhaVazia = (): FolhaDraft => ({
+  dataIntervencao: hoje(), tipoServico: '', estado: 'rascunho', tecnicoId: '',
+  clienteId: null, clienteNome: '', clientePais: '',
+  equipamentoId: null, equipamentoModelo: '', equipamentoSn: '', equipamentoAno: '',
+  codigosErro: '', problema: '', trabalho: '',
+  forcarAlex: false, cabecaAlex: '', transmissaoAlex: '', cabecaYag: '', transmissaoYag: '',
+  material: '', observacoes: '',
+})
+
+export default function FolhaObraForm({ inicial, submitLabel, aGuardar, erro, onSubmit, rascunhoKey }: Props) {
   // Identificação
   const [dataIntervencao, setDataIntervencao] = useState(inicial?.data_intervencao ?? hoje())
   const [tipoServico, setTipoServico] = useState<TipoServico | ''>(inicial?.tipo_servico ?? '')
@@ -86,6 +122,43 @@ export default function FolhaObraForm({ inicial, submitLabel, aGuardar, erro, on
     setEquipamentoAno(e.ano ?? '')
   }
 
+  // Rascunho automático (só em modo "novo", via rascunhoKey).
+  const valores: FolhaDraft = {
+    dataIntervencao, tipoServico, estado, tecnicoId,
+    clienteId, clienteNome, clientePais,
+    equipamentoId, equipamentoModelo, equipamentoSn, equipamentoAno,
+    codigosErro, problema, trabalho,
+    forcarAlex, cabecaAlex, transmissaoAlex, cabecaYag, transmissaoYag,
+    material, observacoes,
+  }
+  function restaurar(d: FolhaDraft) {
+    setDataIntervencao(d.dataIntervencao)
+    setTipoServico(d.tipoServico)
+    setEstado(d.estado)
+    setTecnicoId(d.tecnicoId)
+    setClienteId(d.clienteId)
+    setClienteNome(d.clienteNome)
+    setClientePais(d.clientePais)
+    setEquipamentoId(d.equipamentoId)
+    setEquipamentoModelo(d.equipamentoModelo)
+    setEquipamentoSn(d.equipamentoSn)
+    setEquipamentoAno(d.equipamentoAno)
+    setCodigosErro(d.codigosErro)
+    setProblema(d.problema)
+    setTrabalho(d.trabalho)
+    setForcarAlex(d.forcarAlex)
+    setCabecaAlex(d.cabecaAlex)
+    setTransmissaoAlex(d.transmissaoAlex)
+    setCabecaYag(d.cabecaYag)
+    setTransmissaoYag(d.transmissaoYag)
+    setMaterial(d.material)
+    setObservacoes(d.observacoes)
+  }
+  const { rascunhoRecuperado, descartar } = useFormDraft<FolhaDraft>(
+    rascunhoKey ?? 'folha-obra:novo', valores, restaurar,
+    { enabled: !!rascunhoKey, emptyState: folhaVazia() }
+  )
+
   function submeter() {
     setErroLocal(null)
     if (!dataIntervencao) { setErroLocal('Indica a data da intervenção.'); return }
@@ -118,6 +191,7 @@ export default function FolhaObraForm({ inicial, submitLabel, aGuardar, erro, on
 
   return (
     <div style={f.form}>
+      {rascunhoRecuperado && <RascunhoAviso onDescartar={descartar} />}
       {/* Identificação */}
       <section style={f.seccao}>
         <div style={f.seccaoTitulo}>Identificação</div>
