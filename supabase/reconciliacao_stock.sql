@@ -16,6 +16,28 @@ having p.quantidade <> coalesce(sum(m.quantidade), 0)
 order by abs(p.quantidade - coalesce(sum(m.quantidade), 0)) desc;
 
 -- ------------------------------------------------------------
+-- Reconciliação do "em reparação" (pecas.quantidade_reparacao) vs
+-- EPs realmente ativas (fornecedor, motivo reparação, expedidas, por voltar).
+-- Se vier vazio, está coerente. Para corrigir uma peça:
+--   select recalcular_reparacao_peca('<id-da-peca>');
+-- ------------------------------------------------------------
+with derivado as (
+  select p.id, p.nome, p.quantidade_reparacao as gravado,
+         coalesce((
+           select sum(i.quantidade)
+             from envios_pecas_itens i
+             join envios_pecas e on e.id = i.envio_id
+            where i.peca_id = p.id
+              and e.destinatario_tipo = 'fornecedor'
+              and e.motivo = 'reparacao'
+              and e.estado = 'expedido'
+              and e.reparacao_voltou_em is null
+         ), 0) as correto
+  from pecas p
+)
+select * from derivado where gravado <> correto order by gravado desc;
+
+-- ------------------------------------------------------------
 -- Histórico de movimentos de uma peça (auditoria).
 -- Substitui o id pela peça que queres inspecionar.
 -- ------------------------------------------------------------
