@@ -21,13 +21,22 @@ export type ParteMovimento = {
 
 // Carrega todos os movimentos (a agregação por entidade/peça é feita no cliente,
 // para os filtros de data/entidade/peça serem instantâneos e coerentes).
+// Página em lotes de 1000 (limite por omissão do PostgREST) até vir tudo.
+const COLS_MOV = 'id, entidade, peca, peca_id, referencia, serial_number, sn_avariado, tipo_dono, status, data_saida, data_entrada, enviado, recebido, estado, data'
 export async function listarMovimentosPecas(): Promise<ParteMovimento[]> {
-  const { data } = await supabase
-    .from('parts_movements')
-    .select('id, entidade, peca, peca_id, referencia, serial_number, sn_avariado, tipo_dono, status, data_saida, data_entrada, enviado, recebido, estado, data')
-    .order('data', { ascending: false })
-    .limit(5000)
-  return (data as ParteMovimento[]) ?? []
+  const LOTE = 1000
+  const todos: ParteMovimento[] = []
+  for (let offset = 0; ; offset += LOTE) {
+    const { data } = await supabase
+      .from('parts_movements')
+      .select(COLS_MOV)
+      .order('data', { ascending: false })
+      .range(offset, offset + LOTE - 1)
+    const lote = (data as ParteMovimento[]) ?? []
+    todos.push(...lote)
+    if (lote.length < LOTE) break
+  }
+  return todos
 }
 
 // Data ISO (YYYY-MM-DD) -> DD/MM/YYYY
