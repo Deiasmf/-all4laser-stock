@@ -5,7 +5,10 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
 import EquipamentoForm, { formVazio } from '@/components/EquipamentoForm'
+import { limparRascunho } from '@/lib/useFormDraft'
 import styles from '@/components/equipamentoForm.module.css'
+
+const RASCUNHO = 'equipamento:novo'
 
 export default function NovoEquipamento() {
   const router = useRouter()
@@ -24,6 +27,7 @@ export default function NovoEquipamento() {
       .select('id')
       .single()
     if (error) return error.message
+    limparRascunho(RASCUNHO)
     // Vai para o detalhe do equipamento recém-criado
     router.push(`/equipamentos/${data!.id}`)
     return null
@@ -38,6 +42,7 @@ export default function NovoEquipamento() {
         valoresIniciais={formVazio()}
         urlCancelar="/"
         aoGuardar={aoGuardar}
+        rascunhoKey={RASCUNHO}
       />
     </main>
   )

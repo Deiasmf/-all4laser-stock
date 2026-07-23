@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useFormDraft, RascunhoAviso } from '@/lib/useFormDraft'
 import {
   CAMPOS_OBRIGATORIOS,
   ROTULO_OBRIGATORIO,
@@ -205,6 +206,8 @@ type Props = {
   urlCancelar: string
   // Recebe o payload pronto a gravar; devolve erro (string) ou null se OK
   aoGuardar: (payload: Record<string, string | number | null>) => Promise<string | null>
+  // Quando definido, ativa o rascunho automático (usar só em modo "novo").
+  rascunhoKey?: string
 }
 
 export default function EquipamentoForm({
@@ -213,6 +216,7 @@ export default function EquipamentoForm({
   valoresIniciais,
   urlCancelar,
   aoGuardar,
+  rascunhoKey,
 }: Props) {
   const [form, setForm] = useState<FormState>(valoresIniciais)
   const [statusExistentes, setStatusExistentes] = useState<string[]>([])
@@ -281,6 +285,12 @@ export default function EquipamentoForm({
     setForm((f) => ({ ...f, [campo]: valor }))
   }
 
+  // Rascunho automático (só em modo "novo", via rascunhoKey).
+  const { rascunhoRecuperado, descartar } = useFormDraft<FormState>(
+    rascunhoKey ?? 'equipamento:novo', form, setForm,
+    { enabled: !!rascunhoKey, emptyState: formVazio() }
+  )
+
   function validar(f: FormState): Record<string, string> {
     const e: Record<string, string> = {}
     // Campos obrigatórios — fonte única de verdade em @/types/equipamento
@@ -326,6 +336,11 @@ export default function EquipamentoForm({
       <div className={styles.titulo}>{titulo}</div>
 
       {erro && <div className={styles.avisoTopo}>{erro}</div>}
+      {rascunhoRecuperado && (
+        <div style={{ marginBottom: 12 }}>
+          <RascunhoAviso onDescartar={descartar} />
+        </div>
+      )}
 
       <div className={styles.seccao}>
         <div className={styles.seccaoTitulo}>Identificação</div>

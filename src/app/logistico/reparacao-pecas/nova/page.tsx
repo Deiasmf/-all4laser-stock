@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
+import { useFormDraft, RascunhoAviso } from '@/lib/useFormDraft'
 import { pesquisarPecas } from '@/lib/pecas'
 import { listarClientesCompleto } from '@/lib/clientes'
 import {
@@ -22,6 +23,40 @@ function hoje() {
 }
 
 type ItemForm = { descricao: string; quantidade: string }
+
+// Campos que o rascunho automático guarda (sem listas/sugestões nem controlo).
+type ReparacaoDraft = {
+  tipoDono: 'nossa' | 'cliente'
+  clienteBusca: string
+  clienteId: string | null
+  peca: string
+  pecaId: string | null
+  temSn: boolean
+  snAvariado: string
+  equipamentoSn: string
+  qrCode: string
+  itens: ItemForm[]
+  fornecedorSel: string
+  fornecedorOutro: string
+  dataSaida: string
+  tipoGarantia: TipoGarantia | ''
+  responsavel: string
+  valorReparacao: string
+  substitutaEnviada: boolean
+  substitutaPeca: string
+  substitutaPecaId: string | null
+  substitutaSn: string
+  notas: string
+}
+const reparacaoVazia = (): ReparacaoDraft => ({
+  tipoDono: 'nossa', clienteBusca: '', clienteId: null,
+  peca: '', pecaId: null, temSn: false, snAvariado: '', equipamentoSn: '', qrCode: '',
+  itens: [{ descricao: '', quantidade: '1' }],
+  fornecedorSel: '', fornecedorOutro: '', dataSaida: hoje(),
+  tipoGarantia: '', responsavel: '', valorReparacao: '',
+  substitutaEnviada: false, substitutaPeca: '', substitutaPecaId: null, substitutaSn: '',
+  notas: '',
+})
 
 export default function NovaReparacaoPage() {
   const router = useRouter()
@@ -105,6 +140,43 @@ export default function NovaReparacaoPage() {
   function removerItem(i: number) {
     setItens((arr) => arr.filter((_, idx) => idx !== i))
   }
+
+  // Rascunho automático (chamado antes de qualquer return condicional).
+  const valores: ReparacaoDraft = {
+    tipoDono, clienteBusca, clienteId,
+    peca, pecaId, temSn, snAvariado, equipamentoSn, qrCode,
+    itens,
+    fornecedorSel, fornecedorOutro, dataSaida,
+    tipoGarantia, responsavel, valorReparacao,
+    substitutaEnviada, substitutaPeca, substitutaPecaId, substitutaSn,
+    notas,
+  }
+  function restaurar(d: ReparacaoDraft) {
+    setTipoDono(d.tipoDono)
+    setClienteBusca(d.clienteBusca)
+    setClienteId(d.clienteId)
+    setPeca(d.peca)
+    setPecaId(d.pecaId)
+    setTemSn(d.temSn)
+    setSnAvariado(d.snAvariado)
+    setEquipamentoSn(d.equipamentoSn)
+    setQrCode(d.qrCode)
+    setItens(d.itens ?? [{ descricao: '', quantidade: '1' }])
+    setFornecedorSel(d.fornecedorSel)
+    setFornecedorOutro(d.fornecedorOutro)
+    setDataSaida(d.dataSaida)
+    setTipoGarantia(d.tipoGarantia)
+    setResponsavel(d.responsavel)
+    setValorReparacao(d.valorReparacao)
+    setSubstitutaEnviada(d.substitutaEnviada)
+    setSubstitutaPeca(d.substitutaPeca)
+    setSubstitutaPecaId(d.substitutaPecaId)
+    setSubstitutaSn(d.substitutaSn)
+    setNotas(d.notas)
+  }
+  const { rascunhoRecuperado, descartar, limpar } = useFormDraft<ReparacaoDraft>(
+    'reparacao:nova', valores, restaurar, { emptyState: reparacaoVazia() }
+  )
 
   async function submeter() {
     setErro(null)
@@ -190,6 +262,7 @@ export default function NovaReparacaoPage() {
       if (substitutaPecaId) await descontarStockPeca(substitutaPecaId, 1)
     }
 
+    limpar()
     router.push(`/logistico/reparacao-pecas/${id}`)
   }
 
@@ -213,6 +286,11 @@ export default function NovaReparacaoPage() {
       </div>
 
       {erro && <div style={s.erro}>{erro}</div>}
+      {rascunhoRecuperado && (
+        <div style={{ marginBottom: 12 }}>
+          <RascunhoAviso onDescartar={descartar} />
+        </div>
+      )}
 
       {/* S1 — Tipo e Dono */}
       <section style={s.card}>
