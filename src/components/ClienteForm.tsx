@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { TIPO_CLIENTE_OPCOES, type Cliente, type ClienteInput, type TipoCliente } from '@/types/cliente'
+import { useFormDraft, RascunhoAviso } from '@/lib/useFormDraft'
 
 type Props = {
   inicial?: Cliente
@@ -9,41 +10,74 @@ type Props = {
   erro: string | null
   submitLabel: string
   onSubmit: (input: ClienteInput) => void
+  // Quando definido, ativa o rascunho automático sob a chave draft:<rascunhoKey>.
+  // (Usar só em modo "novo"; em edição não convém restaurar por cima da BD.)
+  rascunhoKey?: string
 }
 
-export default function ClienteForm({ inicial, aGuardar, erro, submitLabel, onSubmit }: Props) {
-  const [nome, setNome] = useState(inicial?.nome ?? '')
-  const [pais, setPais] = useState(inicial?.pais ?? 'Portugal')
-  const [email, setEmail] = useState(inicial?.email ?? '')
-  const [telefone, setTelefone] = useState(inicial?.telefone ?? '')
-  const [contactoNome, setContactoNome] = useState(inicial?.contacto_nome ?? '')
-  const [nif, setNif] = useState(inicial?.nif ?? '')
-  const [morada, setMorada] = useState(inicial?.morada ?? '')
-  const [cidade, setCidade] = useState(inicial?.cidade ?? '')
-  const [codigoPostal, setCodigoPostal] = useState(inicial?.codigo_postal ?? '')
-  const [tipo, setTipo] = useState<TipoCliente | ''>(inicial?.tipo ?? '')
-  const [observacoes, setObservacoes] = useState(inicial?.observacoes ?? '')
+type FormState = {
+  nome: string
+  pais: string
+  email: string
+  telefone: string
+  contactoNome: string
+  nif: string
+  morada: string
+  cidade: string
+  codigoPostal: string
+  tipo: TipoCliente | ''
+  observacoes: string
+}
+
+function estadoInicial(inicial?: Cliente): FormState {
+  return {
+    nome: inicial?.nome ?? '',
+    pais: inicial?.pais ?? 'Portugal',
+    email: inicial?.email ?? '',
+    telefone: inicial?.telefone ?? '',
+    contactoNome: inicial?.contacto_nome ?? '',
+    nif: inicial?.nif ?? '',
+    morada: inicial?.morada ?? '',
+    cidade: inicial?.cidade ?? '',
+    codigoPostal: inicial?.codigo_postal ?? '',
+    tipo: inicial?.tipo ?? '',
+    observacoes: inicial?.observacoes ?? '',
+  }
+}
+
+export default function ClienteForm({ inicial, aGuardar, erro, submitLabel, onSubmit, rascunhoKey }: Props) {
+  const [form, setForm] = useState<FormState>(() => estadoInicial(inicial))
   const [avisoNome, setAvisoNome] = useState(false)
   const [avisoEmail, setAvisoEmail] = useState(false)
+  const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm((f) => ({ ...f, [k]: v }))
+
+  const { rascunhoRecuperado, descartar } = useFormDraft<FormState>(
+    rascunhoKey ?? 'cliente:novo',
+    form,
+    setForm,
+    { enabled: !!rascunhoKey, emptyState: estadoInicial(undefined) }
+  )
 
   function submeter(e: React.FormEvent) {
     e.preventDefault()
-    if (!nome.trim()) { setAvisoNome(true); return }
-    if (email.trim() && !email.includes('@')) { setAvisoEmail(true); return }
+    if (!form.nome.trim()) { setAvisoNome(true); return }
+    if (form.email.trim() && !form.email.includes('@')) { setAvisoEmail(true); return }
     onSubmit({
-      nome, pais, email, telefone, contacto_nome: contactoNome, nif,
-      morada, cidade, codigo_postal: codigoPostal,
-      tipo: tipo || null, observacoes,
+      nome: form.nome, pais: form.pais, email: form.email, telefone: form.telefone,
+      contacto_nome: form.contactoNome, nif: form.nif,
+      morada: form.morada, cidade: form.cidade, codigo_postal: form.codigoPostal,
+      tipo: form.tipo || null, observacoes: form.observacoes,
     })
   }
 
   return (
     <form onSubmit={submeter} className="a4l-card" style={s.form}>
+      {rascunhoRecuperado && <RascunhoAviso onDescartar={descartar} />}
       <Grupo titulo="Identificação">
         <Campo label="Nome *">
           <input
-            value={nome}
-            onChange={(e) => { setNome(e.target.value); setAvisoNome(false) }}
+            value={form.nome}
+            onChange={(e) => { set('nome', e.target.value); setAvisoNome(false) }}
             placeholder="Nome do cliente / clínica"
             style={{ ...s.input, ...(avisoNome ? s.inputErro : {}) }}
           />
@@ -51,13 +85,13 @@ export default function ClienteForm({ inicial, aGuardar, erro, submitLabel, onSu
         </Campo>
         <Linha>
           <Campo label="Tipo">
-            <select value={tipo} onChange={(e) => setTipo(e.target.value as TipoCliente | '')} style={s.input}>
+            <select value={form.tipo} onChange={(e) => set('tipo', e.target.value as TipoCliente | '')} style={s.input}>
               <option value="">—</option>
               {TIPO_CLIENTE_OPCOES.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </Campo>
           <Campo label="País">
-            <input value={pais} onChange={(e) => setPais(e.target.value)} placeholder="Portugal" style={s.input} />
+            <input value={form.pais} onChange={(e) => set('pais', e.target.value)} placeholder="Portugal" style={s.input} />
           </Campo>
         </Linha>
       </Grupo>
@@ -67,42 +101,42 @@ export default function ClienteForm({ inicial, aGuardar, erro, submitLabel, onSu
           <Campo label="Email (para faturação)">
             <input
               type="email"
-              value={email}
-              onChange={(e) => { setEmail(e.target.value); setAvisoEmail(false) }}
+              value={form.email}
+              onChange={(e) => { set('email', e.target.value); setAvisoEmail(false) }}
               placeholder="cliente@exemplo.com"
               style={{ ...s.input, ...(avisoEmail ? s.inputErro : {}) }}
             />
             {avisoEmail && <span style={s.aviso}>Email inválido.</span>}
           </Campo>
           <Campo label="Telefone">
-            <input value={telefone} onChange={(e) => setTelefone(e.target.value)} placeholder="+351 ..." style={s.input} />
+            <input value={form.telefone} onChange={(e) => set('telefone', e.target.value)} placeholder="+351 ..." style={s.input} />
           </Campo>
         </Linha>
         <Campo label="Pessoa de contacto">
-          <input value={contactoNome} onChange={(e) => setContactoNome(e.target.value)} placeholder="Nome de quem contactas" style={s.input} />
+          <input value={form.contactoNome} onChange={(e) => set('contactoNome', e.target.value)} placeholder="Nome de quem contactas" style={s.input} />
         </Campo>
       </Grupo>
 
       <Grupo titulo="Morada e faturação">
         <Campo label="NIF">
-          <input value={nif} onChange={(e) => setNif(e.target.value)} style={s.input} />
+          <input value={form.nif} onChange={(e) => set('nif', e.target.value)} style={s.input} />
         </Campo>
         <Campo label="Morada">
-          <input value={morada} onChange={(e) => setMorada(e.target.value)} style={s.input} />
+          <input value={form.morada} onChange={(e) => set('morada', e.target.value)} style={s.input} />
         </Campo>
         <Linha>
           <Campo label="Código-postal">
-            <input value={codigoPostal} onChange={(e) => setCodigoPostal(e.target.value)} style={s.input} />
+            <input value={form.codigoPostal} onChange={(e) => set('codigoPostal', e.target.value)} style={s.input} />
           </Campo>
           <Campo label="Cidade">
-            <input value={cidade} onChange={(e) => setCidade(e.target.value)} style={s.input} />
+            <input value={form.cidade} onChange={(e) => set('cidade', e.target.value)} style={s.input} />
           </Campo>
         </Linha>
       </Grupo>
 
       <Grupo titulo="Notas internas">
         <Campo label="Observações">
-          <textarea value={observacoes} onChange={(e) => setObservacoes(e.target.value)} rows={3} style={{ ...s.input, resize: 'vertical' }} />
+          <textarea value={form.observacoes} onChange={(e) => set('observacoes', e.target.value)} rows={3} style={{ ...s.input, resize: 'vertical' }} />
         </Campo>
       </Grupo>
 

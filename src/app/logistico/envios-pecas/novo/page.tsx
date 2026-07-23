@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
+import { useFormDraft, RascunhoAviso } from '@/lib/useFormDraft'
 import { PAISES } from '@/lib/paises'
 import {
   criarEnvio, listarClientesEnvio, criarClienteEnvio, pesquisarMaterial, listarFuncionarios,
@@ -13,6 +14,35 @@ import {
 import { formatarEuro, calcularIva, MOTIVOS_ENVIO, motivoInfo, type EnvioItemInput, type DestinatarioTipo, type MotivoEnvio } from '@/types/envioPecas'
 
 const num = (s: string) => (s.trim() === '' ? null : Number(s))
+
+// Campos do formulário que o rascunho automático guarda (sem as listas obtidas
+// da BD nem os estados de controlo aGuardar/erro).
+type EnvioDraft = {
+  destinatarioTipo: DestinatarioTipo
+  clienteId: string | null
+  clienteNome: string
+  clienteEmail: string
+  clienteTelefone: string
+  pais: string
+  moradaEnvio: string
+  fornecedorId: string | null
+  fornecedorNome: string
+  motivo: MotivoEnvio
+  faturavel: boolean
+  responsavelId: string
+  itens: EnvioItemInput[]
+  manualNome: string
+  manualPreco: string
+  valorFaturar: string
+  ivaOpcao: '23' | '6' | 'isento'
+  notas: string
+}
+
+const ENVIO_VAZIO: EnvioDraft = {
+  destinatarioTipo: 'cliente', clienteId: null, clienteNome: '', clienteEmail: '', clienteTelefone: '',
+  pais: '', moradaEnvio: '', fornecedorId: null, fornecedorNome: '', motivo: 'venda', faturavel: true,
+  responsavelId: '', itens: [], manualNome: '', manualPreco: '', valorFaturar: '', ivaOpcao: '23', notas: '',
+}
 
 export default function NovoEnvioPage() {
   const router = useRouter()
@@ -132,6 +162,36 @@ export default function NovoEnvioPage() {
     setManualPreco('')
   }
 
+  // ── Rascunho automático (carta de porte / novo envio) ──────────────────────
+  const valores: EnvioDraft = {
+    destinatarioTipo, clienteId, clienteNome, clienteEmail, clienteTelefone, pais, moradaEnvio,
+    fornecedorId, fornecedorNome, motivo, faturavel, responsavelId, itens,
+    manualNome, manualPreco, valorFaturar, ivaOpcao, notas,
+  }
+  function restaurar(d: EnvioDraft) {
+    setDestinatarioTipo(d.destinatarioTipo)
+    setClienteId(d.clienteId)
+    setClienteNome(d.clienteNome)
+    setClienteEmail(d.clienteEmail)
+    setClienteTelefone(d.clienteTelefone)
+    setPais(d.pais)
+    setMoradaEnvio(d.moradaEnvio)
+    setFornecedorId(d.fornecedorId)
+    setFornecedorNome(d.fornecedorNome)
+    setMotivo(d.motivo)
+    setFaturavel(d.faturavel)
+    setResponsavelId(d.responsavelId)
+    setItens(d.itens ?? [])
+    setManualNome(d.manualNome)
+    setManualPreco(d.manualPreco)
+    setValorFaturar(d.valorFaturar)
+    setIvaOpcao(d.ivaOpcao)
+    setNotas(d.notas)
+  }
+  const { rascunhoRecuperado, descartar, limpar } = useFormDraft<EnvioDraft>(
+    'carta-porte:novo', valores, restaurar, { emptyState: ENVIO_VAZIO }
+  )
+
   async function submeter() {
     setErro(null)
     if (destinatarioTipo === 'cliente' && !clienteNome.trim()) { setErro('Indica o cliente.'); return }
@@ -168,6 +228,7 @@ export default function NovoEnvioPage() {
     )
     setAGuardar(false)
     if (error || !data) { setErro('Erro ao criar o envio: ' + (error?.message ?? '')); return }
+    limpar()
     router.push(`/logistico/envios-pecas/${data.id}`)
   }
 
@@ -177,6 +238,12 @@ export default function NovoEnvioPage() {
         <h1 style={f.titulo}>Novo Envio de Encomenda</h1>
         <Link href="/logistico/encomendas" style={f.voltar}>← Encomendas</Link>
       </div>
+
+      {rascunhoRecuperado && (
+        <div style={{ marginBottom: 12 }}>
+          <RascunhoAviso onDescartar={descartar} />
+        </div>
+      )}
 
       {/* 1. Destinatário */}
       <section style={f.seccao}>

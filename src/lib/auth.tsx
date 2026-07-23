@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabase'
 
@@ -36,8 +36,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [perfil, setPerfil] = useState<Perfil | null>(null)
   const [carregando, setCarregando] = useState(true)
   const [perfilCarregado, setPerfilCarregado] = useState(false)
+  // Id do utilizador cujo perfil já está (a ser) carregado. Serve para NÃO
+  // recarregar o perfil — nem mexer em perfilCarregado — em cada TOKEN_REFRESHED
+  // ou revalidação de sessão ao voltar o foco à aba. Sem isto, o AuthGate
+  // desmontava a página a cada evento e os formulários perdiam o que estava
+  // preenchido.
+  const perfilUserIdRef = useRef<string | null>(null)
 
   async function carregarPerfil(userId: string) {
+    perfilUserIdRef.current = userId
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single()
     setPerfil((data as Perfil) ?? null)
     setPerfilCarregado(true)
@@ -51,8 +58,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!ativo) return
       setSession(data.session)
       setCarregando(false)
-      if (data.session) carregarPerfil(data.session.user.id)
-      else setPerfilCarregado(true)
+      if (data.session) {
+        if (perfilUserIdRef.current !== data.session.user.id) carregarPerfil(data.session.user.id)
+      } else {
+        perfilUserIdRef.current = null
+        setPerfilCarregado(true)
+      }
     })
 
     // IMPORTANTE: não fazer `await` a chamadas à BD dentro deste callback — o
@@ -61,12 +72,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: sub } = supabase.auth.onAuthStateChange((_evento, novaSessao) => {
       setSession(novaSessao)
       setCarregando(false)
-      if (novaSessao) {
-        setPerfilCarregado(false)
-        setTimeout(() => carregarPerfil(novaSessao.user.id), 0)
-      } else {
+      const novaId = novaSessao?.user?.id ?? null
+      if (!novaId) {
+        perfilUserIdRef.current = null
         setPerfil(null)
         setPerfilCarregado(true)
+        return
+      }
+      // Só (re)carrega o perfil quando o utilizador MUDA. Num simples refresh de
+      // token ou revalidação ao focar a aba, mantemos o perfil e não desmontamos
+      // as páginas — os formulários preservam o estado.
+      if (novaId !== perfilUserIdRef.current) {
+        setPerfilCarregado(false)
+        setTimeout(() => carregarPerfil(novaId), 0)
       }
     })
 

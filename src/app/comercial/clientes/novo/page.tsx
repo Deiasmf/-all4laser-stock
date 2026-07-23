@@ -4,8 +4,11 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import ClienteForm from '@/components/ClienteForm'
+import { limparRascunho } from '@/lib/useFormDraft'
 import { criarClienteFicha } from '@/lib/clientes'
 import type { ClienteInput } from '@/types/cliente'
+
+const RASCUNHO = 'cliente:novo'
 
 export default function NovoClientePage() {
   const router = useRouter()
@@ -21,6 +24,7 @@ export default function NovoClientePage() {
       setErro('Não foi possível criar o cliente: ' + (error?.message ?? 'erro desconhecido'))
       return
     }
+    limparRascunho(RASCUNHO)
     router.push(`/comercial/clientes/${data.id}`)
   }
 
@@ -30,7 +34,7 @@ export default function NovoClientePage() {
         <h1 style={s.titulo}>Novo cliente</h1>
         <Link href="/comercial/clientes" style={s.voltar}>← Clientes</Link>
       </div>
-      <ClienteForm aGuardar={aGuardar} erro={erro} submitLabel="Criar cliente" onSubmit={criar} />
+      <ClienteForm aGuardar={aGuardar} erro={erro} submitLabel="Criar cliente" onSubmit={criar} rascunhoKey={RASCUNHO} />
     </main>
   )
 }
