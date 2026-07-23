@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useFormDraft, RascunhoAviso } from '@/lib/useFormDraft'
 
 // Página PÚBLICA (sem login) — formulário para os clientes preencherem os dados.
 // A submissão vai para `registos_cliente` (estado pendente) via /api/registo-cliente
@@ -9,6 +10,28 @@ import { useState } from 'react'
 type Morada = { etiqueta: string; morada: string; cidade: string; codigo_postal: string; pais: string }
 
 const moradaVazia = (): Morada => ({ etiqueta: '', morada: '', cidade: '', codigo_postal: '', pais: 'Portugal' })
+
+// Campos que o rascunho automático guarda (o honeypot `website` e os estados de
+// controlo aEnviar/erro/enviado ficam de fora).
+type RegistoDraft = {
+  nome: string
+  nif: string
+  email: string
+  telefone: string
+  contacto: string
+  morada: string
+  cidade: string
+  codigoPostal: string
+  pais: string
+  entregas: Morada[]
+  observacoes: string
+}
+
+const REGISTO_VAZIO: RegistoDraft = {
+  nome: '', nif: '', email: '', telefone: '', contacto: '',
+  morada: '', cidade: '', codigoPostal: '', pais: 'Portugal',
+  entregas: [], observacoes: '',
+}
 
 export default function RegistoClientePage() {
   const [nome, setNome] = useState('')
@@ -34,6 +57,29 @@ export default function RegistoClientePage() {
     setEntregas((lista) => lista.map((m, idx) => (idx === i ? { ...m, [campo]: valor } : m)))
   }
 
+  // Rascunho automático (formulário público longo).
+  const valores: RegistoDraft = {
+    nome, nif, email, telefone, contacto,
+    morada, cidade, codigoPostal, pais,
+    entregas, observacoes,
+  }
+  function restaurar(d: RegistoDraft) {
+    setNome(d.nome)
+    setNif(d.nif)
+    setEmail(d.email)
+    setTelefone(d.telefone)
+    setContacto(d.contacto)
+    setMorada(d.morada)
+    setCidade(d.cidade)
+    setCodigoPostal(d.codigoPostal)
+    setPais(d.pais)
+    setEntregas(d.entregas ?? [])
+    setObservacoes(d.observacoes)
+  }
+  const { rascunhoRecuperado, descartar, limpar } = useFormDraft<RegistoDraft>(
+    'registo-cliente:novo', valores, restaurar, { emptyState: REGISTO_VAZIO }
+  )
+
   async function submeter(e: React.FormEvent) {
     e.preventDefault()
     setErro(null)
@@ -58,6 +104,7 @@ export default function RegistoClientePage() {
         setErro(dados.erro ?? 'Não foi possível enviar. Tente novamente daqui a pouco.')
         return
       }
+      limpar()
       setEnviado(true)
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch {
@@ -93,6 +140,11 @@ export default function RegistoClientePage() {
         </p>
 
         {erro && <div style={s.erro}>{erro}</div>}
+        {rascunhoRecuperado && (
+          <div style={{ marginBottom: 10 }}>
+            <RascunhoAviso onDescartar={descartar} />
+          </div>
+        )}
 
         <h2 style={s.seccao}>Identificação</h2>
         <Campo label="Nome da empresa / cliente" obrigatorio>
