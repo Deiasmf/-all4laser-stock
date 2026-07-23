@@ -6,11 +6,16 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 import { criarPedido, enviarParaCompras, listarFornecedores, type ItemInput } from '@/lib/compras'
 import PecaAutocomplete from '@/components/PecaAutocomplete'
+import { useFormDraft, RascunhoAviso } from '@/lib/useFormDraft'
 import type { Fornecedor } from '@/types/compras'
 
 type LinhaItem = { peca_id: string | null; peca_nome: string; quantidade: string; notas: string }
 
 const novaLinha = (): LinhaItem => ({ peca_id: null, peca_nome: '', quantidade: '1', notas: '' })
+
+// Campos que o rascunho automático guarda (sem a lista de fornecedores nem o controlo).
+type ComprasDraft = { urgente: boolean; itens: LinhaItem[]; fornecedor: string; fornecedorOutro: string; notas: string }
+const comprasVazia = (): ComprasDraft => ({ urgente: false, itens: [novaLinha()], fornecedor: '', fornecedorOutro: '', notas: '' })
 
 export default function NovoPedidoPage() {
   const router = useRouter()
@@ -30,6 +35,19 @@ export default function NovoPedidoPage() {
     setItens((arr) => arr.map((l, idx) => (idx === i ? { ...l, ...patch } : l)))
   }
 
+  // Rascunho automático.
+  const valores: ComprasDraft = { urgente, itens, fornecedor, fornecedorOutro, notas }
+  function restaurar(d: ComprasDraft) {
+    setUrgente(d.urgente)
+    setItens(d.itens ?? [novaLinha()])
+    setFornecedor(d.fornecedor)
+    setFornecedorOutro(d.fornecedorOutro)
+    setNotas(d.notas)
+  }
+  const { rascunhoRecuperado, descartar, limpar } = useFormDraft<ComprasDraft>(
+    'compras:novo', valores, restaurar, { emptyState: comprasVazia() }
+  )
+
   async function guardar(emitir: boolean) {
     setErro(null)
     const validos: ItemInput[] = itens
@@ -47,6 +65,7 @@ export default function NovoPedidoPage() {
     if (error || !data) { setAGuardar(false); setErro('Erro ao criar o pedido: ' + (error?.message ?? '')); return }
     if (emitir) await enviarParaCompras(data, validos.length, { id: uid, nome })
     setAGuardar(false)
+    limpar()
     router.push(`/compras/${data.id}`)
   }
 
@@ -56,6 +75,12 @@ export default function NovoPedidoPage() {
         <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--a4l-text-dark)' }}>Novo Pedido de Compra</h1>
         <Link href="/compras" style={{ color: 'var(--a4l-text-light)', textDecoration: 'none', fontSize: 14 }}>← Pedidos de Compra</Link>
       </div>
+
+      {rascunhoRecuperado && (
+        <div style={{ marginBottom: 12 }}>
+          <RascunhoAviso onDescartar={descartar} />
+        </div>
+      )}
 
       {/* Urgente */}
       <div className="a4l-card" style={{ marginBottom: 14, background: urgente ? '#fdecea' : undefined, border: urgente ? '1px solid #DC2626' : undefined }}>

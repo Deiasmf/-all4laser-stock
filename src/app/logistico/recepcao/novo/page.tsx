@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
+import { useFormDraft, RascunhoAviso } from '@/lib/useFormDraft'
 import {
   listarClientesEnvio, criarClienteEnvio, listarFuncionarios,
   type ClienteEnvioOpc,
@@ -18,6 +19,40 @@ import {
 } from '@/types/processoPeca'
 
 const hoje = () => new Date().toISOString().slice(0, 10)
+
+// Campos que o rascunho automático guarda (sem listas/sugestões nem controlo).
+type RecepcaoDraft = {
+  fluxo: TipoFluxo | null
+  dataRececao: string
+  clienteId: string | null
+  clienteNome: string
+  avaria: string
+  pecaId: string | null
+  pecaDescricao: string
+  temSn: boolean
+  snAvariado: string
+  equipSn: string
+  equipId: string | null
+  itens: ProcessoItemInput[]
+  itemNome: string
+  itemQtd: string
+  emGarantia: boolean
+  tipoGarantia: TipoGarantia
+  responsavel: ResponsavelPagamento
+  valorEstimado: string
+  subPecaId: string | null
+  subDescricao: string
+  subTemSn: boolean
+  subSn: string
+  notas: string
+}
+const recepcaoVazia = (): RecepcaoDraft => ({
+  fluxo: null, dataRececao: hoje(), clienteId: null, clienteNome: '', avaria: '',
+  pecaId: null, pecaDescricao: '', temSn: false, snAvariado: '', equipSn: '', equipId: null,
+  itens: [], itemNome: '', itemQtd: '1',
+  emGarantia: false, tipoGarantia: 'sem_garantia', responsavel: 'cliente', valorEstimado: '',
+  subPecaId: null, subDescricao: '', subTemSn: false, subSn: '', notas: '',
+})
 
 export default function NovoProcessoPage() {
   const router = useRouter()
@@ -88,6 +123,43 @@ export default function NovoProcessoPage() {
     setItemNome(''); setItemQtd('1')
   }
 
+  // Rascunho automático.
+  const valores: RecepcaoDraft = {
+    fluxo, dataRececao, clienteId, clienteNome, avaria,
+    pecaId, pecaDescricao, temSn, snAvariado, equipSn, equipId,
+    itens, itemNome, itemQtd,
+    emGarantia, tipoGarantia, responsavel, valorEstimado,
+    subPecaId, subDescricao, subTemSn, subSn, notas,
+  }
+  function restaurar(d: RecepcaoDraft) {
+    setFluxo(d.fluxo)
+    setDataRececao(d.dataRececao)
+    setClienteId(d.clienteId)
+    setClienteNome(d.clienteNome)
+    setAvaria(d.avaria)
+    setPecaId(d.pecaId)
+    setPecaDescricao(d.pecaDescricao)
+    setTemSn(d.temSn)
+    setSnAvariado(d.snAvariado)
+    setEquipSn(d.equipSn)
+    setEquipId(d.equipId)
+    setItens(d.itens ?? [])
+    setItemNome(d.itemNome)
+    setItemQtd(d.itemQtd)
+    setEmGarantia(d.emGarantia)
+    setTipoGarantia(d.tipoGarantia)
+    setResponsavel(d.responsavel)
+    setValorEstimado(d.valorEstimado)
+    setSubPecaId(d.subPecaId)
+    setSubDescricao(d.subDescricao)
+    setSubTemSn(d.subTemSn)
+    setSubSn(d.subSn)
+    setNotas(d.notas)
+  }
+  const { rascunhoRecuperado, descartar, limpar } = useFormDraft<RecepcaoDraft>(
+    'recepcao:novo', valores, restaurar, { emptyState: recepcaoVazia() }
+  )
+
   async function submeter() {
     setErro(null)
     if (!fluxo) { setErro('Escolhe o tipo de processo.'); return }
@@ -122,6 +194,7 @@ export default function NovoProcessoPage() {
     )
     setAGuardar(false)
     if (error || !data) { setErro('Erro ao criar o processo: ' + (error?.message ?? '')); return }
+    limpar()
     router.push(`/logistico/recepcao/${data.id}`)
   }
 
@@ -131,6 +204,8 @@ export default function NovoProcessoPage() {
         <h1 style={f.titulo}>Novo Processo de Peças</h1>
         <Link href="/logistico/recepcao" style={f.voltar}>← Processos</Link>
       </div>
+
+      {rascunhoRecuperado && <RascunhoAviso onDescartar={descartar} />}
 
       {/* PASSO 1 — Tipo de processo */}
       <section style={f.seccao}>
