@@ -92,7 +92,9 @@ export default function NovaEncomendaPage() {
   function escolherCliente(c: ClienteEnvioOpc) {
     setClienteId(c.id); setClienteNome(c.nome)
     if (c.email) setClienteEmail(c.email)
+    if (c.telefone) setClienteTelefone(c.telefone)
     if (c.pais) setPais(c.pais)
+    if (c.morada) setMoradaEnvio(c.morada)
   }
   async function adicionarCliente(nome: string) {
     setErro(null)
@@ -224,7 +226,7 @@ export default function NovaEncomendaPage() {
           ) : (
             <Campo rotulo="Fornecedor *">
               <Autocomplete valor={fornecedorNome} placeholder="Escolher da lista ou escrever..." buscar={buscarFornecedor}
-                onChangeTexto={(v) => { setFornecedorNome(v); setFornecedorId(null) }} onEscolher={(fo) => { setFornecedorNome(fo.nome); setFornecedorId(fo.id) }}
+                onChangeTexto={(v) => { setFornecedorNome(v); setFornecedorId(null) }} onEscolher={(fo) => { setFornecedorNome(fo.nome); setFornecedorId(fo.id); if (fo.morada) setMoradaEnvio(fo.morada) }}
                 render={(fo) => fo.nome} chaveTexto={(fo) => fo.nome} onTextoNovo={(t) => { setFornecedorNome(t); setFornecedorId(null) }} textoNovoRotulo={(t) => `➕ Usar «${t}»`} />
             </Campo>
           )}

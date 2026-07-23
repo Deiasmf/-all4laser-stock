@@ -61,11 +61,40 @@ export type Cotacao = {
 export type Fornecedor = {
   id: string
   nome: string
-  contacto: string | null
-  email: string | null
+  nif: string | null
+  morada: string | null
+  codigo_postal: string | null
+  localidade: string | null
+  pais: string | null
+  telefone: string | null
+  telemovel: string | null
+  email: string | null            // email geral
+  email_reparacoes: string | null
+  pessoa_contacto: string | null
+  iban: string | null
   notas: string | null
   ativo: boolean
+  contacto: string | null         // legado (telefone antigo)
   created_at: string
+  updated_at: string
+}
+
+// Campos editáveis de uma ficha de fornecedor.
+export type FornecedorInput = {
+  nome: string
+  nif: string | null
+  morada: string | null
+  codigo_postal: string | null
+  localidade: string | null
+  pais: string | null
+  telefone: string | null
+  telemovel: string | null
+  email: string | null
+  email_reparacoes: string | null
+  pessoa_contacto: string | null
+  iban: string | null
+  notas: string | null
+  ativo: boolean
 }
 
 export const ESTADO_PEDIDO_CONFIG: Record<EstadoPedido, { label: string; color: string; bg: string }> = {

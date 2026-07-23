@@ -304,27 +304,41 @@ export async function listarFuncionarios(): Promise<FuncionarioOpc[]> {
     .map((p) => ({ id: p.id, nome: p.nome as string }))
 }
 
-export type ClienteEnvioOpc = { id: string; nome: string; pais: string | null; email: string | null }
+export type ClienteEnvioOpc = {
+  id: string; nome: string; pais: string | null; email: string | null
+  telefone: string | null; morada: string | null // morada numa só linha (autofill)
+}
 
 export async function listarClientesEnvio(): Promise<ClienteEnvioOpc[]> {
   const { data } = await supabase
     .from('clientes')
-    .select('id, nome, pais, email')
+    .select('id, nome, pais, email, telefone, morada, cidade, codigo_postal')
     .order('nome')
     .limit(2000)
-  return (data as ClienteEnvioOpc[]) ?? []
+  type Row = { id: string; nome: string; pais: string | null; email: string | null; telefone: string | null; morada: string | null; cidade: string | null; codigo_postal: string | null }
+  return ((data as Row[]) ?? []).map((c) => ({
+    id: c.id, nome: c.nome, pais: c.pais, email: c.email, telefone: c.telefone,
+    morada: [c.morada, c.codigo_postal, c.cidade, c.pais].filter(Boolean).join(', ') || null,
+  }))
 }
 
-export type FornecedorEnvioOpc = { id: string; nome: string }
+export type FornecedorEnvioOpc = {
+  id: string; nome: string; email: string | null; telefone: string | null; morada: string | null
+}
 
-// Lista de fornecedores (destinatário = fornecedor).
+// Lista de fornecedores ativos (destinatário = fornecedor), com morada/contactos
+// para pré-preencher a carta de porte.
 export async function listarFornecedoresEnvio(): Promise<FornecedorEnvioOpc[]> {
   const { data } = await supabase
     .from('fornecedores')
-    .select('id, nome')
+    .select('id, nome, email, telefone, telemovel, morada, codigo_postal, localidade, pais')
     .eq('ativo', true)
     .order('nome')
-  return (data as FornecedorEnvioOpc[]) ?? []
+  type Row = { id: string; nome: string; email: string | null; telefone: string | null; telemovel: string | null; morada: string | null; codigo_postal: string | null; localidade: string | null; pais: string | null }
+  return ((data as Row[]) ?? []).map((f) => ({
+    id: f.id, nome: f.nome, email: f.email, telefone: f.telefone ?? f.telemovel,
+    morada: [f.morada, f.codigo_postal, f.localidade, f.pais].filter(Boolean).join(', ') || null,
+  }))
 }
 
 // Adiciona um cliente novo (nome, email, telefone, país) à tabela clientes.
