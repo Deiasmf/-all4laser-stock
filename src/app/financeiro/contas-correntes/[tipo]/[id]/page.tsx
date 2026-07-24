@@ -33,7 +33,8 @@ export default function ExtratoEntidadePage() {
     return todas.filter((l) => {
       if (de && l.data_documento < de) return false
       if (ate && l.data_documento > ate) return false
-      if (estado && l.estado !== estado) return false
+      // Filtro por estado aplica-se às faturas (estado calculado por alocação).
+      if (estado && l.estadoCalc !== estado) return false
       return true
     })
   }, [movs, de, ate, estado])
@@ -110,8 +111,8 @@ export default function ExtratoEntidadePage() {
 
 function LinhaMov({ l }: { l: LinhaExtrato }) {
   const td = tipoDocInfo(l.tipo_documento)
-  const est = estadoMovInfo(l.estado)
-  const soFatura = l.tipo_documento === 'fatura'
+  const soFatura = l.tipo_documento === 'fatura' && l.estadoCalc
+  const est = soFatura ? estadoMovInfo(l.estadoCalc as string) : null
   return (
     <div style={c.linha}>
       <span style={c.muted}>{formatarData(l.data_documento)}</span>
@@ -124,8 +125,8 @@ function LinhaMov({ l }: { l: LinhaExtrato }) {
       <span style={{ textAlign: 'right' }}>{l.valor_credito ? formatarEuro(l.valor_credito) : '—'}</span>
       <span style={{ textAlign: 'right', fontWeight: 700 }}>{formatarEuro(l.saldoAcumulado)}</span>
       <span style={{ textAlign: 'center' }}>
-        {soFatura
-          ? <span style={{ ...c.badge, color: est.cor, background: est.bg }}>{est.label}</span>
+        {est
+          ? <span style={{ ...c.badge, color: est.cor, background: est.bg }} title={l.porLiquidarCalc > 0 ? `Por liquidar: ${formatarEuro(l.porLiquidarCalc)}` : undefined}>{est.label}</span>
           : <span style={c.muted}>—</span>}
       </span>
     </div>

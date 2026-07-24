@@ -28,7 +28,6 @@ function NovoMovimentoForm() {
   const [dataDoc, setDataDoc] = useState(hojeISO())
   const [dataVenc, setDataVenc] = useState('')
   const [valor, setValor] = useState('')
-  const [liquidado, setLiquidado] = useState('')
   const [notas, setNotas] = useState('')
   const [aGuardar, setAGuardar] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
@@ -46,7 +45,6 @@ function NovoMovimentoForm() {
   }
 
   const sentido = tipoDocInfo(tipoDoc).sentido
-  const ehFatura = tipoDoc === 'fatura'
   const valorNum = parseNum(valor)
 
   const podeGuardar = useMemo(
@@ -70,7 +68,6 @@ function NovoMovimentoForm() {
         data_documento: dataDoc,
         data_vencimento: dataVenc || null,
         valor: valorNum,
-        valor_liquidado: ehFatura ? parseNum(liquidado) : 0,
         notas,
       },
       { id: perfil?.id ?? null, nome: perfil?.nome ?? null }
@@ -131,22 +128,15 @@ function NovoMovimentoForm() {
         </div>
 
         {/* Valor */}
-        <div style={c.grelha2}>
-          <label style={c.campo}>
-            <span style={c.rotulo}>Valor</span>
-            <input inputMode="decimal" value={valor} onChange={(e) => setValor(e.target.value)} placeholder="0,00" style={c.input} />
-            <span style={c.ajuda}>
-              {sentido === 'debito' ? 'Entra a débito (aumenta o saldo).' : 'Entra a crédito (reduz o saldo).'}
-            </span>
-          </label>
-          {ehFatura && (
-            <label style={c.campo}>
-              <span style={c.rotulo}>Já liquidado <span style={c.opc}>(opcional)</span></span>
-              <input inputMode="decimal" value={liquidado} onChange={(e) => setLiquidado(e.target.value)} placeholder="0,00" style={c.input} />
-              <span style={c.ajuda}>Estado calcula-se automaticamente.</span>
-            </label>
-          )}
-        </div>
+        <label style={c.campo}>
+          <span style={c.rotulo}>Valor</span>
+          <input inputMode="decimal" value={valor} onChange={(e) => setValor(e.target.value)} placeholder="0,00" style={{ ...c.input, maxWidth: 240 }} />
+          <span style={c.ajuda}>
+            {sentido === 'debito'
+              ? 'Entra a débito (aumenta o saldo).'
+              : 'Entra a crédito (reduz o saldo). É abatido automaticamente às faturas mais antigas.'}
+          </span>
+        </label>
 
         <label style={c.campo}>
           <span style={c.rotulo}>Notas <span style={c.opc}>(opcional)</span></span>
