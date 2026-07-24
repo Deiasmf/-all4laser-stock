@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { documentosAExpirar, diasAteValidade, type DocumentoCofre } from '@/lib/cofre'
+import { resumoInatividade, type ResumoInatividade } from '@/lib/inatividade'
 
 // Dashboard do módulo Financeiro. O acesso está protegido pela guarda (layout)
 // e pela RLS na base de dados.
@@ -19,8 +20,10 @@ const CARTOES: Cartao[] = [
 
 export default function FinanceiroDashboard() {
   const [aExpirar, setAExpirar] = useState<DocumentoCofre[]>([])
+  const [inativos, setInativos] = useState<ResumoInatividade | null>(null)
 
   useEffect(() => { documentosAExpirar(30).then(setAExpirar) }, [])
+  useEffect(() => { resumoInatividade().then(setInativos) }, [])
 
   return (
     <main style={c.page}>
@@ -40,6 +43,21 @@ export default function FinanceiroDashboard() {
             })}
             {aExpirar.length > 4 && <span style={c.alertaItem}>+{aExpirar.length - 4}</span>}
           </div>
+        </Link>
+      )}
+
+      {/* Card: clientes inativos (alugueres) */}
+      {inativos && (inativos.atencao > 0 || inativos.critico > 0) && (
+        <Link href="/alugueres/inatividade" style={c.inativos}>
+          <span style={c.inativosIcon}>😴</span>
+          <div style={{ flex: 1 }}>
+            <div style={c.inativosTit}>Clientes sem alugar</div>
+            <div style={c.inativosLinha}>
+              <span><strong style={{ color: '#92400E' }}>{inativos.atencao}</strong> há 30+ dias</span>
+              <span><strong style={{ color: '#B91C1C' }}>{inativos.critico}</strong> há 45+ dias (crítico)</span>
+            </div>
+          </div>
+          <span style={c.inativosSeta}>→</span>
         </Link>
       )}
 
@@ -65,6 +83,11 @@ const c: Record<string, React.CSSProperties> = {
   alertaTop: { fontWeight: 700, fontSize: 14, marginBottom: 6 },
   alertaLista: { display: 'flex', gap: 8, flexWrap: 'wrap' },
   alertaItem: { fontSize: 12.5, background: '#fff', borderRadius: 999, padding: '2px 10px', border: '1px solid #FCD34D' },
+  inativos: { display: 'flex', alignItems: 'center', gap: 12, background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 14, marginBottom: 16, textDecoration: 'none', color: 'var(--foreground)' },
+  inativosIcon: { fontSize: 26 },
+  inativosTit: { fontWeight: 700, fontSize: 14, color: 'var(--primary)' },
+  inativosLinha: { display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 13.5, color: 'var(--muted)', marginTop: 2 },
+  inativosSeta: { color: 'var(--muted)', fontSize: 18 },
   grelha: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 },
   cartao: { display: 'flex', flexDirection: 'column', gap: 6, background: '#fff', border: '1px solid var(--border)', borderRadius: 14, padding: 18, textDecoration: 'none', color: 'var(--foreground)' },
   cartaoIcon: { fontSize: 28 },

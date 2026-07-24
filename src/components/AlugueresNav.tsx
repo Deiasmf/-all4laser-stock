@@ -10,6 +10,7 @@ const LINKS = [
   { href: '/alugueres/disponibilidade', label: 'Disponibilidade' },
   { href: '/alugueres/agenda', label: 'Agenda' },
   { href: '/alugueres/previsao', label: 'Previsão' },
+  { href: '/alugueres/inatividade', label: 'Clientes Inativos' },
   { href: '/alugueres/precos', label: 'Preços' },
   { href: '/alugueres/reservas', label: 'Reservas' },
   { href: '/alugueres/contratos', label: 'Contratos' },

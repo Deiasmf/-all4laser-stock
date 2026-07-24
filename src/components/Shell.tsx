@@ -117,6 +117,7 @@ const TITULOS: { prefixo: string; titulo: string }[] = [
   { prefixo: '/clinico', titulo: 'Clínico' },
   { prefixo: '/compras/fornecedores', titulo: 'Fornecedores' },
   { prefixo: '/compras', titulo: 'Pedidos de Compra' },
+  { prefixo: '/alugueres/inatividade', titulo: 'Clientes Inativos' },
   { prefixo: '/alugueres', titulo: 'Alugueres' },
   { prefixo: '/projetos', titulo: 'Outros Projetos' },
   { prefixo: '/processos', titulo: 'Processos' },
