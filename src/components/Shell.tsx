@@ -87,6 +87,7 @@ const TITULOS: { prefixo: string; titulo: string }[] = [
   { prefixo: '/admin-dept/expedicao', titulo: 'Prontos a Enviar' },
   { prefixo: '/admin-dept/envios-pecas', titulo: 'Envios de Encomendas' },
   { prefixo: '/admin-dept', titulo: 'Administrativo' },
+  { prefixo: '/financeiro/contas-correntes', titulo: 'Contas Correntes' },
   { prefixo: '/financeiro', titulo: 'Financeiro' },
   { prefixo: '/definicoes/utilizadores', titulo: 'Utilizadores' },
   { prefixo: '/comercial/notas-encomenda', titulo: 'Notas de Encomenda' },
