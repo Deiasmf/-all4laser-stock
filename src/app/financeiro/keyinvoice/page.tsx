@@ -25,10 +25,11 @@ export default function KeyinvoicePage() {
 
   const contagens = useMemo(() => ({
     total: linhas.length,
-    aImportar: linhas.filter((l) => l.associada && !l.jaImportada).length,
-    jaImportadas: linhas.filter((l) => l.jaImportada).length,
+    novos: linhas.filter((l) => l.associada && !l.jaImportada).length,
+    atualizar: linhas.filter((l) => l.associada && l.jaImportada).length,
     semEntidade: linhas.filter((l) => !l.associada).length,
   }), [linhas])
+  const podeImportar = contagens.novos + contagens.atualizar
 
   async function analisar(conteudo: string) {
     setResultado(null)
@@ -48,7 +49,7 @@ export default function KeyinvoicePage() {
   }
 
   async function executarImport() {
-    if (contagens.aImportar === 0) return
+    if (podeImportar === 0) return
     setAImportar(true)
     const r = await importar(linhas, { id: perfil?.id ?? null, nome: perfil?.nome ?? null })
     setResultado(r)
@@ -72,12 +73,12 @@ export default function KeyinvoicePage() {
       <section style={c.card}>
         <div style={c.cardTitulo}>Como importar</div>
         <ol style={c.passos}>
-          <li>Exporta os documentos do Keyinvoice e organiza-os no modelo CSV.</li>
+          <li>No Keyinvoice, exporta o mapa de pendentes de clientes (Excel/CSV).</li>
           <li>Carrega o ficheiro (ou cola o conteúdo) e confirma a pré-visualização.</li>
-          <li>Clica em <strong>Importar</strong>. Documentos já importados são ignorados automaticamente.</li>
+          <li>Clica em <strong>Importar</strong>. Documentos novos são criados; os já importados são atualizados (refresca o valor pendente).</li>
         </ol>
         <p style={c.nota}>
-          Colunas: <code style={c.code}>{CABECALHO_CSV}</code>. As entidades são associadas por NIF (ou nome).
+          Aceita o <strong>export do Keyinvoice</strong> tal como sai (Data · RefªDocº · Cliente · Contribuinte · … · Valor Pendente) — o tipo vem da referência e o valor é o pendente. As entidades são associadas por NIF (ou nome). Também aceita o modelo próprio (<code style={c.code}>{CABECALHO_CSV}</code>).
         </p>
         <div style={c.acoesTopo}>
           <button style={c.btnSec} onClick={descarregarModeloCsv}>⬇️ Descarregar modelo CSV</button>
@@ -120,8 +121,8 @@ export default function KeyinvoicePage() {
           <div style={c.cardTitulo}>Pré-visualização</div>
           <div style={c.resumo}>
             <Chip cor="#1E40AF" bg="#DBEAFE" n={contagens.total} txt="documentos" />
-            <Chip cor="#065F46" bg="#D1FAE5" n={contagens.aImportar} txt="a importar" />
-            <Chip cor="#6B7280" bg="#F3F4F6" n={contagens.jaImportadas} txt="já importados" />
+            <Chip cor="#065F46" bg="#D1FAE5" n={contagens.novos} txt="novos" />
+            <Chip cor="#5B21B6" bg="#EDE9FE" n={contagens.atualizar} txt="a atualizar" />
             <Chip cor="#92400E" bg="#FEF3C7" n={contagens.semEntidade} txt="sem entidade" />
           </div>
 
@@ -129,7 +130,7 @@ export default function KeyinvoicePage() {
             <div style={c.resultado}>
               {resultado.erro
                 ? `⚠️ Erro na importação: ${resultado.erro}`
-                : `✅ Importados ${resultado.importados}. Ignorados ${resultado.ignorados}. Sem entidade ${resultado.semEntidade}.`}
+                : `✅ ${resultado.importados} novo(s) · ${resultado.atualizados} atualizado(s) · ${resultado.semEntidade} sem entidade.`}
             </div>
           )}
 
@@ -157,8 +158,8 @@ export default function KeyinvoicePage() {
           {linhas.length > 200 && <p style={c.nota}>A mostrar 200 de {linhas.length}. A importação processa todas.</p>}
 
           <div style={{ marginTop: 12 }}>
-            <button style={c.btnPrim} disabled={aImportar || contagens.aImportar === 0} onClick={executarImport}>
-              {aImportar ? 'A importar...' : `Importar ${contagens.aImportar} movimento(s)`}
+            <button style={c.btnPrim} disabled={aImportar || podeImportar === 0} onClick={executarImport}>
+              {aImportar ? 'A importar...' : `Importar / atualizar ${podeImportar}`}
             </button>
             {contagens.semEntidade > 0 && (
               <p style={c.nota}>As linhas “sem entidade” não são importadas — cria o cliente/fornecedor (ou corrige o NIF/nome) e volta a analisar.</p>
@@ -205,9 +206,9 @@ function Chip({ n, txt, cor, bg }: { n: number; txt: string; cor: string; bg: st
 }
 
 function EstadoLinha({ l }: { l: LinhaImport }) {
-  if (l.jaImportada) return <span style={{ ...c.badge, color: '#6B7280', background: '#F3F4F6' }}>Já importado</span>
   if (!l.associada) return <span style={{ ...c.badge, color: '#92400E', background: '#FEF3C7' }}>Sem entidade</span>
-  return <span style={{ ...c.badge, color: '#065F46', background: '#D1FAE5' }}>A importar</span>
+  if (l.jaImportada) return <span style={{ ...c.badge, color: '#5B21B6', background: '#EDE9FE' }}>Atualizar</span>
+  return <span style={{ ...c.badge, color: '#065F46', background: '#D1FAE5' }}>Novo</span>
 }
 
 const c: Record<string, React.CSSProperties> = {
