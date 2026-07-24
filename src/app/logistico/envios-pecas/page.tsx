@@ -3,26 +3,25 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { listarEnvios } from '@/lib/enviosPecas'
-import { ESTADOS_ENVIO, estadoInfo, transportadoraLabel, formatarEuro, type EnvioPeca } from '@/types/envioPecas'
+import { listarEnvios, itensPorEnvio } from '@/lib/enviosPecas'
+import {
+  ESTADOS_ENVIO, estadoInfo, transportadoraLabel, formatarEuro,
+  entidadeDestino, resumoMaterial, tituloEnvio, type EnvioPeca, type ItemResumo,
+} from '@/types/envioPecas'
 import BotaoExportar from '@/components/BotaoExportar'
 import type { ColunaExport } from '@/lib/exportar'
-
-// Colunas para exportação (espelham a tabela de envios)
-const colunasExport: ColunaExport<EnvioPeca>[] = [
-  { cabecalho: 'Número', valor: (e) => e.numero },
-  { cabecalho: 'Data', valor: (e) => (e.created_at ?? '').slice(0, 10) },
-  { cabecalho: 'Cliente', valor: (e) => e.cliente_nome },
-  { cabecalho: 'Responsável', valor: (e) => e.responsavel_nome },
-  { cabecalho: 'Transportadora', valor: (e) => transportadoraLabel(e) },
-  { cabecalho: 'Estado', valor: (e) => estadoInfo(e.estado).label },
-  { cabecalho: 'Pago', valor: (e) => (e.pago ? 'Sim' : 'Não') },
-  { cabecalho: 'Valor', valor: (e) => formatarEuro(e.valor_a_faturar) },
-]
 
 const CHAVE_FILTROS = 'envios-pecas:filtros'
 
 type Filtros = { pesquisa: string; estado: string; pago: string; mes: string }
+
+// Envio já com o título/resumo calculados e o texto onde a pesquisa procura.
+type EnvioLista = EnvioPeca & {
+  titulo: string
+  resumo: string
+  destino: string
+  alvoPesquisa: string
+}
 
 function lerFiltros(): Filtros {
   if (typeof window === 'undefined') return { pesquisa: '', estado: '', pago: '', mes: '' }
@@ -45,7 +44,7 @@ function EstadoBadge({ estado }: { estado: string }) {
 
 export default function EnviosPecasPage() {
   const router = useRouter()
-  const [envios, setEnvios] = useState<EnvioPeca[]>([])
+  const [envios, setEnvios] = useState<EnvioLista[]>([])
   const [carregando, setCarregando] = useState(true)
   const [g] = useState(lerFiltros)
   const [pesquisa, setPesquisa] = useState(g.pesquisa)
@@ -54,7 +53,25 @@ export default function EnviosPecasPage() {
   const [mes, setMes] = useState(g.mes)
 
   useEffect(() => {
-    listarEnvios().then((e) => { setEnvios(e); setCarregando(false) })
+    (async () => {
+      const lista = await listarEnvios()
+      const mapa = await itensPorEnvio(lista.map((e) => e.id))
+      setEnvios(lista.map((e) => {
+        const itens: ItemResumo[] = mapa.get(e.id) ?? []
+        const destino = entidadeDestino(e) || '—'
+        const resumo = resumoMaterial(itens)
+        // Pesquisa encontra por nº EP, entidade e tipo/nome de peça.
+        const nomesItens = itens.map((i) => i.peca_nome ?? '').join(' ')
+        return {
+          ...e,
+          titulo: tituloEnvio(e, itens),
+          resumo,
+          destino,
+          alvoPesquisa: `${e.numero ?? ''} ${destino} ${resumo} ${nomesItens}`.toLowerCase(),
+        }
+      }))
+      setCarregando(false)
+    })()
   }, [])
 
   useEffect(() => {
@@ -68,15 +85,25 @@ export default function EnviosPecasPage() {
       if (pago === 'sim' && !e.pago) return false
       if (pago === 'nao' && e.pago) return false
       if (mes && !(e.created_at ?? '').startsWith(mes)) return false
-      if (q) {
-        const alvo = `${e.numero ?? ''} ${e.cliente_nome ?? ''}`.toLowerCase()
-        if (!alvo.includes(q)) return false
-      }
+      if (q && !e.alvoPesquisa.includes(q)) return false
       return true
     })
   }, [envios, pesquisa, estado, pago, mes])
 
   const temFiltros = !!pesquisa || !!estado || !!pago || !!mes
+
+  // Colunas de exportação — incluem o título descritivo, destino, resumo e método.
+  const colunasExport: ColunaExport<EnvioLista>[] = [
+    { cabecalho: 'Título', valor: (e) => e.titulo },
+    { cabecalho: 'Número', valor: (e) => e.numero },
+    { cabecalho: 'Data', valor: (e) => (e.created_at ?? '').slice(0, 10) },
+    { cabecalho: 'Destino', valor: (e) => e.destino },
+    { cabecalho: 'Material', valor: (e) => e.resumo },
+    { cabecalho: 'Método de envio', valor: (e) => transportadoraLabel(e) },
+    { cabecalho: 'Estado', valor: (e) => estadoInfo(e.estado).label },
+    { cabecalho: 'Pago', valor: (e) => (e.pago ? 'Sim' : 'Não') },
+    { cabecalho: 'Valor', valor: (e) => formatarEuro(e.valor_a_faturar) },
+  ]
 
   return (
     <main style={c.page}>
@@ -87,10 +114,10 @@ export default function EnviosPecasPage() {
 
       <div style={c.filtros}>
         <input
-          placeholder="Procurar por número ou cliente..."
+          placeholder="Procurar por nº EP, entidade ou tipo de peça..."
           value={pesquisa}
           onChange={(e) => setPesquisa(e.target.value)}
-          style={{ ...c.input, flex: 1, minWidth: 180 }}
+          style={{ ...c.input, flex: 1, minWidth: 200 }}
         />
         <select value={estado} onChange={(e) => setEstado(e.target.value)} style={c.select}>
           <option value="">Todos os estados</option>
@@ -120,26 +147,29 @@ export default function EnviosPecasPage() {
         <p style={c.estado}>Sem envios.</p>
       ) : (
         <div style={c.tabela}>
-          <div style={{ ...c.linha, ...c.cab }}>
-            <span>Número</span>
-            <span>Data</span>
-            <span>Cliente</span>
-            <span>Responsável</span>
-            <span>Transportadora</span>
-            <span>Estado</span>
-            <span style={{ textAlign: 'center' }}>Pago</span>
-            <span style={{ textAlign: 'right' }}>Valor</span>
-          </div>
           {filtrados.map((e) => (
-            <div key={e.id} style={{ ...c.linha, ...c.clicavel }} onClick={() => router.push(`/logistico/envios-pecas/${e.id}`)}>
-              <span style={{ fontWeight: 700 }}>{e.numero ?? '—'}</span>
-              <span style={c.muted}>{(e.created_at ?? '').slice(0, 10)}</span>
-              <span>{e.cliente_nome ?? '—'}</span>
-              <span style={c.muted}>{e.responsavel_nome ?? '—'}</span>
-              <span style={c.muted}>{transportadoraLabel(e)}</span>
-              <span><EstadoBadge estado={e.estado} /></span>
-              <span style={{ textAlign: 'center' }} title={e.pago ? 'Pago' : 'Não pago'}>{e.pago ? '🟢' : '🔴'}</span>
-              <span style={{ textAlign: 'right', fontWeight: 700 }}>{formatarEuro(e.valor_a_faturar)}</span>
+            <div key={e.id} style={c.cartao} onClick={() => router.push(`/logistico/envios-pecas/${e.id}`)}>
+              <div style={c.cartaoTopo}>
+                <span style={c.tituloEnvio}>{e.titulo}</span>
+                <span style={c.data}>{(e.created_at ?? '').slice(0, 10)}</span>
+              </div>
+              <div style={c.meta}>
+                <span style={c.metaItem}><span style={c.metaRotulo}>Destino:</span> {e.destino}</span>
+                <span style={c.sep}>·</span>
+                <span style={c.metaItem}><span style={c.metaRotulo}>Material:</span> {e.resumo}</span>
+                <span style={c.sep}>·</span>
+                <span style={c.metaItem}><span style={c.metaRotulo}>Método:</span> {transportadoraLabel(e)}</span>
+                <span style={c.sep}>·</span>
+                <EstadoBadge estado={e.estado} />
+                {e.faturavel && e.valor_a_faturar != null && (
+                  <>
+                    <span style={c.sep}>·</span>
+                    <span style={c.metaItem} title={e.pago ? 'Pago' : 'Não pago'}>
+                      {e.pago ? '🟢' : '🔴'} {formatarEuro(e.valor_a_faturar)}
+                    </span>
+                  </>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -157,11 +187,15 @@ const c: Record<string, React.CSSProperties> = {
   select: { padding: 10, border: '1px solid #ccc', borderRadius: 8, fontSize: 15 },
   resumo: { background: 'var(--accent-bg, #eef1f6)', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 14 },
   estado: { color: 'var(--muted)', padding: 8 },
-  tabela: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 8, overflowX: 'auto' },
-  linha: { display: 'grid', gridTemplateColumns: '1.1fr 0.9fr 1.5fr 1.1fr 1.1fr 1.1fr 0.6fr 1fr', gap: 8, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center', minWidth: 900 },
-  clicavel: { cursor: 'pointer' },
-  cab: { fontWeight: 700, color: 'var(--muted)', fontSize: 12, borderBottom: '2px solid var(--border)' },
-  muted: { color: 'var(--muted)', fontSize: 13 },
+  tabela: { display: 'flex', flexDirection: 'column', gap: 8 },
+  cartao: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 14px', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 6 },
+  cartaoTopo: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' },
+  tituloEnvio: { fontWeight: 700, fontSize: 15, color: 'var(--foreground)' },
+  data: { color: 'var(--muted)', fontSize: 13, whiteSpace: 'nowrap' },
+  meta: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 13, color: 'var(--muted)' },
+  metaItem: { color: 'var(--foreground)' },
+  metaRotulo: { color: 'var(--muted)', fontWeight: 600 },
+  sep: { color: 'var(--border)' },
   btnPrimario: { background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 18px', fontWeight: 700, cursor: 'pointer', textDecoration: 'none' },
   btnGhost: { background: '#fff', color: 'var(--foreground)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 16px', fontWeight: 600, cursor: 'pointer' },
 }

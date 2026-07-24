@@ -157,6 +157,105 @@ export function transportadoraLabel(e: Pick<EnvioPeca, 'transportadora' | 'trans
   return e.transportadora
 }
 
+// ─── Título descritivo do envio ──────────────────────────────────────────────
+// Gera um título como "Envio EP-2026-0012 — Meditek — 3 Fibras" a partir do
+// número, da entidade destino e de um resumo do material. Calculado de forma
+// dinâmica (sem guardar na BD) — aplica-se a todos os registos, novos e antigos.
+
+// Item mínimo para gerar o resumo (basta nome e quantidade).
+export type ItemResumo = { peca_nome: string | null; quantidade: number }
+
+// Tipos de peça reconhecidos por palavras-chave, com singular/plural em pt-PT.
+// A ordem importa: o 1º padrão que bater vence.
+const TIPOS_PECA: { chaves: RegExp; singular: string; plural: string }[] = [
+  { chaves: /fibra|fiber/i, singular: 'Fibra', plural: 'Fibras' },
+  { chaves: /handpiece|peça de mão|peca de mao|manípulo|manipulo|\bhp\b/i, singular: 'Handpiece', plural: 'Handpieces' },
+  { chaves: /ponteira|\btip\b|spot size|\bspot\b/i, singular: 'Ponteira', plural: 'Ponteiras' },
+  { chaves: /cartucho|cartridge/i, singular: 'Cartucho', plural: 'Cartuchos' },
+  { chaves: /lâmpada|lampada|flash ?lamp|\blamp\b/i, singular: 'Lâmpada', plural: 'Lâmpadas' },
+  { chaves: /filtro|filter/i, singular: 'Filtro', plural: 'Filtros' },
+  { chaves: /lente|\blens\b/i, singular: 'Lente', plural: 'Lentes' },
+  { chaves: /espelho|mirror/i, singular: 'Espelho', plural: 'Espelhos' },
+  { chaves: /\bcabo\b|\bcable\b/i, singular: 'Cabo', plural: 'Cabos' },
+  { chaves: /fonte|power supply|\bpsu\b/i, singular: 'Fonte', plural: 'Fontes' },
+  { chaves: /placa|\bboard\b|\bpcb\b/i, singular: 'Placa', plural: 'Placas' },
+  { chaves: /sensor/i, singular: 'Sensor', plural: 'Sensores' },
+  { chaves: /bomba|\bpump\b/i, singular: 'Bomba', plural: 'Bombas' },
+  { chaves: /válvula|valvula|valve/i, singular: 'Válvula', plural: 'Válvulas' },
+  { chaves: /conector|conetor|connector/i, singular: 'Conector', plural: 'Conectores' },
+  { chaves: /ecrã|ecra|display|screen/i, singular: 'Ecrã', plural: 'Ecrãs' },
+]
+
+// Deriva um "tipo" legível do nome da peça. Usa as palavras-chave conhecidas;
+// se nenhuma bater, usa a 1ª palavra significativa do nome como tipo.
+export function tipoDaPeca(nome: string | null): { singular: string; plural: string } {
+  const n = (nome ?? '').trim()
+  for (const t of TIPOS_PECA) if (t.chaves.test(n)) return { singular: t.singular, plural: t.plural }
+  const palavra = n.match(/[\p{L}\p{N}]+/u)?.[0] ?? 'Item'
+  const singular = palavra.charAt(0).toUpperCase() + palavra.slice(1).toLowerCase()
+  const plural = /s$/i.test(singular) ? singular : singular + 's'
+  return { singular, plural }
+}
+
+// Resume o material de um envio agrupando por tipo e somando quantidades:
+//   1 tipo  → "3 Fibras"
+//   2 tipos → "3 Fibras + 2 Handpieces"
+//   3+ tipos → "5 itens (3 tipos)"
+export function resumoMaterial(itens: ItemResumo[]): string {
+  if (!itens || itens.length === 0) return 'Sem material'
+  const ordem: string[] = []
+  const grupos = new Map<string, { qtd: number; singular: string; plural: string }>()
+  for (const it of itens) {
+    const t = tipoDaPeca(it.peca_nome)
+    const q = it.quantidade > 0 ? it.quantidade : 1
+    const g = grupos.get(t.singular)
+    if (g) g.qtd += q
+    else { grupos.set(t.singular, { qtd: q, singular: t.singular, plural: t.plural }); ordem.push(t.singular) }
+  }
+  if (ordem.length <= 2) {
+    return ordem
+      .map((k) => { const g = grupos.get(k)!; return `${g.qtd} ${g.qtd === 1 ? g.singular : g.plural}` })
+      .join(' + ')
+  }
+  const total = [...grupos.values()].reduce((a, g) => a + g.qtd, 0)
+  return `${total} itens (${ordem.length} tipos)`
+}
+
+// Nome da entidade destino (fornecedor ou cliente).
+export function entidadeDestino(
+  e: Pick<EnvioPeca, 'destinatario_tipo' | 'cliente_nome' | 'fornecedor_nome'>
+): string {
+  const nome = e.destinatario_tipo === 'fornecedor' ? e.fornecedor_nome : e.cliente_nome
+  return (nome ?? '').trim()
+}
+
+// Título descritivo para mostrar na interface (usa travessão "—").
+export function tituloEnvio(e: EnvioPeca, itens: ItemResumo[]): string {
+  const partes = [
+    e.numero ? `Envio ${e.numero}` : 'Envio',
+    entidadeDestino(e),
+    resumoMaterial(itens),
+  ].filter((p) => p && p.trim())
+  return partes.join(' — ')
+}
+
+// Remove caracteres inválidos em nomes de ficheiro (\ / : * ? " < > |) e
+// normaliza espaços. Mantém acentuação e maiúsculas.
+export function sanitizarNomeFicheiro(nome: string): string {
+  return nome.replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ').trim()
+}
+
+// Nome de ficheiro para PDFs/documentos gerados (usa hífen "-", sem extensão):
+//   "Envio EP-2026-0012 - Meditek - 3 Fibras"
+export function nomeFicheiroEnvio(e: EnvioPeca, itens: ItemResumo[]): string {
+  const partes = [
+    e.numero ? `Envio ${e.numero}` : 'Envio',
+    entidadeDestino(e),
+    resumoMaterial(itens),
+  ].filter((p) => p && p.trim())
+  return sanitizarNomeFicheiro(partes.join(' - ')) || 'Envio'
+}
+
 export function formatarEuro(v: number | null | undefined) {
   if (v == null) return '—'
   return v.toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' })

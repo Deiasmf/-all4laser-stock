@@ -12,6 +12,7 @@ import {
 } from '@/lib/enviosPecas'
 import {
   estadoInfo, transportadoraLabel, formatarEuro, calcularIva, motivoInfo, TRANSPORTADORA_LINK, TRANSPORTADORAS, KEYINVOICE_URL, ehEntregaEmMaos,
+  nomeFicheiroEnvio,
   type EnvioPeca, type EnvioItem,
 } from '@/types/envioPecas'
 import BotaoPdf from '@/components/BotaoPdf'
@@ -222,7 +223,7 @@ export default function DetalheEnvioPage() {
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <BotaoPdf
-            ficheiro={envio.numero ?? 'envio'}
+            ficheiro={nomeFicheiroEnvio(envio, itens)}
             documento={() => ({
               titulo: 'Envio de Encomenda',
               subtitulo: envio.numero ?? undefined,

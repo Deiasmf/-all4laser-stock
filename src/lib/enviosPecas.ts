@@ -182,6 +182,25 @@ export async function listarItens(envioId: string): Promise<EnvioItem[]> {
   return (data as EnvioItem[]) ?? []
 }
 
+// Itens (nome + quantidade) de vários envios numa só query — usado na listagem
+// para gerar o título descritivo e o resumo de material de cada envio.
+export async function itensPorEnvio(
+  ids: string[]
+): Promise<Map<string, { peca_nome: string | null; quantidade: number }[]>> {
+  const map = new Map<string, { peca_nome: string | null; quantidade: number }[]>()
+  if (ids.length === 0) return map
+  const { data } = await supabase
+    .from('envios_pecas_itens')
+    .select('envio_id, peca_nome, quantidade')
+    .in('envio_id', ids)
+  for (const it of (data ?? []) as { envio_id: string; peca_nome: string | null; quantidade: number }[]) {
+    const arr = map.get(it.envio_id) ?? []
+    arr.push({ peca_nome: it.peca_nome, quantidade: it.quantidade })
+    map.set(it.envio_id, arr)
+  }
+  return map
+}
+
 // ─── Documentos (faturas / cartas de porte) ──────────────────────────────────
 
 function nomeSeguro(nome: string) {
