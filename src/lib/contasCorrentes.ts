@@ -49,6 +49,8 @@ export type MovimentoCC = {
   notas: string | null
   origem: OrigemMov
   keyinvoice_doc_id: string | null
+  ficheiro_caminho: string | null
+  ficheiro_nome: string | null
   criado_por: string | null
   criado_por_nome: string | null
   created_at: string
