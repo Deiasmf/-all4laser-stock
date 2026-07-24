@@ -186,6 +186,22 @@ const TIPOS_PECA: { chaves: RegExp; singular: string; plural: string }[] = [
   { chaves: /ecrã|ecra|display|screen/i, singular: 'Ecrã', plural: 'Ecrãs' },
 ]
 
+// Pluraliza uma palavra em português (regras aproximadas do pt-PT). Usado no
+// fallback dos tipos de peça não catalogados.
+function pluralizarPt(palavra: string): string {
+  const p = palavra
+  if (/s$/i.test(p)) return p                          // já no plural / invariável (-s)
+  if (/ão$/i.test(p)) return p.replace(/ão$/i, 'ões')  // botão → botões
+  if (/m$/i.test(p)) return p.replace(/m$/i, 'ns')     // pino? garagem → garagens
+  if (/al$/i.test(p)) return p.replace(/al$/i, 'ais')  // cabeçal → cabeçais
+  if (/el$/i.test(p)) return p.replace(/el$/i, 'eis')  // painel → paineis
+  if (/ol$/i.test(p)) return p.replace(/ol$/i, 'ois')  // farol → farois
+  if (/ul$/i.test(p)) return p.replace(/ul$/i, 'uis')
+  if (/il$/i.test(p)) return p.replace(/il$/i, 'is')   // fusil → fusis
+  if (/[rz]$/i.test(p)) return p + 'es'                // motor → motores, luz → luzes
+  return p + 's'                                        // vogal e restantes → +s
+}
+
 // Deriva um "tipo" legível do nome da peça. Usa as palavras-chave conhecidas;
 // se nenhuma bater, usa a 1ª palavra significativa do nome como tipo.
 export function tipoDaPeca(nome: string | null): { singular: string; plural: string } {
@@ -193,8 +209,7 @@ export function tipoDaPeca(nome: string | null): { singular: string; plural: str
   for (const t of TIPOS_PECA) if (t.chaves.test(n)) return { singular: t.singular, plural: t.plural }
   const palavra = n.match(/[\p{L}\p{N}]+/u)?.[0] ?? 'Item'
   const singular = palavra.charAt(0).toUpperCase() + palavra.slice(1).toLowerCase()
-  const plural = /s$/i.test(singular) ? singular : singular + 's'
-  return { singular, plural }
+  return { singular, plural: pluralizarPt(singular) }
 }
 
 // Resume o material de um envio agrupando por tipo e somando quantidades:
