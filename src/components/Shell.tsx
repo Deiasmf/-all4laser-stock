@@ -9,8 +9,11 @@ import { iniciais } from '@/lib/ui'
 
 // Departamentos podem ter sub-itens (filhos). Itens com filhos são grupos
 // recolhíveis (clicar no cabeçalho abre/fecha).
+// `requer` esconde o item para quem não tem o acesso (o bloqueio real é a RLS
+// + as guardas de rota; isto só limpa o menu).
+type Requer = 'admin' | 'financeiro'
 type SubItem = { href: string; label: string; icon: string }
-type Item = { href?: string; label: string; icon?: string; badge?: 'leads'; filhos?: SubItem[] }
+type Item = { href?: string; label: string; icon?: string; badge?: 'leads'; filhos?: SubItem[]; requer?: Requer }
 type Seccao = { titulo: string; itens: Item[] }
 
 const NAV: Seccao[] = [
@@ -25,7 +28,7 @@ const NAV: Seccao[] = [
           { href: '/admin-dept/envios-pecas', label: 'Envios de Encomendas', icon: '📬' },
         ],
       },
-      { href: '/financeiro', label: 'Financeiro', icon: '💶' },
+      { href: '/financeiro', label: 'Financeiro', icon: '💶', requer: 'financeiro' },
       {
         href: '/comercial', label: 'Comercial', icon: '🤝',
         filhos: [
@@ -72,7 +75,10 @@ const NAV: Seccao[] = [
   },
   {
     titulo: 'Sistema',
-    itens: [{ href: '/processos', label: 'Processos', icon: '📋' }],
+    itens: [
+      { href: '/processos', label: 'Processos', icon: '📋' },
+      { href: '/definicoes/utilizadores', label: 'Utilizadores', icon: '👤', requer: 'admin' },
+    ],
   },
 ]
 
@@ -82,6 +88,7 @@ const TITULOS: { prefixo: string; titulo: string }[] = [
   { prefixo: '/admin-dept/envios-pecas', titulo: 'Envios de Encomendas' },
   { prefixo: '/admin-dept', titulo: 'Administrativo' },
   { prefixo: '/financeiro', titulo: 'Financeiro' },
+  { prefixo: '/definicoes/utilizadores', titulo: 'Utilizadores' },
   { prefixo: '/comercial/notas-encomenda', titulo: 'Notas de Encomenda' },
   { prefixo: '/comercial/clientes', titulo: 'Clientes' },
   { prefixo: '/comercial/reservas-portal', titulo: 'Reservas Portal' },
@@ -118,7 +125,7 @@ function tituloDaRota(path: string): string {
 }
 
 export default function Shell({ children }: { children: React.ReactNode }) {
-  const { session, perfil, sair } = useAuth()
+  const { session, perfil, sair, isAdmin, isFinanceiro } = useAuth()
   const pathname = usePathname()
   const [leadsNovas, setLeadsNovas] = useState(0)
   const [menuAberto, setMenuAberto] = useState(false)
@@ -171,6 +178,18 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     return (!!it.href && ehAtivo(it.href)) || (it.filhos?.some((f) => ehAtivo(f.href)) ?? false)
   }
 
+  // Mostra o item conforme o role (o bloqueio real é a RLS + guardas de rota).
+  function podeVer(requer?: Requer) {
+    if (!requer) return true
+    if (requer === 'admin') return isAdmin
+    if (requer === 'financeiro') return isFinanceiro
+    return true
+  }
+  // Aplica o filtro e descarta secções que ficam sem itens.
+  const navVisivel = NAV
+    .map((sec) => ({ ...sec, itens: sec.itens.filter((it) => podeVer(it.requer)) }))
+    .filter((sec) => sec.itens.length > 0)
+
   const nome = perfil?.nome ?? perfil?.email ?? 'Utilizador'
   const ini = iniciais(perfil?.nome, perfil?.email)
 
@@ -186,7 +205,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="a4l-sb-nav">
-          {NAV.map((sec) => (
+          {navVisivel.map((sec) => (
             <div key={sec.titulo}>
               <div className="a4l-sb-section">{sec.titulo}</div>
               {sec.itens.map((it) => {
@@ -239,7 +258,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
           <div className="a4l-avatar">{ini}</div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="a4l-sb-foot-nome">{nome}</div>
-            <div className="a4l-sb-foot-role">{perfil?.role ?? 'viewer'}</div>
+            <div className="a4l-sb-foot-role">{perfil?.role ?? 'standard'}</div>
           </div>
           <button
             onClick={sair}

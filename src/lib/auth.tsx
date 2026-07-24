@@ -11,6 +11,15 @@ export type Perfil = {
   role: string
 }
 
+// Roles do staff. 'standard' é o role não-privilegiado (antigo 'viewer', ainda
+// tolerado como sinónimo para retrocompatibilidade).
+export type Role = 'admin' | 'financeiro' | 'standard'
+
+// True se o role dá acesso ao módulo Financeiro (espelha has_financeiro_access() na BD).
+export function temAcessoFinanceiro(role: string | null | undefined): boolean {
+  return role === 'admin' || role === 'financeiro'
+}
+
 type AuthContexto = {
   session: Session | null
   perfil: Perfil | null
@@ -18,7 +27,11 @@ type AuthContexto = {
   // True quando a busca do perfil já terminou (haja ou não perfil). Permite às
   // guardas distinguir staff (tem perfil) de clientes do portal (não têm perfil).
   perfilCarregado: boolean
+  role: string | null
   isAdmin: boolean
+  // Acesso ao módulo Financeiro (admin ou financeiro). O bloqueio real é a RLS
+  // na BD; isto só controla menus e a guarda de rota no cliente.
+  isFinanceiro: boolean
   sair: () => Promise<void>
 }
 
@@ -27,7 +40,9 @@ const Ctx = createContext<AuthContexto>({
   perfil: null,
   carregando: true,
   perfilCarregado: false,
+  role: null,
   isAdmin: false,
+  isFinanceiro: false,
   sair: async () => {},
 })
 
@@ -101,7 +116,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <Ctx.Provider
-      value={{ session, perfil, carregando, perfilCarregado, isAdmin: perfil?.role === 'admin', sair }}
+      value={{
+        session,
+        perfil,
+        carregando,
+        perfilCarregado,
+        role: perfil?.role ?? null,
+        isAdmin: perfil?.role === 'admin',
+        isFinanceiro: temAcessoFinanceiro(perfil?.role),
+        sair,
+      }}
     >
       {children}
     </Ctx.Provider>
