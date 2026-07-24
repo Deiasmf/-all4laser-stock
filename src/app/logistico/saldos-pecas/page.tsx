@@ -130,7 +130,10 @@ export default function SaldosPecasPage() {
           <h1 style={s.titulo}>Saldos de Peças</h1>
           <Link href="/logistico/reparacao-pecas" style={s.voltar}>← Reparação de Peças</Link>
         </div>
-        <BotaoExportar nome="saldos-pecas" colunas={colunasExport} linhas={linhasExport} />
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Link href="/logistico/saldos-pecas/receber" style={s.btnReceber}>📥 Registar receção</Link>
+          <BotaoExportar nome="saldos-pecas" colunas={colunasExport} linhas={linhasExport} />
+        </div>
       </div>
 
       <p style={s.nota}>
@@ -236,6 +239,7 @@ const s: Record<string, React.CSSProperties> = {
   cabecalho: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 8, flexWrap: 'wrap' },
   titulo: { fontSize: 22, fontWeight: 700, color: 'var(--primary)' },
   voltar: { color: 'var(--muted)', textDecoration: 'none', fontSize: 14 },
+  btnReceber: { background: 'var(--primary)', color: '#fff', textDecoration: 'none', borderRadius: 8, padding: '9px 14px', fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap' },
   nota: { fontSize: 13, color: 'var(--muted)', margin: '4px 0 14px' },
   filtros: { display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 },
   input: { padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface)', color: 'var(--foreground)', font: 'inherit', minWidth: 150 },

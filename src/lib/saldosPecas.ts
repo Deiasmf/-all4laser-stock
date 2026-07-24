@@ -39,6 +39,66 @@ export async function listarMovimentosPecas(): Promise<ParteMovimento[]> {
   return todos
 }
 
+// ── Receção (fechar o ciclo) ────────────────────────────────────────────────
+
+// Peças que ainda estão fora (em reparação, entrada por registar).
+export type ItemPorReceber = {
+  id: string
+  entidade: string
+  peca: string
+  referencia: string | null
+  serial_number: string | null
+  sn_avariado: string | null
+  data_saida: string | null
+  enviado: number
+  recebido: number
+}
+
+export async function listarPorReceber(): Promise<ItemPorReceber[]> {
+  const cols = 'id, entidade, peca, referencia, serial_number, sn_avariado, data_saida, enviado, recebido'
+  const todos: ItemPorReceber[] = []
+  for (let offset = 0; ; offset += 1000) {
+    const { data } = await supabase
+      .from('parts_movements')
+      .select(cols)
+      .eq('estado', 'em_reparacao')
+      .order('data_saida', { ascending: true, nullsFirst: false })
+      .range(offset, offset + 999)
+    const lote = (data as ItemPorReceber[]) ?? []
+    todos.push(...lote)
+    if (lote.length < 1000) break
+  }
+  return todos
+}
+
+// Regista a receção de uma reparação: fecha o ciclo (data_entrada + estado) e
+// cria o movimento de entrada. Para peças sem SN completa as quantidades.
+export async function registarRececao(
+  reparacaoId: string,
+  data: string,
+  criador: { id: string | null; nome: string | null }
+): Promise<{ error: unknown | null }> {
+  const { data: itens } = await supabase
+    .from('reparacao_pecas_itens')
+    .select('id, quantidade_saida')
+    .eq('reparacao_id', reparacaoId)
+  for (const it of (itens as { id: string; quantidade_saida: number }[] | null) ?? []) {
+    await supabase.from('reparacao_pecas_itens')
+      .update({ quantidade_entrada: it.quantidade_saida, estado: 'reparada' })
+      .eq('id', it.id)
+  }
+  const { error } = await supabase.from('reparacao_pecas')
+    .update({ status: 'reparada', data_entrada: data })
+    .eq('id', reparacaoId)
+  if (error) return { error }
+  await supabase.from('reparacao_pecas_movimentos').insert({
+    reparacao_id: reparacaoId, tipo: 'entrada', data,
+    notas: 'Receção registada no ecrã de Saldos',
+    criado_por: criador.id, criado_por_nome: criador.nome,
+  })
+  return { error: null }
+}
+
 // Data ISO (YYYY-MM-DD) -> DD/MM/YYYY
 export function dataPt(iso: string | null): string {
   if (!iso) return '—'
