@@ -90,6 +90,7 @@ const TITULOS: { prefixo: string; titulo: string }[] = [
   { prefixo: '/financeiro/contas-correntes', titulo: 'Contas Correntes' },
   { prefixo: '/financeiro/keyinvoice', titulo: 'Keyinvoice' },
   { prefixo: '/financeiro/documentos', titulo: 'Documentos' },
+  { prefixo: '/financeiro/cofre', titulo: 'Cofre de Documentos' },
   { prefixo: '/financeiro/alertas', titulo: 'Alertas' },
   { prefixo: '/financeiro/recolhas', titulo: 'Recolhas' },
   { prefixo: '/financeiro', titulo: 'Financeiro' },

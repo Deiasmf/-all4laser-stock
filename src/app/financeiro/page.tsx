@@ -1,21 +1,27 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { documentosAExpirar, diasAteValidade, type DocumentoCofre } from '@/lib/cofre'
 
-// Dashboard do módulo Financeiro. Cartões placeholder — os próximos prompts
-// preenchem cada secção. O acesso já está protegido pela guarda (layout) e,
-// sobretudo, pela RLS na base de dados.
+// Dashboard do módulo Financeiro. O acesso está protegido pela guarda (layout)
+// e pela RLS na base de dados.
 type Cartao = { href: string; titulo: string; icon: string; descricao: string }
 
 const CARTOES: Cartao[] = [
   { href: '/financeiro/contas-correntes', titulo: 'Contas Correntes', icon: '📊', descricao: 'Saldos por cliente e fornecedor.' },
-  { href: '/financeiro/keyinvoice', titulo: 'Keyinvoice', icon: '🔗', descricao: 'Integração e sincronização de faturação.' },
+  { href: '/financeiro/keyinvoice', titulo: 'Keyinvoice', icon: '🔗', descricao: 'Importação e sincronização de faturação.' },
   { href: '/financeiro/documentos', titulo: 'Documentos', icon: '🧾', descricao: 'Faturas, recibos e notas de crédito.' },
-  { href: '/financeiro/recolhas', titulo: 'Recolhas', icon: '💰', descricao: 'Cobranças e recolha de valores.' },
+  { href: '/financeiro/cofre', titulo: 'Cofre de Documentos', icon: '🔐', descricao: 'Cartões, contas bancárias, certidões, contratos, seguros.' },
+  { href: '/financeiro/recolhas', titulo: 'Recolhas', icon: '💰', descricao: 'Cobranças e recolha de equipamentos.' },
   { href: '/financeiro/alertas', titulo: 'Alertas', icon: '🔔', descricao: 'Vencimentos, saldos e divergências.' },
 ]
 
 export default function FinanceiroDashboard() {
+  const [aExpirar, setAExpirar] = useState<DocumentoCofre[]>([])
+
+  useEffect(() => { documentosAExpirar(30).then(setAExpirar) }, [])
+
   return (
     <main style={c.page}>
       <div style={c.cabecalho}>
@@ -23,13 +29,26 @@ export default function FinanceiroDashboard() {
         <p style={c.sub}>Área restrita a administração e financeiro.</p>
       </div>
 
+      {/* Destaque: documentos do cofre a expirar */}
+      {aExpirar.length > 0 && (
+        <Link href="/financeiro/cofre" style={c.alerta}>
+          <div style={c.alertaTop}>⚠️ {aExpirar.length} documento(s) a expirar nos próximos 30 dias</div>
+          <div style={c.alertaLista}>
+            {aExpirar.slice(0, 4).map((d) => {
+              const n = diasAteValidade(d.data_validade) ?? 0
+              return <span key={d.id} style={c.alertaItem}>{d.titulo} — {n < 0 ? 'expirado' : `${n}d`}</span>
+            })}
+            {aExpirar.length > 4 && <span style={c.alertaItem}>+{aExpirar.length - 4}</span>}
+          </div>
+        </Link>
+      )}
+
       <div style={c.grelha}>
         {CARTOES.map((k) => (
           <Link key={k.href} href={k.href} style={c.cartao}>
             <span style={c.cartaoIcon}>{k.icon}</span>
             <span style={c.cartaoTitulo}>{k.titulo}</span>
             <span style={c.cartaoDesc}>{k.descricao}</span>
-            <span style={c.cartaoTag}>Em breve</span>
           </Link>
         ))}
       </div>
@@ -42,17 +61,13 @@ const c: Record<string, React.CSSProperties> = {
   cabecalho: { marginBottom: 20 },
   titulo: { fontSize: 24, fontWeight: 700, color: 'var(--primary)', marginBottom: 4 },
   sub: { color: 'var(--muted)', fontSize: 14 },
+  alerta: { display: 'block', background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 12, padding: 14, marginBottom: 16, textDecoration: 'none', color: '#92400E' },
+  alertaTop: { fontWeight: 700, fontSize: 14, marginBottom: 6 },
+  alertaLista: { display: 'flex', gap: 8, flexWrap: 'wrap' },
+  alertaItem: { fontSize: 12.5, background: '#fff', borderRadius: 999, padding: '2px 10px', border: '1px solid #FCD34D' },
   grelha: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 },
-  cartao: {
-    display: 'flex', flexDirection: 'column', gap: 6, background: '#fff',
-    border: '1px solid var(--border)', borderRadius: 14, padding: 18,
-    textDecoration: 'none', color: 'var(--foreground)', position: 'relative',
-  },
+  cartao: { display: 'flex', flexDirection: 'column', gap: 6, background: '#fff', border: '1px solid var(--border)', borderRadius: 14, padding: 18, textDecoration: 'none', color: 'var(--foreground)' },
   cartaoIcon: { fontSize: 28 },
   cartaoTitulo: { fontSize: 16, fontWeight: 700, color: 'var(--primary)' },
   cartaoDesc: { fontSize: 13, color: 'var(--muted)' },
-  cartaoTag: {
-    alignSelf: 'flex-start', marginTop: 6, fontSize: 11, fontWeight: 700,
-    color: '#92400E', background: '#FEF3C7', borderRadius: 999, padding: '2px 10px',
-  },
 }
