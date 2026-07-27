@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
 import { iniciais } from '@/lib/ui'
+import { contarMinhaArea } from '@/lib/minhaArea'
 
 // Departamentos podem ter sub-itens (filhos). Itens com filhos são grupos
 // recolhíveis (clicar no cabeçalho abre/fecha).
@@ -13,11 +14,17 @@ import { iniciais } from '@/lib/ui'
 // + as guardas de rota; isto só limpa o menu).
 type Requer = 'admin' | 'financeiro'
 type SubItem = { href: string; label: string; icon: string }
-type Item = { href?: string; label: string; icon?: string; badge?: 'leads'; filhos?: SubItem[]; requer?: Requer }
+type Item = { href?: string; label: string; icon?: string; badge?: 'leads' | 'minhaArea'; filhos?: SubItem[]; requer?: Requer }
 type Seccao = { titulo: string; itens: Item[] }
 
 const NAV: Seccao[] = [
-  { titulo: 'Principal', itens: [{ href: '/', label: 'Dashboard', icon: '🏠' }] },
+  {
+    titulo: 'Principal',
+    itens: [
+      { href: '/', label: 'Dashboard', icon: '🏠' },
+      { href: '/a-minha-area', label: 'A Minha Área', icon: '📌', badge: 'minhaArea' },
+    ],
+  },
   {
     titulo: 'Departamentos',
     itens: [
@@ -84,6 +91,8 @@ const NAV: Seccao[] = [
 
 // Título da página a partir da rota (mais específico primeiro).
 const TITULOS: { prefixo: string; titulo: string }[] = [
+  { prefixo: '/a-minha-area/atribuir', titulo: 'Atribuir Tarefa / Recado' },
+  { prefixo: '/a-minha-area', titulo: 'A Minha Área' },
   { prefixo: '/admin-dept/expedicao', titulo: 'Prontos a Enviar' },
   { prefixo: '/admin-dept/envios-pecas', titulo: 'Envios de Encomendas' },
   { prefixo: '/admin-dept', titulo: 'Administrativo' },
@@ -135,6 +144,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const { session, perfil, sair, isAdmin, isFinanceiro } = useAuth()
   const pathname = usePathname()
   const [leadsNovas, setLeadsNovas] = useState(0)
+  const [minhaArea, setMinhaArea] = useState(0)
   const [menuAberto, setMenuAberto] = useState(false)
   // Grupos recolhíveis: override manual por label (senão abre se contiver a rota ativa)
   const [abertos, setAbertos] = useState<Record<string, boolean>>({})
@@ -154,6 +164,18 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       ativo = false
     }
   }, [session, pathname])
+
+  // Badge "A Minha Área": tarefas pendentes + recados não lidos do próprio.
+  useEffect(() => {
+    if (!session || !perfil?.id) return
+    let ativo = true
+    contarMinhaArea(perfil.id).then((r) => {
+      if (ativo) setMinhaArea(r.pendentes + r.naoLidos)
+    })
+    return () => {
+      ativo = false
+    }
+  }, [session, perfil?.id, pathname])
 
   // Fecha o menu mobile ao mudar de rota (ajuste durante o render — sem efeito).
   const [rotaAnterior, setRotaAnterior] = useState(pathname)
@@ -254,6 +276,9 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                     {it.badge === 'leads' && leadsNovas > 0 && (
                       <span className="a4l-sb-badge">{leadsNovas}</span>
                     )}
+                    {it.badge === 'minhaArea' && minhaArea > 0 && (
+                      <span className="a4l-sb-badge">{minhaArea}</span>
+                    )}
                   </Link>
                 )
               })}
@@ -299,6 +324,11 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
           <div className="a4l-topbar-right">
+            {minhaArea > 0 && (
+              <Link href="/a-minha-area" className="a4l-pill-leads" title="Tarefas pendentes e recados por ler">
+                📌 {minhaArea}
+              </Link>
+            )}
             {leadsNovas > 0 && (
               <Link href="/alugueres/leads" className="a4l-pill-leads">
                 🔔 {leadsNovas} {leadsNovas === 1 ? 'lead nova' : 'leads novas'}
