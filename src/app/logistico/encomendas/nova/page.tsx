@@ -11,6 +11,7 @@ import {
   type ClienteEnvioOpc, type MaterialOpc, type FuncionarioOpc, type FornecedorEnvioOpc,
 } from '@/lib/enviosPecas'
 import { criarRececao, pesquisarDocumentos, type RefDocOpc } from '@/lib/rececoesPecas'
+import { seriaisEmAberto } from '@/lib/serialPecas'
 import { pesquisarEquipamentos, type EquipOpc } from '@/lib/folhasObra'
 import {
   formatarEuro, calcularIva, MOTIVOS_ENVIO, motivoInfo, type DestinatarioTipo, type MotivoEnvio,
@@ -49,6 +50,9 @@ export default function NovaEncomendaPage() {
 
   const [notas, setNotas] = useState('')
 
+  // S/N enviados a esta entidade ainda por receber (sugestões na receção).
+  const [snAbertos, setSnAbertos] = useState<{ serial_number: string; peca_nome: string | null; envio: string | null }[]>([])
+
   // Envio
   const [motivoEnvio, setMotivoEnvio] = useState<MotivoEnvio>('venda')
   const [faturavel, setFaturavel] = useState(true)
@@ -70,6 +74,18 @@ export default function NovaEncomendaPage() {
   useEffect(() => { listarClientesEnvio().then(setClientes) }, [])
   useEffect(() => { listarFornecedoresEnvio().then(setFornecedores) }, [])
   useEffect(() => { listarFuncionarios().then(setFuncionarios) }, [])
+
+  // Ao rececionar de uma entidade, sugerir os S/N que lhe enviámos e ainda não voltaram.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (modo !== 'rececao') { setSnAbertos([]); return }
+    const id = contraparteTipo === 'cliente' ? clienteId : fornecedorId
+    const nome = (contraparteTipo === 'cliente' ? clienteNome : fornecedorNome).trim()
+    if (!id && !nome) { setSnAbertos([]); return }
+    let vivo = true
+    seriaisEmAberto(contraparteTipo, id, nome || null).then((r) => { if (vivo) setSnAbertos(r) })
+    return () => { vivo = false }
+  }, [modo, contraparteTipo, clienteId, fornecedorId, clienteNome, fornecedorNome])
 
   const semCusto = motivoInfo(motivoEnvio).semCusto
   function escolherMotivoEnvio(m: MotivoEnvio) { setMotivoEnvio(m); setFaturavel(!motivoInfo(m).semCusto) }
@@ -114,6 +130,20 @@ export default function NovaEncomendaPage() {
     setItens((prev) => prev.map((it, idx) => (idx === i ? { ...it, ...patch } : it)))
   }
   function removerItem(i: number) { setItens((prev) => prev.filter((_, idx) => idx !== i)) }
+  // Separa uma linha de N unidades em N linhas de 1 unidade (1 S/N por unidade).
+  function dividirEmUnidades(i: number) {
+    setItens((prev) => {
+      const it = prev[i]
+      if (!it || it.quantidade <= 1) return prev
+      const copias = Array.from({ length: it.quantidade }, (_, k) => ({ ...it, quantidade: 1, serial_number: k === 0 ? it.serial_number : null }))
+      return [...prev.slice(0, i), ...copias, ...prev.slice(i + 1)]
+    })
+  }
+  // Adiciona uma linha a partir de um S/N sugerido (em aberto).
+  function adicionarSnAberto(sug: { serial_number: string; peca_nome: string | null }) {
+    setItens((prev) => [...prev, { peca_id: null, peca_nome: sug.peca_nome ?? '(peça)', serial_number: sug.serial_number, quantidade: 1, preco_unitario: 0 }])
+    setSnAbertos((prev) => prev.filter((x) => x.serial_number !== sug.serial_number))
+  }
   function adicionarManual() {
     const nome = manualNome.trim()
     if (!nome) return
@@ -312,6 +342,21 @@ export default function NovaEncomendaPage() {
       {/* Itens (partilhado) */}
       <section style={f.seccao}>
         <div style={f.seccaoTitulo}>{modo === 'envio' ? 'Itens a enviar' : 'Peças recebidas'}</div>
+        {modo === 'rececao' && (
+          <div style={f.snHint}>🔖 Regista <b>um Serial Number por unidade</b>. Se receberes várias unidades da mesma peça, usa o botão <b>÷</b> na linha para a separar (1 S/N cada).</div>
+        )}
+        {modo === 'rececao' && snAbertos.length > 0 && (
+          <div style={f.snAbertos}>
+            <div style={f.snAbertosTit}>💡 S/N enviados a esta entidade ainda por receber — clica para rececionar:</div>
+            <div style={f.snAbertosLista}>
+              {snAbertos.map((sug) => (
+                <button type="button" key={sug.serial_number} style={f.snChip} onClick={() => adicionarSnAberto(sug)}>
+                  + S/N {sug.serial_number}{sug.peca_nome ? ` · ${sug.peca_nome}` : ''}{sug.envio ? ` · ${sug.envio}` : ''}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <Campo rotulo="Procurar peça (Stock de Peças + Tabela de Preços)">
           <Autocomplete valor="" placeholder="Escreve para procurar e clica para adicionar..." limparAoEscolher
             buscar={(q) => pesquisarMaterial(q)} onChangeTexto={() => {}} onEscolher={adicionarItem}
@@ -331,7 +376,10 @@ export default function NovaEncomendaPage() {
             {itens.map((it, i) => (
               <div key={i} style={f.itemLinha}>
                 <span>{it.peca_nome}</span>
-                <input value={it.serial_number ?? ''} onChange={(e) => alterarItem(i, { serial_number: e.target.value || null })} placeholder="Sem SN" style={f.inputMini} />
+                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                  <input value={it.serial_number ?? ''} onChange={(e) => alterarItem(i, { serial_number: e.target.value || null })} placeholder={modo === 'rececao' ? 'S/N por unidade' : 'Sem SN'} style={{ ...f.inputMini, ...(modo === 'rececao' ? f.snDestaque : {}) }} />
+                  {it.quantidade > 1 && <button type="button" title="Separar em 1 linha por unidade (1 S/N cada)" onClick={() => dividirEmUnidades(i)} style={f.btnSplit}>÷</button>}
+                </div>
                 <input type="number" min={1} value={it.quantidade} onChange={(e) => alterarItem(i, { quantidade: Math.max(1, Number(e.target.value) || 1) })} style={{ ...f.inputMini, textAlign: 'center' }} />
                 <input type="number" min={0} step="0.01" value={it.preco_unitario} onChange={(e) => alterarItem(i, { preco_unitario: Number(e.target.value) || 0 })} style={{ ...f.inputMini, textAlign: 'right' }} />
                 <span style={{ textAlign: 'right', fontWeight: 700 }}>{formatarEuro(it.quantidade * it.preco_unitario)}</span>
@@ -486,4 +534,11 @@ const f: Record<string, React.CSSProperties> = {
   motivoBtn: { padding: '8px 14px', border: '1px solid var(--border)', borderRadius: 999, background: 'var(--surface, #fff)', fontWeight: 600, cursor: 'pointer', color: 'var(--foreground)', fontSize: 14 },
   motivoBtnAtivo: { background: 'var(--accent-bg, #ece8fb)', borderColor: 'var(--primary)', color: 'var(--primary-dark)' },
   checkLinha: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' },
+  snHint: { fontSize: 13, color: '#155e75', background: '#e0f5fb', border: '1px solid #a9e2ee', borderRadius: 8, padding: '8px 12px' },
+  snDestaque: { borderColor: '#0e7490', background: '#f2fcff' },
+  btnSplit: { border: '1px solid var(--border)', background: 'var(--surface, #fff)', borderRadius: 6, width: 26, height: 30, cursor: 'pointer', fontWeight: 800, color: 'var(--primary)', flexShrink: 0 },
+  snAbertos: { background: '#fff8e1', border: '1px solid #f0d98a', borderRadius: 8, padding: '10px 12px' },
+  snAbertosTit: { fontSize: 12.5, fontWeight: 700, color: '#7a5b00', marginBottom: 8 },
+  snAbertosLista: { display: 'flex', flexWrap: 'wrap', gap: 6 },
+  snChip: { border: '1px solid #d9b84a', background: '#fff', borderRadius: 999, padding: '5px 12px', fontSize: 12.5, fontWeight: 600, color: '#7a5b00', cursor: 'pointer' },
 }
