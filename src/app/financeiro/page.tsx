@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { documentosAExpirar, diasAteValidade, type DocumentoCofre } from '@/lib/cofre'
 import { resumoInatividade, type ResumoInatividade } from '@/lib/inatividade'
+import { resumoRecolhas, type ResumoRecolhas } from '@/lib/recolhas'
 
 // Dashboard do módulo Financeiro. O acesso está protegido pela guarda (layout)
 // e pela RLS na base de dados.
@@ -21,9 +22,11 @@ const CARTOES: Cartao[] = [
 export default function FinanceiroDashboard() {
   const [aExpirar, setAExpirar] = useState<DocumentoCofre[]>([])
   const [inativos, setInativos] = useState<ResumoInatividade | null>(null)
+  const [recolhas, setRecolhas] = useState<ResumoRecolhas | null>(null)
 
   useEffect(() => { documentosAExpirar(30).then(setAExpirar) }, [])
   useEffect(() => { resumoInatividade().then(setInativos) }, [])
+  useEffect(() => { resumoRecolhas().then(setRecolhas) }, [])
 
   return (
     <main style={c.page}>
@@ -55,6 +58,21 @@ export default function FinanceiroDashboard() {
             <div style={c.inativosLinha}>
               <span><strong style={{ color: '#92400E' }}>{inativos.atencao}</strong> há 30+ dias</span>
               <span><strong style={{ color: '#B91C1C' }}>{inativos.critico}</strong> há 45+ dias (crítico)</span>
+            </div>
+          </div>
+          <span style={c.inativosSeta}>→</span>
+        </Link>
+      )}
+
+      {/* Card: recolhas de equipamento em curso / atrasadas */}
+      {recolhas && recolhas.emCurso > 0 && (
+        <Link href="/financeiro/recolhas" style={c.inativos}>
+          <span style={c.inativosIcon}>🚚</span>
+          <div style={{ flex: 1 }}>
+            <div style={c.inativosTit}>Recolhas de equipamento</div>
+            <div style={c.inativosLinha}>
+              <span><strong style={{ color: '#1E40AF' }}>{recolhas.emCurso}</strong> em curso</span>
+              {recolhas.atrasadas > 0 && <span><strong style={{ color: '#B91C1C' }}>{recolhas.atrasadas}</strong> atrasada(s)</span>}
             </div>
           </div>
           <span style={c.inativosSeta}>→</span>
