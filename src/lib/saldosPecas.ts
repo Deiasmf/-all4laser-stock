@@ -1,9 +1,13 @@
 import { supabase } from './supabase'
 
 // Um movimento = uma reparação (linha da view parts_movements).
+export type EntidadeTipo = 'cliente' | 'fornecedor'
+
 export type ParteMovimento = {
   id: string
   entidade: string
+  entidade_tipo: EntidadeTipo
+  entidade_id: string | null
   peca: string
   peca_id: string | null
   referencia: string | null
@@ -22,7 +26,7 @@ export type ParteMovimento = {
 // Carrega todos os movimentos (a agregação por entidade/peça é feita no cliente,
 // para os filtros de data/entidade/peça serem instantâneos e coerentes).
 // Página em lotes de 1000 (limite por omissão do PostgREST) até vir tudo.
-const COLS_MOV = 'id, entidade, peca, peca_id, referencia, serial_number, sn_avariado, tipo_dono, status, data_saida, data_entrada, enviado, recebido, estado, data'
+const COLS_MOV = 'id, entidade, entidade_tipo, entidade_id, peca, peca_id, referencia, serial_number, sn_avariado, tipo_dono, status, data_saida, data_entrada, enviado, recebido, estado, data'
 export async function listarMovimentosPecas(): Promise<ParteMovimento[]> {
   const LOTE = 1000
   const todos: ParteMovimento[] = []

@@ -5,7 +5,7 @@ import Link from 'next/link'
 import BotaoExportar from '@/components/BotaoExportar'
 import type { ColunaExport } from '@/lib/exportar'
 import {
-  listarMovimentosPecas, dataPt, diasDesde, type ParteMovimento,
+  listarMovimentosPecas, dataPt, diasDesde, type ParteMovimento, type EntidadeTipo,
 } from '@/lib/saldosPecas'
 
 type PartAgg = {
@@ -19,6 +19,8 @@ type PartAgg = {
 }
 type EntityAgg = {
   entidade: string
+  entidade_tipo: EntidadeTipo
+  chave: string
   enviado: number
   recebido: number
   emReparacao: number
@@ -38,6 +40,7 @@ export default function SaldosPecasPage() {
   const [carregando, setCarregando] = useState(true)
 
   const [fEntidade, setFEntidade] = useState('')
+  const [fTipo, setFTipo] = useState<'' | EntidadeTipo>('')
   const [fPeca, setFPeca] = useState('')
   const [fDe, setFDe] = useState('')
   const [fAte, setFAte] = useState('')
@@ -54,6 +57,7 @@ export default function SaldosPecasPage() {
     const te = fEntidade.trim().toLowerCase()
     const tp = fPeca.trim().toLowerCase()
     const filtrados = movs.filter((m) => {
+      if (fTipo && m.entidade_tipo !== fTipo) return false
       if (te && !m.entidade.toLowerCase().includes(te)) return false
       if (tp && !m.peca.toLowerCase().includes(tp)) return false
       const d = m.data ?? ''
@@ -62,10 +66,13 @@ export default function SaldosPecasPage() {
       return true
     })
 
+    // Chave por tipo+nome: um cliente e um fornecedor com o mesmo nome não se juntam.
+    const meta = new Map<string, { entidade: string; entidade_tipo: EntidadeTipo }>()
     const porEnt = new Map<string, Map<string, PartAgg>>()
     for (const m of filtrados) {
-      if (!porEnt.has(m.entidade)) porEnt.set(m.entidade, new Map())
-      const pecas = porEnt.get(m.entidade)!
+      const chave = `${m.entidade_tipo}|${m.entidade}`
+      if (!porEnt.has(chave)) { porEnt.set(chave, new Map()); meta.set(chave, { entidade: m.entidade, entidade_tipo: m.entidade_tipo }) }
+      const pecas = porEnt.get(chave)!
       if (!pecas.has(m.peca)) {
         pecas.set(m.peca, { peca: m.peca, enviado: 0, recebido: 0, emReparacao: 0, saldo: 0, emReparacaoDesde: null, movimentos: [] })
       }
@@ -80,14 +87,17 @@ export default function SaldosPecasPage() {
     }
 
     const lista: EntityAgg[] = []
-    for (const [entidade, pecasMap] of porEnt) {
+    for (const [chave, pecasMap] of porEnt) {
+      const info = meta.get(chave)!
       let pecas = Array.from(pecasMap.values())
       pecas.forEach((p) => { p.saldo = p.recebido - p.enviado; p.movimentos.sort((a, b) => (b.data ?? '').localeCompare(a.data ?? '')) })
       if (soSaldo) pecas = pecas.filter((p) => p.saldo !== 0)
       if (pecas.length === 0) continue
       pecas.sort((a, b) => a.saldo - b.saldo)
       const ent: EntityAgg = {
-        entidade,
+        entidade: info.entidade,
+        entidade_tipo: info.entidade_tipo,
+        chave,
         enviado: pecas.reduce((s, p) => s + p.enviado, 0),
         recebido: pecas.reduce((s, p) => s + p.recebido, 0),
         emReparacao: pecas.reduce((s, p) => s + p.emReparacao, 0),
@@ -99,7 +109,7 @@ export default function SaldosPecasPage() {
     }
     lista.sort((a, b) => a.saldo - b.saldo)
     return lista
-  }, [movs, fEntidade, fPeca, fDe, fAte, soSaldo])
+  }, [movs, fEntidade, fTipo, fPeca, fDe, fAte, soSaldo])
 
   const alertaVelho = (desde: string | null, emRep: number) => {
     if (emRep <= 0 || !desde) return false
@@ -107,15 +117,16 @@ export default function SaldosPecasPage() {
     return d !== null && d > diasAlerta
   }
 
-  const colunasExport: ColunaExport<{ entidade: string; peca: string; enviado: number; recebido: number; emReparacao: number; saldo: number }>[] = [
+  const colunasExport: ColunaExport<{ entidade: string; tipo: string; peca: string; enviado: number; recebido: number; emReparacao: number; saldo: number }>[] = [
     { cabecalho: 'Entidade', valor: (r) => r.entidade },
+    { cabecalho: 'Tipo', valor: (r) => r.tipo },
     { cabecalho: 'Peça', valor: (r) => r.peca },
     { cabecalho: 'Enviado', valor: (r) => String(r.enviado) },
     { cabecalho: 'Recebido', valor: (r) => String(r.recebido) },
     { cabecalho: 'Em reparação', valor: (r) => String(r.emReparacao) },
     { cabecalho: 'Saldo', valor: (r) => String(r.saldo) },
   ]
-  const linhasExport = entidades.flatMap((e) => e.pecas.map((p) => ({ entidade: e.entidade, peca: p.peca, enviado: p.enviado, recebido: p.recebido, emReparacao: p.emReparacao, saldo: p.saldo })))
+  const linhasExport = entidades.flatMap((e) => e.pecas.map((p) => ({ entidade: e.entidade, tipo: e.entidade_tipo === 'cliente' ? 'Cliente' : 'Fornecedor', peca: p.peca, enviado: p.enviado, recebido: p.recebido, emReparacao: p.emReparacao, saldo: p.saldo })))
 
   function toggle(set: Set<string>, key: string, setter: (s: Set<string>) => void) {
     const n = new Set(set)
@@ -131,19 +142,25 @@ export default function SaldosPecasPage() {
           <Link href="/logistico/reparacao-pecas" style={s.voltar}>← Reparação de Peças</Link>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Link href="/logistico/pecas/serial" style={s.btnSecundario}>🔎 Pesquisar S/N</Link>
           <Link href="/logistico/saldos-pecas/receber" style={s.btnReceber}>📥 Registar receção</Link>
           <BotaoExportar nome="saldos-pecas" colunas={colunasExport} linhas={linhasExport} />
         </div>
       </div>
 
       <p style={s.nota}>
-        Por entidade (fornecedor/técnico): peças enviadas, recebidas de volta, em reparação e o <b>saldo</b>.
-        Saldo negativo = peças nossas que ainda estão fora.
+        Por entidade (<b>cliente ou fornecedor</b>): peças enviadas, recebidas de volta, em reparação e o <b>saldo</b>.
+        Saldo negativo = peças nossas que ainda estão fora. Inclui reparações (legado) + envios/receções de peças.
       </p>
 
       {/* Filtros */}
       <div style={s.filtros}>
         <input placeholder="Entidade..." value={fEntidade} onChange={(e) => setFEntidade(e.target.value)} style={s.input} />
+        <select value={fTipo} onChange={(e) => setFTipo(e.target.value as '' | EntidadeTipo)} style={s.input}>
+          <option value="">Clientes e fornecedores</option>
+          <option value="cliente">Só clientes</option>
+          <option value="fornecedor">Só fornecedores</option>
+        </select>
         <input placeholder="Peça..." value={fPeca} onChange={(e) => setFPeca(e.target.value)} style={s.input} />
         <label style={s.campoData}>De <input type="date" value={fDe} onChange={(e) => setFDe(e.target.value)} style={s.inputData} /></label>
         <label style={s.campoData}>Até <input type="date" value={fAte} onChange={(e) => setFAte(e.target.value)} style={s.inputData} /></label>
@@ -166,14 +183,15 @@ export default function SaldosPecasPage() {
           </div>
 
           {entidades.map((ent) => {
-            const abertoEnt = entExp.has(ent.entidade)
+            const abertoEnt = entExp.has(ent.chave)
             const entAlerta = alertaVelho(ent.emReparacaoDesde, ent.emReparacao)
             return (
-              <div key={ent.entidade}>
-                <div style={{ ...s.linha, ...s.linhaEnt }} onClick={() => toggle(entExp, ent.entidade, setEntExp)}>
+              <div key={ent.chave}>
+                <div style={{ ...s.linha, ...s.linhaEnt }} onClick={() => toggle(entExp, ent.chave, setEntExp)}>
                   <span style={s.colNome}>
                     <span style={s.seta}>{abertoEnt ? '▾' : '▸'}</span>
                     <b>{ent.entidade}</b>
+                    <span style={ent.entidade_tipo === 'cliente' ? s.badgeCliente : s.badgeFornecedor}>{ent.entidade_tipo === 'cliente' ? 'Cliente' : 'Fornecedor'}</span>
                     {entAlerta && <span style={s.badgeAlerta} title={`Em reparação há mais de ${diasAlerta} dias`}>⏱ +{diasAlerta}d</span>}
                   </span>
                   <span style={s.colNum}>{ent.enviado}</span>
@@ -183,7 +201,7 @@ export default function SaldosPecasPage() {
                 </div>
 
                 {abertoEnt && ent.pecas.map((p) => {
-                  const pkey = ent.entidade + '||' + p.peca
+                  const pkey = ent.chave + '||' + p.peca
                   const abertoPeca = pecaExp.has(pkey)
                   const pecaAlerta = alertaVelho(p.emReparacaoDesde, p.emReparacao)
                   return (
@@ -204,7 +222,10 @@ export default function SaldosPecasPage() {
                         <div style={s.movBloco}>
                           {p.movimentos.map((m) => (
                             <div key={m.id} style={s.movLinha}>
-                              <span style={s.movRef}>{m.referencia || (m.serial_number ? `S/N ${m.serial_number}` : '—')}</span>
+                              <span style={s.movRef}>{m.referencia || '—'}</span>
+                              {m.serial_number
+                                ? <Link href={`/logistico/pecas/serial?q=${encodeURIComponent(m.serial_number)}`} style={s.movSn} title="Ver histórico deste S/N">S/N {m.serial_number}</Link>
+                                : <span style={{ ...s.movSn, color: 'var(--muted)', border: '1px dashed var(--border)' }}>sem S/N</span>}
                               <span style={s.movEstado}>{estadoLabel(m.estado)}</span>
                               <span style={s.movData}>Saída: {dataPt(m.data_saida)}</span>
                               <span style={s.movData}>Entrada: {dataPt(m.data_entrada)}</span>
@@ -240,6 +261,7 @@ const s: Record<string, React.CSSProperties> = {
   titulo: { fontSize: 22, fontWeight: 700, color: 'var(--primary)' },
   voltar: { color: 'var(--muted)', textDecoration: 'none', fontSize: 14 },
   btnReceber: { background: 'var(--primary)', color: '#fff', textDecoration: 'none', borderRadius: 8, padding: '9px 14px', fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap' },
+  btnSecundario: { background: 'var(--surface)', color: 'var(--foreground)', border: '1px solid var(--border)', textDecoration: 'none', borderRadius: 8, padding: '9px 14px', fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap' },
   nota: { fontSize: 13, color: 'var(--muted)', margin: '4px 0 14px' },
   filtros: { display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 },
   input: { padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface)', color: 'var(--foreground)', font: 'inherit', minWidth: 150 },
@@ -256,6 +278,9 @@ const s: Record<string, React.CSSProperties> = {
   colNum: { width: 62, textAlign: 'right', color: 'var(--foreground)' },
   seta: { color: 'var(--muted)', fontSize: 11, width: 12 },
   badgeAlerta: { fontSize: 11, fontWeight: 700, color: '#9a5b00', background: '#fdf2e3', border: '1px solid #f0c884', borderRadius: 999, padding: '1px 7px' },
+  badgeCliente: { fontSize: 10.5, fontWeight: 700, color: '#1d4ed8', background: '#e6efff', borderRadius: 999, padding: '1px 8px' },
+  badgeFornecedor: { fontSize: 10.5, fontWeight: 700, color: '#7c3aed', background: '#f1e9ff', borderRadius: 999, padding: '1px 8px' },
+  movSn: { fontWeight: 700, color: '#0e7490', background: '#dff5fa', borderRadius: 6, padding: '1px 8px', textDecoration: 'none', fontSize: 12 },
   movBloco: { background: 'var(--surface)', borderTop: '1px solid var(--border)', padding: '4px 12px 10px 40px' },
   movLinha: { display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 12.5, color: 'var(--muted)' },
   movRef: { fontWeight: 700, color: 'var(--foreground)', minWidth: 90 },
