@@ -4,10 +4,10 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import {
-  listarMinhasTarefas, mudarEstadoTarefa, ordenarTarefas, prioridadeInfo,
+  listarMinhasTarefas, criarTarefa, mudarEstadoTarefa, ordenarTarefas, prioridadeInfo,
   listarMeusRecados, marcarRecadoLido,
   obterPrefNotificacao, guardarPrefNotificacao,
-  type Tarefa, type Recado,
+  PRIORIDADES, type Prioridade, type Tarefa, type Recado,
 } from '@/lib/minhaArea'
 
 function formatarData(d: string | null): string {
@@ -30,6 +30,12 @@ export default function MinhaAreaPage() {
   const [carregando, setCarregando] = useState(true)
   const [verConcluidas, setVerConcluidas] = useState(false)
   const [verLidos, setVerLidos] = useState(false)
+  // Nova tarefa pessoal (o próprio adiciona-se tarefas).
+  const [novaAberta, setNovaAberta] = useState(false)
+  const [nTitulo, setNTitulo] = useState('')
+  const [nDesc, setNDesc] = useState('')
+  const [nPrio, setNPrio] = useState<Prioridade>('normal')
+  const [nPrazo, setNPrazo] = useState('')
 
   const carregar = useCallback(async () => {
     if (!uid) return
@@ -52,6 +58,16 @@ export default function MinhaAreaPage() {
   async function iniciar(t: Tarefa) { await mudarEstadoTarefa(t.id, 'em_curso'); await carregar() }
   async function lerRecado(r: Recado) { await marcarRecadoLido(r.id); await carregar() }
   async function togglePref() { const novo = !pref; setPref(novo); if (uid) await guardarPrefNotificacao(uid, novo) }
+
+  async function adicionarTarefa() {
+    if (!uid || !nTitulo.trim()) return
+    await criarTarefa(
+      { assigned_to: uid, titulo: nTitulo.trim(), descricao: nDesc.trim() || null, prioridade: nPrio, data_limite: nPrazo || null },
+      uid,
+    )
+    setNTitulo(''); setNDesc(''); setNPrio('normal'); setNPrazo(''); setNovaAberta(false)
+    await carregar()
+  }
 
   if (!uid) return <main style={c.page}><p style={c.muted}>A carregar…</p></main>
 
@@ -86,7 +102,27 @@ export default function MinhaAreaPage() {
           )}
 
           <section style={c.secao}>
-            <h2 style={c.h2}>✅ Tarefas pendentes ({ativas.length})</h2>
+            <div style={c.h2Linha}>
+              <h2 style={c.h2}>✅ Tarefas pendentes ({ativas.length})</h2>
+              <button style={c.btnSec} onClick={() => setNovaAberta((v) => !v)}>{novaAberta ? 'Cancelar' : '+ Nova tarefa'}</button>
+            </div>
+            {novaAberta && (
+              <div style={c.novaForm}>
+                <input value={nTitulo} onChange={(e) => setNTitulo(e.target.value)} placeholder="O que precisas de fazer" style={c.inputN} />
+                <textarea value={nDesc} onChange={(e) => setNDesc(e.target.value)} placeholder="Detalhes (opcional)" style={{ ...c.inputN, minHeight: 48, resize: 'vertical' }} />
+                <div style={c.grelhaN}>
+                  <label style={c.campoN}><span style={c.rotN}>Prioridade</span>
+                    <select value={nPrio} onChange={(e) => setNPrio(e.target.value as Prioridade)} style={c.inputN}>
+                      {PRIORIDADES.map((p) => <option key={p.valor} value={p.valor}>{p.label}</option>)}
+                    </select>
+                  </label>
+                  <label style={c.campoN}><span style={c.rotN}>Data limite <span style={c.opcN}>(opcional)</span></span>
+                    <input type="date" value={nPrazo} onChange={(e) => setNPrazo(e.target.value)} style={c.inputN} />
+                  </label>
+                </div>
+                <button style={c.btnPrimario} disabled={!nTitulo.trim()} onClick={adicionarTarefa}>Adicionar tarefa</button>
+              </div>
+            )}
             {ativas.length === 0 ? <p style={c.muted}>Sem tarefas pendentes. 🎉</p> : (
               <div style={c.lista}>
                 {ativas.map((t) => {
@@ -199,4 +235,12 @@ const c: Record<string, React.CSSProperties> = {
   btnSecMini: { background: 'transparent', border: '1px solid var(--border)', borderRadius: 8, padding: '5px 10px', fontWeight: 600, cursor: 'pointer', fontSize: 12.5, whiteSpace: 'nowrap' },
   colapso: { background: 'transparent', border: 'none', color: 'var(--muted)', fontWeight: 600, fontSize: 13.5, cursor: 'pointer', padding: '4px 0', textAlign: 'left' },
   prefLinha: { display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 14, background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 14px' },
+  // nova tarefa pessoal
+  h2Linha: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 10 },
+  novaForm: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 10 },
+  inputN: { width: '100%', padding: '9px 11px', border: '1px solid var(--border)', borderRadius: 8, font: 'inherit', boxSizing: 'border-box' },
+  grelhaN: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 },
+  campoN: { display: 'flex', flexDirection: 'column', gap: 4 },
+  rotN: { fontSize: 12.5, fontWeight: 600, color: 'var(--foreground)' },
+  opcN: { color: 'var(--muted)', fontWeight: 400 },
 }
