@@ -2,8 +2,9 @@ import { supabase } from './supabase'
 
 // "A Minha Área" — tarefas e recados por colaborador.
 // A RLS garante o isolamento (cada um só vê o seu; admin vê todas as tarefas e
-// os recados que enviou). Mesmo assim filtramos por utilizador nas queries "as
-// minhas", porque um admin lê tudo e não queremos misturar áreas.
+// os recados que enviou). As tarefas podem ter VÁRIOS destinatários, cada um
+// com o seu próprio estado (user_task_assignees), e um fio de comentários
+// (user_task_comments) visível a criador + destinatários.
 
 // ─── Prioridades e estados ───────────────────────────────────────────────────
 
@@ -30,26 +31,50 @@ export function estadoTarefaLabel(v: string) {
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
+// Campos partilhados da tarefa (o estado vive por destinatário).
 export type Tarefa = {
   id: string
-  assigned_to: string
   created_by: string | null
   titulo: string
   descricao: string | null
   prioridade: Prioridade
   data_limite: string | null
-  estado: EstadoTarefa
-  concluida_em: string | null
   created_at: string
   updated_at: string
 }
 
+export type Assignee = {
+  id: string
+  user_id: string
+  estado: EstadoTarefa
+  concluida_em: string | null
+}
+
+// Uma tarefa como o próprio utilizador a vê (com o SEU estado).
+export type MinhaTarefa = Tarefa & {
+  assigneeId: string
+  meuEstado: EstadoTarefa
+  meuConcluidaEm: string | null
+}
+
+// Uma tarefa com todos os destinatários (para o acompanhamento do admin).
+export type TarefaComAssignees = Tarefa & { assignees: Assignee[] }
+
 export type TarefaInput = {
-  assigned_to: string
   titulo: string
   descricao: string | null
   prioridade: Prioridade
   data_limite: string | null
+  assignees: string[]   // user_ids dos destinatários
+}
+
+export type Comentario = {
+  id: string
+  task_id: string
+  autor_id: string | null
+  autor_nome: string | null
+  mensagem: string
+  created_at: string
 }
 
 export type Recado = {
@@ -64,22 +89,19 @@ export type Recado = {
   updated_at: string
 }
 
-export type RecadoInput = {
-  to_user: string
-  mensagem: string
-  urgente: boolean
-}
+export type RecadoInput = { to_user: string; mensagem: string; urgente: boolean }
 
 export type Colaborador = { id: string; nome: string | null; email: string | null; role: string }
 
+type Autor = { id: string | null; nome: string | null }
+
 // ─── Ordenação (prioridade → data limite → mais recente) ─────────────────────
 
-export function ordenarTarefas(ts: Tarefa[]): Tarefa[] {
+export function ordenarTarefas<T extends { prioridade: string; data_limite: string | null; created_at: string }>(ts: T[]): T[] {
   return [...ts].sort((a, b) => {
     const pa = prioridadeInfo(a.prioridade).ordem
     const pb = prioridadeInfo(b.prioridade).ordem
     if (pa !== pb) return pa - pb
-    // Com data limite primeiro (mais próxima), depois as sem data.
     if (a.data_limite && b.data_limite) return a.data_limite.localeCompare(b.data_limite)
     if (a.data_limite) return -1
     if (b.data_limite) return 1
@@ -89,33 +111,65 @@ export function ordenarTarefas(ts: Tarefa[]): Tarefa[] {
 
 // ─── Tarefas ─────────────────────────────────────────────────────────────────
 
-export async function listarMinhasTarefas(userId: string): Promise<Tarefa[]> {
-  const { data } = await supabase.from('user_tasks').select('*').eq('assigned_to', userId)
-  return (data as Tarefa[]) ?? []
+// As minhas tarefas (onde sou destinatário), já com o meu estado.
+export async function listarMinhasTarefas(userId: string): Promise<MinhaTarefa[]> {
+  const { data } = await supabase
+    .from('user_task_assignees')
+    .select('id, estado, concluida_em, user_tasks(*)')
+    .eq('user_id', userId)
+  const linhas = (data as unknown as { id: string; estado: EstadoTarefa; concluida_em: string | null; user_tasks: Tarefa | null }[]) ?? []
+  return linhas
+    .filter((l) => l.user_tasks)
+    .map((l) => ({ ...(l.user_tasks as Tarefa), assigneeId: l.id, meuEstado: l.estado, meuConcluidaEm: l.concluida_em }))
 }
 
-// Acompanhamento (admin): todas as tarefas de todos.
-export async function listarTodasTarefas(): Promise<Tarefa[]> {
-  const { data } = await supabase.from('user_tasks').select('*').order('created_at', { ascending: false })
-  return (data as Tarefa[]) ?? []
+// Acompanhamento (admin): todas as tarefas com todos os destinatários.
+export async function listarTodasTarefas(): Promise<TarefaComAssignees[]> {
+  const { data } = await supabase
+    .from('user_tasks')
+    .select('*, user_task_assignees(id, user_id, estado, concluida_em)')
+    .order('created_at', { ascending: false })
+  const linhas = (data as unknown as (Tarefa & { user_task_assignees: Assignee[] | null })[]) ?? []
+  return linhas.map((t) => ({ ...t, assignees: t.user_task_assignees ?? [] }))
 }
 
 export async function criarTarefa(input: TarefaInput, createdBy: string) {
-  return supabase.from('user_tasks').insert({ ...input, created_by: createdBy }).select().single()
+  const { assignees, ...campos } = input
+  const { data: tarefa, error } = await supabase
+    .from('user_tasks').insert({ ...campos, created_by: createdBy }).select().single()
+  if (error || !tarefa) return { data: null, error }
+  const rows = assignees.map((uid) => ({ task_id: (tarefa as Tarefa).id, user_id: uid }))
+  const { error: erroAss } = await supabase.from('user_task_assignees').insert(rows)
+  return { data: tarefa as Tarefa, error: erroAss }
 }
 
 export async function atualizarTarefa(id: string, patch: Partial<Tarefa>) {
   return supabase.from('user_tasks').update(patch).eq('id', id).select().single()
 }
 
-export async function mudarEstadoTarefa(id: string, estado: EstadoTarefa) {
-  return supabase.from('user_tasks')
+// Muda o estado do MEU registo de destinatário (não afeta os outros).
+export async function mudarMeuEstado(assigneeId: string, estado: EstadoTarefa) {
+  return supabase.from('user_task_assignees')
     .update({ estado, concluida_em: estado === 'concluida' ? new Date().toISOString() : null })
-    .eq('id', id).select().single()
+    .eq('id', assigneeId).select().single()
 }
 
 export async function apagarTarefa(id: string) {
-  return supabase.from('user_tasks').delete().eq('id', id)
+  return supabase.from('user_tasks').delete().eq('id', id)   // cascata: destinatários + comentários
+}
+
+// ─── Comentários (respostas) ─────────────────────────────────────────────────
+
+export async function listarComentarios(taskId: string): Promise<Comentario[]> {
+  const { data } = await supabase.from('user_task_comments')
+    .select('*').eq('task_id', taskId).order('created_at', { ascending: true })
+  return (data as Comentario[]) ?? []
+}
+
+export async function adicionarComentario(taskId: string, autor: Autor, mensagem: string) {
+  return supabase.from('user_task_comments').insert({
+    task_id: taskId, autor_id: autor.id, autor_nome: autor.nome, mensagem: mensagem.trim(),
+  }).select().single()
 }
 
 // ─── Recados ─────────────────────────────────────────────────────────────────
@@ -126,7 +180,6 @@ export async function listarMeusRecados(userId: string): Promise<Recado[]> {
   return (data as Recado[]) ?? []
 }
 
-// Recados que o próprio enviou (admin acompanha o que atribuiu).
 export async function listarRecadosEnviados(fromUser: string): Promise<Recado[]> {
   const { data } = await supabase.from('user_notes').select('*')
     .eq('from_user', fromUser).order('created_at', { ascending: false })
@@ -147,8 +200,6 @@ export async function apagarRecado(id: string) {
   return supabase.from('user_notes').delete().eq('id', id)
 }
 
-// Pede ao servidor para enviar o email de aviso de um recado urgente. Só envia
-// se o destinatário tiver feito opt-in — a decisão é do servidor. Best-effort.
 export async function notificarRecadoUrgente(recadoId: string): Promise<void> {
   try {
     const { data } = await supabase.auth.getSession()
@@ -190,9 +241,9 @@ export async function listarColaboradores(): Promise<Colaborador[]> {
 export type ContadorMinhaArea = { pendentes: number; naoLidos: number }
 
 export async function contarMinhaArea(userId: string): Promise<ContadorMinhaArea> {
-  const pendentesQ = supabase.from('user_tasks')
+  const pendentesQ = supabase.from('user_task_assignees')
     .select('id', { count: 'exact', head: true })
-    .eq('assigned_to', userId).in('estado', ['pendente', 'em_curso'])
+    .eq('user_id', userId).in('estado', ['pendente', 'em_curso'])
   const naoLidosQ = supabase.from('user_notes')
     .select('id', { count: 'exact', head: true })
     .eq('to_user', userId).eq('lida', false)

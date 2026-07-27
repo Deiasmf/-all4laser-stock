@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
+import ComentariosTarefa from '@/components/ComentariosTarefa'
 import {
-  listarMinhasTarefas, criarTarefa, mudarEstadoTarefa, ordenarTarefas, prioridadeInfo,
+  listarMinhasTarefas, criarTarefa, mudarMeuEstado, ordenarTarefas, prioridadeInfo,
   listarMeusRecados, marcarRecadoLido,
   obterPrefNotificacao, guardarPrefNotificacao,
-  PRIORIDADES, type Prioridade, type Tarefa, type Recado,
+  PRIORIDADES, type Prioridade, type MinhaTarefa, type Recado,
 } from '@/lib/minhaArea'
 
 function formatarData(d: string | null): string {
@@ -24,12 +25,14 @@ function hoje() { return new Date().toISOString().slice(0, 10) }
 export default function MinhaAreaPage() {
   const { perfil, isAdmin } = useAuth()
   const uid = perfil?.id ?? null
-  const [tarefas, setTarefas] = useState<Tarefa[]>([])
+  const autor = { id: perfil?.id ?? null, nome: perfil?.nome ?? null }
+  const [tarefas, setTarefas] = useState<MinhaTarefa[]>([])
   const [recados, setRecados] = useState<Recado[]>([])
   const [pref, setPref] = useState(false)
   const [carregando, setCarregando] = useState(true)
   const [verConcluidas, setVerConcluidas] = useState(false)
   const [verLidos, setVerLidos] = useState(false)
+  const [respostaAberta, setRespostaAberta] = useState<string | null>(null)
   // Nova tarefa pessoal (o próprio adiciona-se tarefas).
   const [novaAberta, setNovaAberta] = useState(false)
   const [nTitulo, setNTitulo] = useState('')
@@ -47,22 +50,23 @@ export default function MinhaAreaPage() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { carregar() }, [carregar])
 
-  const ativas = ordenarTarefas(tarefas.filter((t) => t.estado !== 'concluida'))
-  const concluidas = tarefas.filter((t) => t.estado === 'concluida')
-    .sort((a, b) => (b.concluida_em ?? '').localeCompare(a.concluida_em ?? ''))
+  const ativas = ordenarTarefas(tarefas.filter((t) => t.meuEstado !== 'concluida'))
+  const concluidas = tarefas.filter((t) => t.meuEstado === 'concluida')
+    .sort((a, b) => (b.meuConcluidaEm ?? '').localeCompare(a.meuConcluidaEm ?? ''))
   const naoLidos = recados.filter((r) => !r.lida)
   const lidos = recados.filter((r) => r.lida)
 
-  async function concluir(t: Tarefa) { await mudarEstadoTarefa(t.id, 'concluida'); await carregar() }
-  async function reabrir(t: Tarefa) { await mudarEstadoTarefa(t.id, 'pendente'); await carregar() }
-  async function iniciar(t: Tarefa) { await mudarEstadoTarefa(t.id, 'em_curso'); await carregar() }
+  async function concluir(t: MinhaTarefa) { await mudarMeuEstado(t.assigneeId, 'concluida'); await carregar() }
+  async function reabrir(t: MinhaTarefa) { await mudarMeuEstado(t.assigneeId, 'pendente'); await carregar() }
+  async function iniciar(t: MinhaTarefa) { await mudarMeuEstado(t.assigneeId, 'em_curso'); await carregar() }
   async function lerRecado(r: Recado) { await marcarRecadoLido(r.id); await carregar() }
   async function togglePref() { const novo = !pref; setPref(novo); if (uid) await guardarPrefNotificacao(uid, novo) }
+  function toggleResposta(id: string) { setRespostaAberta((v) => (v === id ? null : id)) }
 
   async function adicionarTarefa() {
     if (!uid || !nTitulo.trim()) return
     await criarTarefa(
-      { assigned_to: uid, titulo: nTitulo.trim(), descricao: nDesc.trim() || null, prioridade: nPrio, data_limite: nPrazo || null },
+      { titulo: nTitulo.trim(), descricao: nDesc.trim() || null, prioridade: nPrio, data_limite: nPrazo || null, assignees: [uid] },
       uid,
     )
     setNTitulo(''); setNDesc(''); setNPrio('normal'); setNPrazo(''); setNovaAberta(false)
@@ -129,18 +133,24 @@ export default function MinhaAreaPage() {
                   const pi = prioridadeInfo(t.prioridade)
                   const atrasada = !!t.data_limite && t.data_limite < hoje()
                   return (
-                    <div key={t.id} style={c.tarefa}>
-                      <button style={c.check} onClick={() => concluir(t)} title="Concluir" aria-label="Concluir tarefa">○</button>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={c.tarefaTitulo}>{t.titulo}</div>
-                        {t.descricao && <div style={c.metaMuted}>{t.descricao}</div>}
-                        <div style={c.tarefaMeta}>
-                          <span style={{ ...c.pill, color: pi.cor, background: pi.bg }}>{pi.label}</span>
-                          {t.estado === 'em_curso' && <span style={c.pillCurso}>Em curso</span>}
-                          {t.data_limite && <span style={{ ...c.prazo, ...(atrasada ? c.prazoAtraso : {}) }}>{atrasada ? '⚠ ' : ''}{formatarData(t.data_limite)}</span>}
+                    <div key={t.id} style={c.tarefaCard}>
+                      <div style={c.tarefa}>
+                        <button style={c.check} onClick={() => concluir(t)} title="Concluir" aria-label="Concluir tarefa">○</button>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={c.tarefaTitulo}>{t.titulo}</div>
+                          {t.descricao && <div style={c.metaMuted}>{t.descricao}</div>}
+                          <div style={c.tarefaMeta}>
+                            <span style={{ ...c.pill, color: pi.cor, background: pi.bg }}>{pi.label}</span>
+                            {t.meuEstado === 'em_curso' && <span style={c.pillCurso}>Em curso</span>}
+                            {t.data_limite && <span style={{ ...c.prazo, ...(atrasada ? c.prazoAtraso : {}) }}>{atrasada ? '⚠ ' : ''}{formatarData(t.data_limite)}</span>}
+                          </div>
+                        </div>
+                        <div style={c.acoes}>
+                          {t.meuEstado !== 'em_curso' && <button style={c.btnSecMini} onClick={() => iniciar(t)}>Iniciar</button>}
+                          <button style={c.btnSecMini} onClick={() => toggleResposta(t.id)}>💬 Responder</button>
                         </div>
                       </div>
-                      {t.estado !== 'em_curso' && <button style={c.btnSecMini} onClick={() => iniciar(t)}>Iniciar</button>}
+                      {respostaAberta === t.id && <ComentariosTarefa taskId={t.id} autor={autor} />}
                     </div>
                   )
                 })}
@@ -160,7 +170,7 @@ export default function MinhaAreaPage() {
                       <span style={c.checkFeito}>✓</span>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ ...c.tarefaTitulo, textDecoration: 'line-through' }}>{t.titulo}</div>
-                        <div style={c.metaMuted}>Concluída {formatarDataHora(t.concluida_em)}</div>
+                        <div style={c.metaMuted}>Concluída {formatarDataHora(t.meuConcluidaEm)}</div>
                       </div>
                       <button style={c.btnSecMini} onClick={() => reabrir(t)}>Reabrir</button>
                     </div>
@@ -214,13 +224,12 @@ const c: Record<string, React.CSSProperties> = {
   lista: { display: 'flex', flexDirection: 'column', gap: 8 },
   muted: { color: 'var(--muted)', fontSize: 14 },
   metaMuted: { color: 'var(--muted)', fontSize: 12.5, marginTop: 2 },
-  // recados
   recado: { display: 'flex', gap: 12, alignItems: 'center', background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 14px' },
   recadoUrgente: { borderColor: '#FCA5A5', background: '#FEF2F2' },
   recadoMsg: { fontSize: 14.5, whiteSpace: 'pre-wrap' },
   tagUrgente: { display: 'inline-block', background: '#B91C1C', color: '#fff', borderRadius: 999, fontSize: 10.5, fontWeight: 800, padding: '2px 8px', marginBottom: 4, letterSpacing: 0.5 },
-  // tarefas
-  tarefa: { display: 'flex', gap: 12, alignItems: 'center', background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 14px' },
+  tarefaCard: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 14px' },
+  tarefa: { display: 'flex', gap: 12, alignItems: 'center' },
   check: { width: 26, height: 26, borderRadius: 999, border: '2px solid var(--border)', background: '#fff', color: 'transparent', cursor: 'pointer', flexShrink: 0, fontSize: 14, lineHeight: 1 },
   checkFeito: { width: 26, height: 26, borderRadius: 999, background: '#065F46', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 14 },
   tarefaTitulo: { fontWeight: 600, fontSize: 14.5 },
@@ -229,13 +238,12 @@ const c: Record<string, React.CSSProperties> = {
   pillCurso: { padding: '2px 10px', borderRadius: 999, fontSize: 11.5, fontWeight: 700, color: '#92400E', background: '#FEF3C7' },
   prazo: { fontSize: 12, color: 'var(--muted)' },
   prazoAtraso: { color: '#B91C1C', fontWeight: 700 },
-  // botões
+  acoes: { display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' },
   btnPrimario: { background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 16px', fontWeight: 700, cursor: 'pointer', textDecoration: 'none', whiteSpace: 'nowrap' },
   btnSec: { background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 12px', fontWeight: 600, cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap' },
   btnSecMini: { background: 'transparent', border: '1px solid var(--border)', borderRadius: 8, padding: '5px 10px', fontWeight: 600, cursor: 'pointer', fontSize: 12.5, whiteSpace: 'nowrap' },
   colapso: { background: 'transparent', border: 'none', color: 'var(--muted)', fontWeight: 600, fontSize: 13.5, cursor: 'pointer', padding: '4px 0', textAlign: 'left' },
   prefLinha: { display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 14, background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 14px' },
-  // nova tarefa pessoal
   h2Linha: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 10 },
   novaForm: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 10 },
   inputN: { width: '100%', padding: '9px 11px', border: '1px solid var(--border)', borderRadius: 8, font: 'inherit', boxSizing: 'border-box' },
