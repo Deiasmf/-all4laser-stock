@@ -188,6 +188,27 @@ export default function ListaAlugueres() {
   const numNaoFaturar = linhas.filter((l) => l.fat.nao_faturar).length
   const numPorDefinir = linhas.filter((l) => l.fat.valor_a_faturar == null && !l.fat.nao_faturar).length
 
+  // Grupos por mês (modo período): cada mês com as suas linhas e subtotais.
+  // Ordenados cronologicamente; as linhas dentro do grupo mantêm a ordenação
+  // escolhida. Em modo mês há só um grupo.
+  const grupos = useMemo(() => {
+    const m = new Map<string, LinhaMes[]>()
+    for (const l of linhas) {
+      const arr = m.get(l.fat.mes)
+      if (arr) arr.push(l)
+      else m.set(l.fat.mes, [l])
+    }
+    return [...m.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([mesGrupo, ls]) => ({
+        mes: mesGrupo,
+        linhas: ls,
+        total: somar(ls, (l) => l.aluguer.valor),
+        totalFaturar: somar(ls, (l) => (l.fat.nao_faturar ? 0 : l.fat.valor_a_faturar)),
+        naoPagos: ls.filter((l) => !l.fat.pago).length,
+      }))
+  }, [linhas])
+
   // Atualiza a faturação de um aluguer num mês (otimista + persistência imediata).
   // Cria a linha do mês se ainda não existir.
   async function atualizarFaturacao(aluguerId: string, mesX: string, patch: Partial<Fat>) {
@@ -235,6 +256,122 @@ export default function ListaAlugueres() {
   function aoEliminar(id: string) {
     setAlugueres((prev) => prev.filter((a) => a.id !== id))
     setEditar(null)
+  }
+
+  // ---- Render de uma linha (cartão em ecrã estreito, linha na tabela) --------
+  function renderCartao(l: LinhaMes) {
+    const a = l.aluguer
+    return (
+      <div
+        key={`${a.id}|${l.fat.mes}`}
+        style={{ ...c.cartao, ...(isAdmin ? c.linhaClicavel : {}) }}
+        onClick={isAdmin ? () => setEditar(a) : undefined}
+        title={isAdmin ? 'Toca para editar ou apagar' : undefined}
+      >
+        <div style={c.cartaoTopo}>
+          <span style={c.cartaoCliente}>
+            {a.cliente_nome ?? '—'}
+            {!a.nacional && <span style={c.intl}>Internacional</span>}
+          </span>
+          <span onClick={(e) => e.stopPropagation()}>
+            <EstadoPago fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, l.fat.mes, patch)} />
+          </span>
+        </div>
+        <div style={c.cartaoEquip}>
+          <span style={c.equipSn}>{a.serial_number ?? '—'}</span>
+          <span style={c.equipMarca}>{[a.marca, a.modelo].filter(Boolean).join(' ') || '—'}</span>
+        </div>
+        <div style={c.cartaoLinha}>
+          <span style={c.cartaoLabel}>Entrega</span>
+          <span>{formatarData(a.data_entrega)}</span>
+        </div>
+        <div style={c.cartaoLinha}>
+          <span style={c.cartaoLabel}>Valor</span>
+          <span style={{ fontWeight: 700 }}>{formatarEuro(a.valor || 0)}</span>
+        </div>
+        <div style={c.cartaoLinha} onClick={(e) => e.stopPropagation()}>
+          <span style={c.cartaoLabel}>Valor a Faturar</span>
+          <CelulaFaturar valorTotal={a.valor ?? 0} fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, l.fat.mes, patch)} />
+        </div>
+        <div style={c.cartaoLinha} onClick={(e) => e.stopPropagation()}>
+          <span style={c.cartaoLabel}>Fatura</span>
+          <CelulaFatura
+            aluguerId={a.id}
+            mes={l.fat.mes}
+            fat={l.fat}
+            podeEditar={podeFaturar}
+            onChange={(patch) => atualizarFaturacao(a.id, l.fat.mes, patch)}
+            onEnviar={() => setEnviarFatura({ aluguer: a, mes: l.fat.mes, fat: l.fat })}
+          />
+        </div>
+        <div style={c.cartaoLinha} onClick={(e) => e.stopPropagation()}>
+          <span style={c.cartaoLabel}>Validado</span>
+          <VistoValidado fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, l.fat.mes, patch)} />
+        </div>
+      </div>
+    )
+  }
+
+  function renderLinhaTabela(l: LinhaMes) {
+    const a = l.aluguer
+    return (
+      <div
+        key={`${a.id}|${l.fat.mes}`}
+        style={{ ...c.linha, ...(isAdmin ? c.linhaClicavel : {}) }}
+        onClick={isAdmin ? () => setEditar(a) : undefined}
+        title={isAdmin ? 'Clica para editar ou apagar' : undefined}
+      >
+        <span style={{ ...c.celula, justifyContent: 'center' }} onClick={(e) => e.stopPropagation()}>
+          <VistoValidado fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, l.fat.mes, patch)} />
+        </span>
+        <span style={{ fontWeight: 600 }}>
+          {a.cliente_nome ?? '—'}
+          {!a.nacional && <span style={c.intl}>Internacional</span>}
+        </span>
+        <span style={c.equip}>
+          <span style={c.equipSn}>{a.serial_number ?? '—'}</span>
+          <span style={c.equipMarca}>{[a.marca, a.modelo].filter(Boolean).join(' ') || '—'}</span>
+        </span>
+        <span>{formatarData(a.data_entrega)}</span>
+        <span style={{ textAlign: 'right', fontWeight: 700 }}>{formatarEuro(a.valor || 0)}</span>
+        <span style={c.celula} onClick={(e) => e.stopPropagation()}>
+          <CelulaFaturar valorTotal={a.valor ?? 0} fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, l.fat.mes, patch)} />
+        </span>
+        <span style={c.celula} onClick={(e) => e.stopPropagation()}>
+          <CelulaFatura
+            aluguerId={a.id}
+            mes={l.fat.mes}
+            fat={l.fat}
+            podeEditar={podeFaturar}
+            onChange={(patch) => atualizarFaturacao(a.id, l.fat.mes, patch)}
+            onEnviar={() => setEnviarFatura({ aluguer: a, mes: l.fat.mes, fat: l.fat })}
+          />
+        </span>
+        <span style={{ ...c.celula, justifyContent: 'center' }} onClick={(e) => e.stopPropagation()}>
+          <EstadoPago fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, l.fat.mes, patch)} />
+        </span>
+      </div>
+    )
+  }
+
+  // Render de uma lista de linhas (cartões ou tabela consoante o ecrã).
+  function renderLista(lista: LinhaMes[]) {
+    if (estreito) return <div style={c.cartoes}>{lista.map(renderCartao)}</div>
+    return (
+      <div style={c.tabela}>
+        <div style={{ ...c.linha, ...c.cab }}>
+          <span style={{ textAlign: 'center' }} title="Validado">✓</span>
+          <span>Cliente</span>
+          <span>Equipamento</span>
+          <span>Entrega</span>
+          <span style={{ textAlign: 'right' }}>Valor</span>
+          <span>Valor a Faturar</span>
+          <span>Fatura</span>
+          <span style={{ textAlign: 'center' }}>Pago</span>
+        </div>
+        {lista.map(renderLinhaTabela)}
+      </div>
+    )
   }
 
   return (
@@ -330,114 +467,23 @@ export default function ListaAlugueres() {
         <p style={c.estado}>A carregar...</p>
       ) : linhas.length === 0 ? (
         <p style={c.estado}>{modo === 'mes' ? 'Sem alugueres neste mês.' : 'Sem alugueres neste período.'}</p>
-      ) : estreito ? (
-        <div style={c.cartoes}>
-          {linhas.map((l) => {
-            const a = l.aluguer
-            return (
-              <div
-                key={`${a.id}|${l.fat.mes}`}
-                style={{ ...c.cartao, ...(isAdmin ? c.linhaClicavel : {}) }}
-                onClick={isAdmin ? () => setEditar(a) : undefined}
-                title={isAdmin ? 'Toca para editar ou apagar' : undefined}
-              >
-                <div style={c.cartaoTopo}>
-                  <span style={c.cartaoCliente}>
-                    {a.cliente_nome ?? '—'}
-                    {!a.nacional && <span style={c.intl}>Internacional</span>}
-                  </span>
-                  <span onClick={(e) => e.stopPropagation()}>
-                    <EstadoPago fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, l.fat.mes, patch)} />
-                  </span>
-                </div>
-                <div style={c.cartaoEquip}>
-                  <span style={c.equipSn}>{a.serial_number ?? '—'}</span>
-                  <span style={c.equipMarca}>{[a.marca, a.modelo].filter(Boolean).join(' ') || '—'}</span>
-                </div>
-                <div style={c.cartaoLinha}>
-                  <span style={c.cartaoLabel}>Entrega</span>
-                  <span>{formatarData(a.data_entrega)}</span>
-                </div>
-                <div style={c.cartaoLinha}>
-                  <span style={c.cartaoLabel}>Valor</span>
-                  <span style={{ fontWeight: 700 }}>{formatarEuro(a.valor || 0)}</span>
-                </div>
-                <div style={c.cartaoLinha} onClick={(e) => e.stopPropagation()}>
-                  <span style={c.cartaoLabel}>Valor a Faturar</span>
-                  <CelulaFaturar valorTotal={a.valor ?? 0} fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, l.fat.mes, patch)} />
-                </div>
-                <div style={c.cartaoLinha} onClick={(e) => e.stopPropagation()}>
-                  <span style={c.cartaoLabel}>Fatura</span>
-                  <CelulaFatura
-                    aluguerId={a.id}
-                    mes={l.fat.mes}
-                    fat={l.fat}
-                    podeEditar={podeFaturar}
-                    onChange={(patch) => atualizarFaturacao(a.id, l.fat.mes, patch)}
-                    onEnviar={() => setEnviarFatura({ aluguer: a, mes: l.fat.mes, fat: l.fat })}
-                  />
-                </div>
-                <div style={c.cartaoLinha} onClick={(e) => e.stopPropagation()}>
-                  <span style={c.cartaoLabel}>Validado</span>
-                  <VistoValidado fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, l.fat.mes, patch)} />
-                </div>
-              </div>
-            )
-          })}
-        </div>
+      ) : modo === 'mes' ? (
+        renderLista(linhas)
       ) : (
-        <div style={c.tabela}>
-          <div style={{ ...c.linha, ...c.cab }}>
-            <span style={{ textAlign: 'center' }} title="Validado">✓</span>
-            <span>Cliente</span>
-            <span>Equipamento</span>
-            <span>Entrega</span>
-            <span style={{ textAlign: 'right' }}>Valor</span>
-            <span>Valor a Faturar</span>
-            <span>Fatura</span>
-            <span style={{ textAlign: 'center' }}>Pago</span>
-          </div>
-          {linhas.map((l) => {
-            const a = l.aluguer
-            return (
-              <div
-                key={`${a.id}|${l.fat.mes}`}
-                style={{ ...c.linha, ...(isAdmin ? c.linhaClicavel : {}) }}
-                onClick={isAdmin ? () => setEditar(a) : undefined}
-                title={isAdmin ? 'Clica para editar ou apagar' : undefined}
-              >
-                <span style={{ ...c.celula, justifyContent: 'center' }} onClick={(e) => e.stopPropagation()}>
-                  <VistoValidado fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, l.fat.mes, patch)} />
-                </span>
-                <span style={{ fontWeight: 600 }}>
-                  {a.cliente_nome ?? '—'}
-                  {!a.nacional && <span style={c.intl}>Internacional</span>}
-                </span>
-                <span style={c.equip}>
-                  <span style={c.equipSn}>{a.serial_number ?? '—'}</span>
-                  <span style={c.equipMarca}>{[a.marca, a.modelo].filter(Boolean).join(' ') || '—'}</span>
-                </span>
-                <span>{formatarData(a.data_entrega)}</span>
-                <span style={{ textAlign: 'right', fontWeight: 700 }}>{formatarEuro(a.valor || 0)}</span>
-                <span style={c.celula} onClick={(e) => e.stopPropagation()}>
-                  <CelulaFaturar valorTotal={a.valor ?? 0} fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, l.fat.mes, patch)} />
-                </span>
-                <span style={c.celula} onClick={(e) => e.stopPropagation()}>
-                  <CelulaFatura
-                    aluguerId={a.id}
-                    mes={l.fat.mes}
-                    fat={l.fat}
-                    podeEditar={podeFaturar}
-                    onChange={(patch) => atualizarFaturacao(a.id, l.fat.mes, patch)}
-                    onEnviar={() => setEnviarFatura({ aluguer: a, mes: l.fat.mes, fat: l.fat })}
-                  />
-                </span>
-                <span style={{ ...c.celula, justifyContent: 'center' }} onClick={(e) => e.stopPropagation()}>
-                  <EstadoPago fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, l.fat.mes, patch)} />
+        <div style={c.grupos}>
+          {grupos.map((g) => (
+            <div key={g.mes} style={c.grupo}>
+              <div style={c.grupoCab}>
+                <span style={{ textTransform: 'capitalize', fontWeight: 700 }}>{nomeMes(g.mes)}</span>
+                <span style={c.grupoSub}>
+                  {g.linhas.length} aluguer(es) · <strong>{formatarEuro(g.total)}</strong>
+                  {' · a faturar '}<strong>{formatarEuro(g.totalFaturar)}</strong>
+                  {g.naoPagos > 0 && <span style={c.grupoNaoPagos}> · 🔴 {g.naoPagos} não pago{g.naoPagos > 1 ? 's' : ''}</span>}
                 </span>
               </div>
-            )
-          })}
+              {renderLista(g.linhas)}
+            </div>
+          ))}
         </div>
       )}
 
@@ -966,6 +1012,11 @@ const c: Record<string, React.CSSProperties> = {
   inputMes: { padding: 10, border: '1px solid #ccc', borderRadius: 8, fontSize: 15 },
   periodoCampos: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' },
   periodoLabel: { display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, color: 'var(--muted, #666)' },
+  grupos: { display: 'flex', flexDirection: 'column', gap: 20 },
+  grupo: { display: 'flex', flexDirection: 'column', gap: 8 },
+  grupoCab: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', borderBottom: '2px solid var(--primary, #333)', paddingBottom: 6 },
+  grupoSub: { fontSize: 13, color: 'var(--muted, #666)' },
+  grupoNaoPagos: { color: '#c62828', fontWeight: 700 },
   inputPesq: { flex: 1, minWidth: 160, padding: 10, border: '1px solid #ccc', borderRadius: 8, fontSize: 15 },
   inputOrden: { padding: 10, border: '1px solid #ccc', borderRadius: 8, fontSize: 15, background: '#fff', cursor: 'pointer' },
   inputPagoAtivo: { padding: 10, border: '1px solid #c62828', borderRadius: 8, fontSize: 15, background: '#ffebee', color: '#c62828', fontWeight: 700, cursor: 'pointer' },
