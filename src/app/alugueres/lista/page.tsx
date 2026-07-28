@@ -97,7 +97,12 @@ const colunasExport: ColunaExport<LinhaMes>[] = [
 type Ordenacao = 'cliente-asc' | 'cliente-desc' | 'valor-desc' | 'valor-asc' | 'data-desc' | 'data-asc'
 
 export default function ListaAlugueres() {
-  const { isAdmin } = useAuth()
+  const { isAdmin, perfil } = useAuth()
+  // Editar/apagar o aluguer em si continua reservado a admin (clique na linha).
+  // A faturação do mês (anexar/enviar/remover fatura, valor, pago, validado) fica
+  // disponível a qualquer colaborador com perfil de staff — é o que a RLS da BD
+  // já permite (escrita para 'authenticated'; só apagar linhas é de admin).
+  const podeFaturar = !!perfil
   const estreito = useEcraEstreito()
   const [alugueres, setAlugueres] = useState<Aluguer[]>([])
   const [faturacao, setFaturacao] = useState<Map<string, Fat>>(new Map())
@@ -303,7 +308,7 @@ export default function ListaAlugueres() {
                     {!a.nacional && <span style={c.intl}>Internacional</span>}
                   </span>
                   <span onClick={(e) => e.stopPropagation()}>
-                    <EstadoPago fat={l.fat} podeEditar={isAdmin} onChange={(patch) => atualizarFaturacao(a.id, mes, patch)} />
+                    <EstadoPago fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, mes, patch)} />
                   </span>
                 </div>
                 <div style={c.cartaoEquip}>
@@ -320,7 +325,7 @@ export default function ListaAlugueres() {
                 </div>
                 <div style={c.cartaoLinha} onClick={(e) => e.stopPropagation()}>
                   <span style={c.cartaoLabel}>Valor a Faturar</span>
-                  <CelulaFaturar valorTotal={a.valor ?? 0} fat={l.fat} podeEditar={isAdmin} onChange={(patch) => atualizarFaturacao(a.id, mes, patch)} />
+                  <CelulaFaturar valorTotal={a.valor ?? 0} fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, mes, patch)} />
                 </div>
                 <div style={c.cartaoLinha} onClick={(e) => e.stopPropagation()}>
                   <span style={c.cartaoLabel}>Fatura</span>
@@ -328,14 +333,14 @@ export default function ListaAlugueres() {
                     aluguerId={a.id}
                     mes={mes}
                     fat={l.fat}
-                    podeEditar={isAdmin}
+                    podeEditar={podeFaturar}
                     onChange={(patch) => atualizarFaturacao(a.id, mes, patch)}
                     onEnviar={() => setEnviarFatura({ aluguer: a, mes, fat: l.fat })}
                   />
                 </div>
                 <div style={c.cartaoLinha} onClick={(e) => e.stopPropagation()}>
                   <span style={c.cartaoLabel}>Validado</span>
-                  <VistoValidado fat={l.fat} podeEditar={isAdmin} onChange={(patch) => atualizarFaturacao(a.id, mes, patch)} />
+                  <VistoValidado fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, mes, patch)} />
                 </div>
               </div>
             )
@@ -363,7 +368,7 @@ export default function ListaAlugueres() {
                 title={isAdmin ? 'Clica para editar ou apagar' : undefined}
               >
                 <span style={{ ...c.celula, justifyContent: 'center' }} onClick={(e) => e.stopPropagation()}>
-                  <VistoValidado fat={l.fat} podeEditar={isAdmin} onChange={(patch) => atualizarFaturacao(a.id, mes, patch)} />
+                  <VistoValidado fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, mes, patch)} />
                 </span>
                 <span style={{ fontWeight: 600 }}>
                   {a.cliente_nome ?? '—'}
@@ -376,20 +381,20 @@ export default function ListaAlugueres() {
                 <span>{formatarData(a.data_entrega)}</span>
                 <span style={{ textAlign: 'right', fontWeight: 700 }}>{formatarEuro(a.valor || 0)}</span>
                 <span style={c.celula} onClick={(e) => e.stopPropagation()}>
-                  <CelulaFaturar valorTotal={a.valor ?? 0} fat={l.fat} podeEditar={isAdmin} onChange={(patch) => atualizarFaturacao(a.id, mes, patch)} />
+                  <CelulaFaturar valorTotal={a.valor ?? 0} fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, mes, patch)} />
                 </span>
                 <span style={c.celula} onClick={(e) => e.stopPropagation()}>
                   <CelulaFatura
                     aluguerId={a.id}
                     mes={mes}
                     fat={l.fat}
-                    podeEditar={isAdmin}
+                    podeEditar={podeFaturar}
                     onChange={(patch) => atualizarFaturacao(a.id, mes, patch)}
                     onEnviar={() => setEnviarFatura({ aluguer: a, mes, fat: l.fat })}
                   />
                 </span>
                 <span style={{ ...c.celula, justifyContent: 'center' }} onClick={(e) => e.stopPropagation()}>
-                  <EstadoPago fat={l.fat} podeEditar={isAdmin} onChange={(patch) => atualizarFaturacao(a.id, mes, patch)} />
+                  <EstadoPago fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, mes, patch)} />
                 </span>
               </div>
             )
