@@ -62,6 +62,9 @@ export async function GET(req: Request) {
     return Response.json({ ok: false, erro: 'Não autorizado ou CRON_SECRET não configurado.' }, { status: 401 })
   }
 
+  // Modo de teste: calcula os eventos mas NÃO envia emails nem grava dedup.
+  const dryrun = new URL(req.url).searchParams.get('dryrun') === '1'
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!url || !serviceKey) return Response.json({ ok: false, erro: 'Servidor mal configurado.' }, { status: 500 })
@@ -93,10 +96,12 @@ export async function GET(req: Request) {
   }
 
   const novasChaves: string[] = []
+  const previstos: string[] = []
   let enviados = 0
   const erros: string[] = []
 
   async function enviar(assunto: string, html: string, chaves: string[]) {
+    if (dryrun) { previstos.push(assunto); return true }  // não envia nem grava
     const r = await enviarEmail({ para: destinatarios, assunto, html })
     if (!r.configurado) { erros.push('email não configurado'); return false }
     if (!r.ok) { erros.push(r.motivo ?? 'falha no envio'); return false }
@@ -168,9 +173,18 @@ export async function GET(req: Request) {
     }
   }
 
-  if (novasChaves.length > 0) {
+  if (!dryrun && novasChaves.length > 0) {
     await sb.from('alugueres_notificacoes').insert(novasChaves.map((chave) => ({ chave })))
   }
 
-  return Response.json({ ok: true, enviados, novos_eventos: novasChaves.length, erros: erros.length ? erros : undefined })
+  return Response.json({
+    ok: true,
+    dryrun,
+    sendgrid_configurado: !!process.env.SENDGRID_API_KEY,
+    enviados,
+    eventos_a_enviar: dryrun ? previstos.length : undefined,
+    previstos: dryrun ? previstos : undefined,
+    novos_eventos: novasChaves.length,
+    erros: erros.length ? erros : undefined,
+  })
 }
