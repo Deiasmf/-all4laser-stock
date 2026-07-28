@@ -10,9 +10,12 @@ function dh(iso: string) {
   return new Date(iso).toLocaleString('pt-PT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
-export default function ComentariosTarefa({ taskId, autor }: {
+export default function ComentariosTarefa({ taskId, autor, soLeitura = false }: {
   taskId: string
   autor: { id: string | null; nome: string | null }
+  // No painel de equipa mostramos o fio só para leitura (esconde a caixa de
+  // resposta). Escrever continua reservado a criador/destinatários pela RLS.
+  soLeitura?: boolean
 }) {
   const [itens, setItens] = useState<Comentario[]>([])
   const [texto, setTexto] = useState('')
@@ -51,16 +54,18 @@ export default function ComentariosTarefa({ taskId, autor }: {
           })}
         </div>
       )}
-      <div style={s.formLinha}>
-        <input
-          value={texto}
-          onChange={(e) => setTexto(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') enviar() }}
-          placeholder="Escrever resposta…"
-          style={s.input}
-        />
-        <button style={s.btn} disabled={!texto.trim() || aEnviar} onClick={enviar}>Responder</button>
-      </div>
+      {!soLeitura && (
+        <div style={s.formLinha}>
+          <input
+            value={texto}
+            onChange={(e) => setTexto(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') enviar() }}
+            placeholder="Escrever resposta…"
+            style={s.input}
+          />
+          <button style={s.btn} disabled={!texto.trim() || aEnviar} onClick={enviar}>Responder</button>
+        </div>
+      )}
     </div>
   )
 }

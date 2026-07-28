@@ -14,7 +14,7 @@ import { contarMinhaArea } from '@/lib/minhaArea'
 // + as guardas de rota; isto só limpa o menu).
 type Requer = 'admin' | 'financeiro'
 type SubItem = { href: string; label: string; icon: string }
-type Item = { href?: string; label: string; icon?: string; badge?: 'leads' | 'minhaArea'; filhos?: SubItem[]; requer?: Requer }
+type Item = { href?: string; label: string; icon?: string; badge?: 'leads' | 'minhaArea'; filhos?: SubItem[]; requer?: Requer; exato?: boolean }
 type Seccao = { titulo: string; itens: Item[] }
 
 const NAV: Seccao[] = [
@@ -22,7 +22,8 @@ const NAV: Seccao[] = [
     titulo: 'Principal',
     itens: [
       { href: '/', label: 'Dashboard', icon: '🏠' },
-      { href: '/a-minha-area', label: 'A Minha Área', icon: '📌', badge: 'minhaArea' },
+      { href: '/a-minha-area', label: 'A Minha Área', icon: '📌', badge: 'minhaArea', exato: true },
+      { href: '/a-minha-area/equipa', label: 'Equipa', icon: '👥' },
     ],
   },
   {
@@ -92,6 +93,7 @@ const NAV: Seccao[] = [
 // Título da página a partir da rota (mais específico primeiro).
 const TITULOS: { prefixo: string; titulo: string }[] = [
   { prefixo: '/a-minha-area/atribuir', titulo: 'Atribuir Tarefa / Recado' },
+  { prefixo: '/a-minha-area/equipa', titulo: 'Equipa' },
   { prefixo: '/a-minha-area', titulo: 'A Minha Área' },
   { prefixo: '/admin-dept/expedicao', titulo: 'Prontos a Enviar' },
   { prefixo: '/admin-dept/envios-pecas', titulo: 'Envios de Encomendas' },
@@ -197,8 +199,9 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     return <>{children}</>
   }
 
-  function ehAtivo(href: string) {
+  function ehAtivo(href: string, exato = false) {
     if (href === '/') return pathname === '/'
+    if (exato) return pathname === href
     return pathname === href || pathname.startsWith(href + '/')
   }
 
@@ -269,7 +272,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                   <Link
                     key={it.href}
                     href={it.href!}
-                    className={`a4l-sb-item${ehAtivo(it.href!) ? ' ativo' : ''}`}
+                    className={`a4l-sb-item${ehAtivo(it.href!, it.exato) ? ' ativo' : ''}`}
                   >
                     <span className="a4l-sb-icon">{it.icon}</span>
                     <span>{it.label}</span>

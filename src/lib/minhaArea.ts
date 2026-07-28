@@ -228,12 +228,55 @@ export async function guardarPrefNotificacao(userId: string, ativo: boolean) {
     .upsert({ user_id: userId, notif_recado_urgente: ativo }, { onConflict: 'user_id' })
 }
 
-// ─── Colaboradores (para o admin atribuir) ───────────────────────────────────
-
+// ─── Colaboradores ────────────────────────────────────────────────────────────
+// Todos os colaboradores (para atribuir e para o painel de equipa). Usa o RPC
+// staff_colaboradores() para que QUALQUER staff veja a lista — a política de
+// profiles continua "só o próprio ou admin", por isso um SELECT direto devolvia
+// apenas o próprio a um não-admin.
 export async function listarColaboradores(): Promise<Colaborador[]> {
-  const { data } = await supabase.from('profiles')
-    .select('id, nome, email, role').order('nome', { nullsFirst: false })
+  const { data } = await supabase.rpc('staff_colaboradores')
   return (data as Colaborador[]) ?? []
+}
+
+// ─── Resumo de desempenho por pessoa (painel de equipa) ───────────────────────
+
+export type ResumoPessoa = {
+  userId: string
+  nome: string
+  pendentes: number
+  emCurso: number
+  concluidas: number
+  atrasadas: number
+}
+
+// Agrega o estado de cada destinatário em todas as tarefas, por pessoa.
+// "atrasada" = tarefa com data limite no passado e ainda não concluída por essa
+// pessoa. Ordena por carga em aberto (pendentes + em curso), do maior ao menor.
+export function resumoPorPessoa(
+  tarefas: TarefaComAssignees[],
+  colaboradores: Colaborador[],
+): ResumoPessoa[] {
+  const hoje = new Date().toISOString().slice(0, 10)
+  const nomeDe = (id: string) => {
+    const c = colaboradores.find((x) => x.id === id)
+    return c?.nome ?? c?.email ?? '—'
+  }
+  const mapa = new Map<string, ResumoPessoa>()
+  for (const t of tarefas) {
+    const atrasada = !!t.data_limite && t.data_limite < hoje
+    for (const a of t.assignees) {
+      let r = mapa.get(a.user_id)
+      if (!r) {
+        r = { userId: a.user_id, nome: nomeDe(a.user_id), pendentes: 0, emCurso: 0, concluidas: 0, atrasadas: 0 }
+        mapa.set(a.user_id, r)
+      }
+      if (a.estado === 'concluida') r.concluidas++
+      else if (a.estado === 'em_curso') r.emCurso++
+      else r.pendentes++
+      if (a.estado !== 'concluida' && atrasada) r.atrasadas++
+    }
+  }
+  return [...mapa.values()].sort((a, b) => (b.pendentes + b.emCurso) - (a.pendentes + a.emCurso))
 }
 
 // ─── Contadores para o badge do header ───────────────────────────────────────

@@ -6,9 +6,9 @@ import { useAuth } from '@/lib/auth'
 import ComentariosTarefa from '@/components/ComentariosTarefa'
 import {
   listarMinhasTarefas, criarTarefa, mudarMeuEstado, ordenarTarefas, prioridadeInfo,
-  listarMeusRecados, marcarRecadoLido,
+  listarMeusRecados, marcarRecadoLido, listarRecadosEnviados, listarColaboradores,
   obterPrefNotificacao, guardarPrefNotificacao,
-  PRIORIDADES, type Prioridade, type MinhaTarefa, type Recado,
+  PRIORIDADES, type Prioridade, type MinhaTarefa, type Recado, type Colaborador,
 } from '@/lib/minhaArea'
 
 function formatarData(d: string | null): string {
@@ -28,10 +28,13 @@ export default function MinhaAreaPage() {
   const autor = { id: perfil?.id ?? null, nome: perfil?.nome ?? null }
   const [tarefas, setTarefas] = useState<MinhaTarefa[]>([])
   const [recados, setRecados] = useState<Recado[]>([])
+  const [enviados, setEnviados] = useState<Recado[]>([])
+  const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
   const [pref, setPref] = useState(false)
   const [carregando, setCarregando] = useState(true)
   const [verConcluidas, setVerConcluidas] = useState(false)
   const [verLidos, setVerLidos] = useState(false)
+  const [verEnviados, setVerEnviados] = useState(false)
   const [respostaAberta, setRespostaAberta] = useState<string | null>(null)
   // Nova tarefa pessoal (o próprio adiciona-se tarefas).
   const [novaAberta, setNovaAberta] = useState(false)
@@ -42,10 +45,11 @@ export default function MinhaAreaPage() {
 
   const carregar = useCallback(async () => {
     if (!uid) return
-    const [ts, rs, p] = await Promise.all([
-      listarMinhasTarefas(uid), listarMeusRecados(uid), obterPrefNotificacao(uid),
+    const [ts, rs, en, cs, p] = await Promise.all([
+      listarMinhasTarefas(uid), listarMeusRecados(uid), listarRecadosEnviados(uid),
+      listarColaboradores(), obterPrefNotificacao(uid),
     ])
-    setTarefas(ts); setRecados(rs); setPref(p); setCarregando(false)
+    setTarefas(ts); setRecados(rs); setEnviados(en); setColaboradores(cs); setPref(p); setCarregando(false)
   }, [uid])
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { carregar() }, [carregar])
@@ -55,6 +59,11 @@ export default function MinhaAreaPage() {
     .sort((a, b) => (b.meuConcluidaEm ?? '').localeCompare(a.meuConcluidaEm ?? ''))
   const naoLidos = recados.filter((r) => !r.lida)
   const lidos = recados.filter((r) => r.lida)
+  const nomeDe = (id: string | null) => {
+    if (!id) return '—'
+    const co = colaboradores.find((x) => x.id === id)
+    return co?.nome ?? co?.email ?? '—'
+  }
 
   async function concluir(t: MinhaTarefa) { await mudarMeuEstado(t.assigneeId, 'concluida'); await carregar() }
   async function reabrir(t: MinhaTarefa) { await mudarMeuEstado(t.assigneeId, 'pendente'); await carregar() }
@@ -82,7 +91,10 @@ export default function MinhaAreaPage() {
           <h1 style={c.titulo}>📌 A Minha Área</h1>
           <p style={c.sub}>As tuas tarefas e recados. Só tu vês esta área.</p>
         </div>
-        {isAdmin && <Link href="/a-minha-area/atribuir" style={c.btnPrimario}>+ Atribuir tarefa/recado</Link>}
+        <div style={c.topoAcoes}>
+          <Link href="/a-minha-area/equipa" style={c.btnSecLink}>👥 Equipa</Link>
+          {isAdmin && <Link href="/a-minha-area/atribuir" style={c.btnPrimario}>+ Atribuir tarefa/recado</Link>}
+        </div>
       </div>
 
       {carregando ? <p style={c.muted}>A carregar…</p> : (
@@ -200,6 +212,33 @@ export default function MinhaAreaPage() {
             </section>
           )}
 
+          {enviados.length > 0 && (
+            <section style={c.secao}>
+              <button style={c.colapso} onClick={() => setVerEnviados((v) => !v)}>
+                {verEnviados ? '▼' : '▸'} Recados que enviei ({enviados.length})
+              </button>
+              {verEnviados && (
+                <div style={c.lista}>
+                  {enviados.map((r) => (
+                    <div key={r.id} style={{ ...c.recado, ...(r.urgente ? c.recadoUrgente : {}) }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        {r.urgente && <span style={c.tagUrgente}>URGENTE</span>}
+                        <div style={c.recadoMsg}>{r.mensagem}</div>
+                        <div style={c.metaMuted}>
+                          Para {nomeDe(r.to_user)} · {formatarDataHora(r.created_at)}
+                          {' · '}
+                          {r.lida
+                            ? <span style={{ color: '#065F46', fontWeight: 600 }}>✓ lido {formatarDataHora(r.lida_em)}</span>
+                            : <span style={{ color: '#B45309', fontWeight: 600 }}>● por ler</span>}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
           <section style={c.secao}>
             <h2 style={c.h2}>🔔 Notificações</h2>
             <label style={c.prefLinha}>
@@ -240,6 +279,8 @@ const c: Record<string, React.CSSProperties> = {
   prazoAtraso: { color: '#B91C1C', fontWeight: 700 },
   acoes: { display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' },
   btnPrimario: { background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 16px', fontWeight: 700, cursor: 'pointer', textDecoration: 'none', whiteSpace: 'nowrap' },
+  topoAcoes: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' },
+  btnSecLink: { background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 14px', fontWeight: 600, cursor: 'pointer', textDecoration: 'none', color: 'var(--foreground)', whiteSpace: 'nowrap' },
   btnSec: { background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 12px', fontWeight: 600, cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap' },
   btnSecMini: { background: 'transparent', border: '1px solid var(--border)', borderRadius: 8, padding: '5px 10px', fontWeight: 600, cursor: 'pointer', fontSize: 12.5, whiteSpace: 'nowrap' },
   colapso: { background: 'transparent', border: 'none', color: 'var(--muted)', fontWeight: 600, fontSize: 13.5, cursor: 'pointer', padding: '4px 0', textAlign: 'left' },
