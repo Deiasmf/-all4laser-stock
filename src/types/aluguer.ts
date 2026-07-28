@@ -25,6 +25,8 @@ export type Aluguer = {
   // Só o mês de recolha física (mês único ou último mês de um contrato de vários
   // meses). Meses intermédios de um contrato ficam false = só faturação.
   recolha_aplicavel: boolean | null
+  // Contrato sinalizado para avançar para venda (data da marcação).
+  marcado_venda_em: string | null
   criado_por: string | null
   criado_por_nome: string | null
   created_at: string
