@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
@@ -80,6 +80,7 @@ function valorAFaturarTexto(fat: Fat): string {
 
 // Colunas para exportação (espelham a tabela do mês mostrado)
 const colunasExport: ColunaExport<LinhaMes>[] = [
+  { cabecalho: 'Mês', valor: (l) => nomeMes(l.fat.mes) },
   { cabecalho: 'Cliente', valor: (l) => l.aluguer.cliente_nome },
   { cabecalho: 'Mercado', valor: (l) => (l.aluguer.nacional ? 'Nacional' : 'Internacional') },
   { cabecalho: 'Serial Number', valor: (l) => l.aluguer.serial_number },
@@ -107,6 +108,10 @@ export default function ListaAlugueres() {
   const [alugueres, setAlugueres] = useState<Aluguer[]>([])
   const [faturacao, setFaturacao] = useState<Map<string, Fat>>(new Map())
   const [mes, setMes] = useState(mesAtual())
+  // Modo de visualização: um único mês (predefinido) ou um período (De → Até).
+  const [modo, setModo] = useState<'mes' | 'periodo'>('mes')
+  const [mesDe, setMesDe] = useState(mesAtual())
+  const [mesAte, setMesAte] = useState(mesAtual())
   const [pesquisa, setPesquisa] = useState('')
   const [fPago, setFPago] = useState<'' | 'nao-pagos' | 'pagos'>('')
   const [ordenar, setOrdenar] = useState<Ordenacao>('cliente-asc')
@@ -127,16 +132,30 @@ export default function ListaAlugueres() {
     })
   }, [])
 
-  // Alugueres do mês (respeita mês + pesquisa, mas NÃO o filtro de pagamento).
-  // Serve de base às contagens do resumo, para ficarem estáveis mesmo quando
-  // se está a filtrar "só não pagos" ou "só pagos".
+  // Limites do período (garante De ≤ Até mesmo que a utilizadora troque a ordem).
+  const [periodoDe, periodoAte] = useMemo(() => (mesDe <= mesAte ? [mesDe, mesAte] : [mesAte, mesDe]), [mesDe, mesAte])
+
+  // Um mês de entrega pertence à seleção? (um único mês, ou dentro do período)
+  const dentroDaSelecao = useCallback((em: string) => {
+    if (!em) return false
+    return modo === 'mes' ? em === mes : em >= periodoDe && em <= periodoAte
+  }, [modo, mes, periodoDe, periodoAte])
+
+  // Alugueres da seleção (respeita mês/período + pesquisa, mas NÃO o filtro de
+  // pagamento). Serve de base às contagens do resumo, para ficarem estáveis
+  // mesmo quando se está a filtrar "só não pagos" ou "só pagos".
+  // Cada linha usa a faturação do SEU mês de entrega (em modo mês, é o mês
+  // selecionado; em período, o mês a que cada aluguer pertence).
   const linhasMes = useMemo<LinhaMes[]>(() => {
     const q = pesquisa.trim().toLowerCase()
     return alugueres
-      .filter((a) => (a.data_entrega ?? '').slice(0, 7) === mes)
+      .filter((a) => dentroDaSelecao((a.data_entrega ?? '').slice(0, 7)))
       .filter((a) => !q || (a.cliente_nome ?? '').toLowerCase().includes(q))
-      .map((a) => ({ aluguer: a, fat: faturacao.get(`${a.id}|${mes}`) ?? fatVazia(a.id, mes) }))
-  }, [alugueres, faturacao, mes, pesquisa])
+      .map((a) => {
+        const em = (a.data_entrega ?? '').slice(0, 7)
+        return { aluguer: a, fat: faturacao.get(`${a.id}|${em}`) ?? fatVazia(a.id, em) }
+      })
+  }, [alugueres, faturacao, dentroDaSelecao, pesquisa])
 
   // Lista mostrada = mês + filtro de pagamento + ordenação
   const linhas = useMemo<LinhaMes[]>(() => {
@@ -227,7 +246,23 @@ export default function ListaAlugueres() {
       <AlugueresNav />
 
       <div style={c.filtros}>
-        <input type="month" value={mes} onChange={(e) => setMes(e.target.value)} style={c.inputMes} />
+        <select
+          value={modo}
+          onChange={(e) => setModo(e.target.value as 'mes' | 'periodo')}
+          style={c.inputOrden}
+          title="Ver um mês ou um período"
+        >
+          <option value="mes">Um mês</option>
+          <option value="periodo">Período</option>
+        </select>
+        {modo === 'mes' ? (
+          <input type="month" value={mes} onChange={(e) => setMes(e.target.value)} style={c.inputMes} />
+        ) : (
+          <span style={c.periodoCampos}>
+            <label style={c.periodoLabel}>De <input type="month" value={mesDe} onChange={(e) => setMesDe(e.target.value)} style={c.inputMes} /></label>
+            <label style={c.periodoLabel}>Até <input type="month" value={mesAte} onChange={(e) => setMesAte(e.target.value)} style={c.inputMes} /></label>
+          </span>
+        )}
         <input
           placeholder="Procurar cliente..."
           value={pesquisa}
@@ -261,14 +296,18 @@ export default function ListaAlugueres() {
       </div>
 
       <div style={c.resumo}>
-        <span style={{ textTransform: 'capitalize' }}>{nomeMes(mes)}</span>
+        <span style={{ textTransform: 'capitalize' }}>
+          {modo === 'mes'
+            ? nomeMes(mes)
+            : periodoDe === periodoAte ? nomeMes(periodoDe) : `${nomeMes(periodoDe)} → ${nomeMes(periodoAte)}`}
+        </span>
         <span style={c.resumoDireita}>
           <span>{linhas.length} aluguer(es) · <strong>{formatarEuro(total)}</strong></span>
           <button
             type="button"
             style={numNaoPagos > 0 ? c.chipNaoPagos : c.chipTudoPago}
             onClick={() => setFPago((v) => (v === 'nao-pagos' ? '' : 'nao-pagos'))}
-            title={numNaoPagos > 0 ? 'Ver só os não pagos' : 'Está tudo pago este mês'}
+            title={numNaoPagos > 0 ? 'Ver só os não pagos' : (modo === 'mes' ? 'Está tudo pago este mês' : 'Está tudo pago no período')}
           >
             {numNaoPagos > 0 ? `🔴 ${numNaoPagos} não pago${numNaoPagos > 1 ? 's' : ''}` : '✓ Tudo pago'}
           </button>
@@ -277,7 +316,7 @@ export default function ListaAlugueres() {
 
       <div style={c.resumoFaturar}>
         <div style={c.resumoFaturarTopo}>
-          <span style={c.resumoFaturarLabel}>Total a faturar este mês</span>
+          <span style={c.resumoFaturarLabel}>{modo === 'mes' ? 'Total a faturar este mês' : 'Total a faturar no período'}</span>
           <span style={c.resumoFaturarValor}>{formatarEuro(totalFaturar)}</span>
         </div>
         <div style={c.resumoFaturarLinha}>
@@ -290,14 +329,14 @@ export default function ListaAlugueres() {
       {carregando ? (
         <p style={c.estado}>A carregar...</p>
       ) : linhas.length === 0 ? (
-        <p style={c.estado}>Sem alugueres neste mês.</p>
+        <p style={c.estado}>{modo === 'mes' ? 'Sem alugueres neste mês.' : 'Sem alugueres neste período.'}</p>
       ) : estreito ? (
         <div style={c.cartoes}>
           {linhas.map((l) => {
             const a = l.aluguer
             return (
               <div
-                key={`${a.id}|${mes}`}
+                key={`${a.id}|${l.fat.mes}`}
                 style={{ ...c.cartao, ...(isAdmin ? c.linhaClicavel : {}) }}
                 onClick={isAdmin ? () => setEditar(a) : undefined}
                 title={isAdmin ? 'Toca para editar ou apagar' : undefined}
@@ -308,7 +347,7 @@ export default function ListaAlugueres() {
                     {!a.nacional && <span style={c.intl}>Internacional</span>}
                   </span>
                   <span onClick={(e) => e.stopPropagation()}>
-                    <EstadoPago fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, mes, patch)} />
+                    <EstadoPago fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, l.fat.mes, patch)} />
                   </span>
                 </div>
                 <div style={c.cartaoEquip}>
@@ -325,22 +364,22 @@ export default function ListaAlugueres() {
                 </div>
                 <div style={c.cartaoLinha} onClick={(e) => e.stopPropagation()}>
                   <span style={c.cartaoLabel}>Valor a Faturar</span>
-                  <CelulaFaturar valorTotal={a.valor ?? 0} fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, mes, patch)} />
+                  <CelulaFaturar valorTotal={a.valor ?? 0} fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, l.fat.mes, patch)} />
                 </div>
                 <div style={c.cartaoLinha} onClick={(e) => e.stopPropagation()}>
                   <span style={c.cartaoLabel}>Fatura</span>
                   <CelulaFatura
                     aluguerId={a.id}
-                    mes={mes}
+                    mes={l.fat.mes}
                     fat={l.fat}
                     podeEditar={podeFaturar}
-                    onChange={(patch) => atualizarFaturacao(a.id, mes, patch)}
-                    onEnviar={() => setEnviarFatura({ aluguer: a, mes, fat: l.fat })}
+                    onChange={(patch) => atualizarFaturacao(a.id, l.fat.mes, patch)}
+                    onEnviar={() => setEnviarFatura({ aluguer: a, mes: l.fat.mes, fat: l.fat })}
                   />
                 </div>
                 <div style={c.cartaoLinha} onClick={(e) => e.stopPropagation()}>
                   <span style={c.cartaoLabel}>Validado</span>
-                  <VistoValidado fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, mes, patch)} />
+                  <VistoValidado fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, l.fat.mes, patch)} />
                 </div>
               </div>
             )
@@ -362,13 +401,13 @@ export default function ListaAlugueres() {
             const a = l.aluguer
             return (
               <div
-                key={`${a.id}|${mes}`}
+                key={`${a.id}|${l.fat.mes}`}
                 style={{ ...c.linha, ...(isAdmin ? c.linhaClicavel : {}) }}
                 onClick={isAdmin ? () => setEditar(a) : undefined}
                 title={isAdmin ? 'Clica para editar ou apagar' : undefined}
               >
                 <span style={{ ...c.celula, justifyContent: 'center' }} onClick={(e) => e.stopPropagation()}>
-                  <VistoValidado fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, mes, patch)} />
+                  <VistoValidado fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, l.fat.mes, patch)} />
                 </span>
                 <span style={{ fontWeight: 600 }}>
                   {a.cliente_nome ?? '—'}
@@ -381,20 +420,20 @@ export default function ListaAlugueres() {
                 <span>{formatarData(a.data_entrega)}</span>
                 <span style={{ textAlign: 'right', fontWeight: 700 }}>{formatarEuro(a.valor || 0)}</span>
                 <span style={c.celula} onClick={(e) => e.stopPropagation()}>
-                  <CelulaFaturar valorTotal={a.valor ?? 0} fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, mes, patch)} />
+                  <CelulaFaturar valorTotal={a.valor ?? 0} fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, l.fat.mes, patch)} />
                 </span>
                 <span style={c.celula} onClick={(e) => e.stopPropagation()}>
                   <CelulaFatura
                     aluguerId={a.id}
-                    mes={mes}
+                    mes={l.fat.mes}
                     fat={l.fat}
                     podeEditar={podeFaturar}
-                    onChange={(patch) => atualizarFaturacao(a.id, mes, patch)}
-                    onEnviar={() => setEnviarFatura({ aluguer: a, mes, fat: l.fat })}
+                    onChange={(patch) => atualizarFaturacao(a.id, l.fat.mes, patch)}
+                    onEnviar={() => setEnviarFatura({ aluguer: a, mes: l.fat.mes, fat: l.fat })}
                   />
                 </span>
                 <span style={{ ...c.celula, justifyContent: 'center' }} onClick={(e) => e.stopPropagation()}>
-                  <EstadoPago fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, mes, patch)} />
+                  <EstadoPago fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, l.fat.mes, patch)} />
                 </span>
               </div>
             )
@@ -925,6 +964,8 @@ const c: Record<string, React.CSSProperties> = {
   voltar: { color: 'var(--muted)', textDecoration: 'none' },
   filtros: { display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' },
   inputMes: { padding: 10, border: '1px solid #ccc', borderRadius: 8, fontSize: 15 },
+  periodoCampos: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' },
+  periodoLabel: { display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, color: 'var(--muted, #666)' },
   inputPesq: { flex: 1, minWidth: 160, padding: 10, border: '1px solid #ccc', borderRadius: 8, fontSize: 15 },
   inputOrden: { padding: 10, border: '1px solid #ccc', borderRadius: 8, fontSize: 15, background: '#fff', cursor: 'pointer' },
   inputPagoAtivo: { padding: 10, border: '1px solid #c62828', borderRadius: 8, fontSize: 15, background: '#ffebee', color: '#c62828', fontWeight: 700, cursor: 'pointer' },
