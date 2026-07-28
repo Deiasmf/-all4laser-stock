@@ -22,6 +22,9 @@ export type Aluguer = {
   nacional: boolean | null
   data_entrega: string | null
   data_recolha: string | null
+  // Só o mês de recolha física (mês único ou último mês de um contrato de vários
+  // meses). Meses intermédios de um contrato ficam false = só faturação.
+  recolha_aplicavel: boolean | null
   criado_por: string | null
   criado_por_nome: string | null
   created_at: string

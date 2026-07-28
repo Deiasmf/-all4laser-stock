@@ -43,7 +43,9 @@ export default function DashboardAlugueres() {
   const total = somar(doMes, (a) => a.valor)
   const nacional = somar(doMes.filter((a) => a.nacional), (a) => a.valor)
   const internacional = somar(doMes.filter((a) => !a.nacional), (a) => a.valor)
-  const emCurso = alugueres.filter((a) => !a.data_recolha).length
+  // Um contrato de vários meses conta como 1 equipamento por devolver (só o mês
+  // de recolha), não um por cada mês faturado.
+  const emCurso = alugueres.filter((a) => !a.data_recolha && a.recolha_aplicavel !== false).length
 
   const porMetodo = agrupar(doMes, (a) => a.metodo_pagamento ?? '—')
   const topClientes = agrupar(doMes, (a) => a.cliente_nome ?? '—').slice(0, 5)

@@ -247,6 +247,10 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
       nacional,
       data_entrega: adicionarMeses(entregaBase, k),
       data_recolha: null,
+      // Contratos de vários meses: só o ÚLTIMO mês corresponde à recolha física.
+      // Os meses anteriores são só para faturação (não aparecem em "Registar
+      // recolha" nem contam como equipamento por devolver).
+      recolha_aplicavel: k === nMeses - 1,
       criado_por: uid,
       criado_por_nome: nome,
     }))
@@ -427,6 +431,7 @@ function FormRecolha() {
       .from('alugueres')
       .select('*')
       .is('data_recolha', null)
+      .eq('recolha_aplicavel', true)   // só meses de recolha (não os meses só de faturação)
       .order('data_entrega', { ascending: true })
     setAbertos((data as Aluguer[]) ?? [])
   }

@@ -30,7 +30,7 @@ export async function carregarMetricas(): Promise<Metricas> {
   const hoje = hojeISO()
   const sel = (t: string) => supabase.from(t).select('id', { count: 'exact', head: true })
   const [alugueresFora, leadsNovas, emPrep, entregasHoje] = await Promise.all([
-    contarQuery(sel('alugueres').is('data_recolha', null)),
+    contarQuery(sel('alugueres').is('data_recolha', null).eq('recolha_aplicavel', true)),
     contarQuery(sel('leads').eq('estado', 'nova')),
     contarQuery(sel('equipamentos').in('status', ['Prep-Logística', 'Prep-Técnico'])),
     contarQuery(sel('alugueres').eq('data_entrega', hoje)),
@@ -136,6 +136,7 @@ export async function listarAlugueresFora(limite = 8): Promise<AluguerFora[]> {
       .from('alugueres')
       .select('id, cliente_nome, modelo, serial_number, data_entrega')
       .is('data_recolha', null)
+      .eq('recolha_aplicavel', true)
       .order('data_entrega', { ascending: true })
       .limit(limite)
     return (data as AluguerFora[]) ?? []
