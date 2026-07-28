@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 import ComentariosTarefa from '@/components/ComentariosTarefa'
+import EditarTarefaModal from '@/components/EditarTarefaModal'
 import {
   criarTarefa, criarRecado, notificarRecadoUrgente,
   listarColaboradores, listarTodasTarefas, prioridadeInfo, estadoTarefaLabel,
@@ -31,6 +32,7 @@ export default function AtribuirPage() {
   const [todas, setTodas] = useState<TarefaComAssignees[]>([])
   const [msg, setMsg] = useState<string | null>(null)
   const [comentariosAberto, setComentariosAberto] = useState<string | null>(null)
+  const [editarT, setEditarT] = useState<TarefaComAssignees | null>(null)
 
   // Tarefa (vários destinatários)
   const [tParas, setTParas] = useState<string[]>([])
@@ -165,6 +167,7 @@ export default function AtribuirPage() {
                     <span style={{ ...c.pill, color: pi.cor, background: pi.bg }}>{pi.label}</span>
                     <span style={{ flex: 1, fontWeight: 600 }}>{t.titulo}</span>
                     <span style={c.muted}>{formatarData(t.data_limite)}</span>
+                    <button style={c.btnSecMini} onClick={() => setEditarT(t)} title="Editar tarefa">✏️</button>
                     <button style={c.btnSecMini} onClick={() => setComentariosAberto((v) => (v === t.id ? null : t.id))}>💬</button>
                   </div>
                   <div style={c.assignees}>
@@ -182,6 +185,14 @@ export default function AtribuirPage() {
           </div>
         )}
       </section>
+
+      {editarT && (
+        <EditarTarefaModal
+          tarefa={{ id: editarT.id, titulo: editarT.titulo, descricao: editarT.descricao, prioridade: editarT.prioridade, data_limite: editarT.data_limite }}
+          onFechar={() => setEditarT(null)}
+          onGuardado={async () => { setEditarT(null); await carregar() }}
+        />
+      )}
     </main>
   )
 }

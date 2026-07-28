@@ -4,9 +4,11 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import ComentariosTarefa from '@/components/ComentariosTarefa'
+import EditarTarefaModal from '@/components/EditarTarefaModal'
 import {
   listarMinhasTarefas, criarTarefa, mudarMeuEstado, ordenarTarefas, prioridadeInfo,
   listarMeusRecados, marcarRecadoLido, listarRecadosEnviados, listarColaboradores,
+  atualizarRecado,
   obterPrefNotificacao, guardarPrefNotificacao,
   PRIORIDADES, type Prioridade, type MinhaTarefa, type Recado, type Colaborador,
 } from '@/lib/minhaArea'
@@ -36,6 +38,8 @@ export default function MinhaAreaPage() {
   const [verLidos, setVerLidos] = useState(false)
   const [verEnviados, setVerEnviados] = useState(false)
   const [respostaAberta, setRespostaAberta] = useState<string | null>(null)
+  const [editarTarefa, setEditarTarefa] = useState<MinhaTarefa | null>(null)
+  const [editarRecado, setEditarRecado] = useState<Recado | null>(null)
   // Nova tarefa pessoal (o próprio adiciona-se tarefas).
   const [novaAberta, setNovaAberta] = useState(false)
   const [nTitulo, setNTitulo] = useState('')
@@ -159,6 +163,7 @@ export default function MinhaAreaPage() {
                         </div>
                         <div style={c.acoes}>
                           {t.meuEstado !== 'em_curso' && <button style={c.btnSecMini} onClick={() => iniciar(t)}>Iniciar</button>}
+                          <button style={c.btnSecMini} onClick={() => setEditarTarefa(t)}>✏️ Editar</button>
                           <button style={c.btnSecMini} onClick={() => toggleResposta(t.id)}>💬 Responder</button>
                         </div>
                       </div>
@@ -232,6 +237,7 @@ export default function MinhaAreaPage() {
                             : <span style={{ color: '#B45309', fontWeight: 600 }}>● por ler</span>}
                         </div>
                       </div>
+                      <button style={c.btnSecMini} onClick={() => setEditarRecado(r)}>✏️ Editar</button>
                     </div>
                   ))}
                 </div>
@@ -249,7 +255,68 @@ export default function MinhaAreaPage() {
           </section>
         </>
       )}
+
+      {editarTarefa && (
+        <EditarTarefaModal
+          tarefa={{ id: editarTarefa.id, titulo: editarTarefa.titulo, descricao: editarTarefa.descricao, prioridade: editarTarefa.prioridade, data_limite: editarTarefa.data_limite }}
+          onFechar={() => setEditarTarefa(null)}
+          onGuardado={async () => { setEditarTarefa(null); await carregar() }}
+        />
+      )}
+      {editarRecado && (
+        <EditarRecadoModal
+          recado={editarRecado}
+          onFechar={() => setEditarRecado(null)}
+          onGuardado={async () => { setEditarRecado(null); await carregar() }}
+        />
+      )}
     </main>
+  )
+}
+
+// ---------------------------------------------------------- EDITAR RECADO
+function EditarRecadoModal({
+  recado, onFechar, onGuardado,
+}: {
+  recado: Recado
+  onFechar: () => void
+  onGuardado: () => void | Promise<void>
+}) {
+  const [mensagem, setMensagem] = useState(recado.mensagem)
+  const [urgente, setUrgente] = useState(recado.urgente)
+  const [aGuardar, setAGuardar] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  async function guardar() {
+    if (!mensagem.trim()) { setErro('A mensagem não pode ficar vazia.'); return }
+    setErro(null)
+    setAGuardar(true)
+    const { error } = await atualizarRecado(recado.id, { mensagem: mensagem.trim(), urgente })
+    setAGuardar(false)
+    if (error) { setErro('Erro a guardar: ' + error.message); return }
+    await onGuardado()
+  }
+
+  return (
+    <div style={c.overlay} onClick={onFechar}>
+      <div style={c.modalEditar} onClick={(e) => e.stopPropagation()}>
+        <div style={c.modalCab}>
+          <h2 style={c.modalTitulo}>Editar recado</h2>
+          <button onClick={onFechar} style={c.modalFechar} aria-label="Fechar">✕</button>
+        </div>
+        {erro && <div style={c.modalErro}>{erro}</div>}
+        <label style={c.modalLabel}>Mensagem</label>
+        <textarea style={{ ...c.modalInput, minHeight: 90, resize: 'vertical' }} value={mensagem} onChange={(e) => setMensagem(e.target.value)} />
+        <label style={c.modalCheck}>
+          <input type="checkbox" checked={urgente} onChange={(e) => setUrgente(e.target.checked)} />
+          Marcar como <strong>urgente</strong>
+        </label>
+        <div style={c.modalAcoes}>
+          <button onClick={onFechar} style={c.btnSec}>Cancelar</button>
+          <button onClick={guardar} disabled={aGuardar} style={c.btnPrimario}>{aGuardar ? 'A guardar...' : 'Guardar'}</button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -292,4 +359,16 @@ const c: Record<string, React.CSSProperties> = {
   campoN: { display: 'flex', flexDirection: 'column', gap: 4 },
   rotN: { fontSize: 12.5, fontWeight: 600, color: 'var(--foreground)' },
   opcN: { color: 'var(--muted)', fontWeight: 400 },
+
+  // Modal de editar recado
+  overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 16, overflowY: 'auto', zIndex: 100 },
+  modalEditar: { background: '#fff', borderRadius: 14, padding: 20, width: '100%', maxWidth: 480, margin: 'auto', display: 'flex', flexDirection: 'column', gap: 2 },
+  modalCab: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  modalTitulo: { fontSize: 18, fontWeight: 700, color: 'var(--primary)' },
+  modalFechar: { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: 'var(--muted)', padding: 4 },
+  modalErro: { background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#B91C1C', borderRadius: 8, padding: '8px 12px', fontSize: 13.5, marginBottom: 8 },
+  modalLabel: { fontWeight: 600, fontSize: 13.5, marginTop: 8, marginBottom: 4, display: 'block' },
+  modalInput: { width: '100%', padding: '9px 11px', border: '1px solid var(--border)', borderRadius: 8, font: 'inherit', boxSizing: 'border-box' },
+  modalCheck: { display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, fontSize: 14 },
+  modalAcoes: { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 },
 }

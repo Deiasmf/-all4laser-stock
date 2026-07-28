@@ -196,6 +196,11 @@ export async function criarRecado(input: RecadoInput, fromUser: string) {
   return supabase.from('user_notes').insert({ ...input, from_user: fromUser }).select().single()
 }
 
+// Editar um recado (quem enviou pode corrigir a mensagem / urgência).
+export async function atualizarRecado(id: string, patch: { mensagem?: string; urgente?: boolean }) {
+  return supabase.from('user_notes').update(patch).eq('id', id).select().single()
+}
+
 export async function apagarRecado(id: string) {
   return supabase.from('user_notes').delete().eq('id', id)
 }
