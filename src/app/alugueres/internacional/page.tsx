@@ -7,33 +7,43 @@ import { useAuth } from '@/lib/auth'
 import AlugueresNav from '@/components/AlugueresNav'
 import BotaoExportar from '@/components/BotaoExportar'
 import type { ColunaExport } from '@/lib/exportar'
-import { formatarEuro } from '@/lib/alugueres'
+import { formatarEuro, nomeMes, parseNumeroPt } from '@/lib/alugueres'
 import type { Aluguer } from '@/types/aluguer'
+
+const BUCKET_FATURAS = 'faturas-alugueres'
+
+// Faturação de um mês (tabela alugueres_faturacao_mensal). Espelha a Lista.
+type Fat = {
+  id: string | null
+  aluguer_id: string
+  mes: string
+  valor_a_faturar: number | null
+  nao_faturar: boolean
+  validado: boolean
+  pago: boolean
+  fatura_url: string | null
+  fatura_caminho: string | null
+  fatura_nome: string | null
+  fatura_enviada_em: string | null
+  fatura_enviada_para: string | null
+}
+
+function fatVazia(aluguerId: string, mes: string): Fat {
+  return {
+    id: null, aluguer_id: aluguerId, mes, valor_a_faturar: null,
+    nao_faturar: false, validado: false, pago: false, fatura_url: null, fatura_caminho: null,
+    fatura_nome: null, fatura_enviada_em: null, fatura_enviada_para: null,
+  }
+}
+
+function nomeSeguro(nome: string) {
+  return nome.normalize('NFD').replace(/[^\w.\-]/g, '_')
+}
 
 function formatarData(d: string | null) {
   if (!d) return '—'
   const dt = new Date(d)
   return isNaN(dt.getTime()) ? d : dt.toLocaleDateString('pt-PT')
-}
-
-// Nº de meses a partir do tipo de aluguer ("12 meses" -> 12, "24 meses" -> 24)
-function mesesDeDuracao(tipo: string | null): number | null {
-  if (!tipo) return null
-  const m = tipo.match(/(\d+)/)
-  return m ? Number(m[1]) : null
-}
-
-// Data de fim prevista = início + duração − 1 dia (calculada em hora local)
-function fimPrevisto(a: Aluguer): string | null {
-  const meses = mesesDeDuracao(a.tipo_aluguer)
-  if (!a.data_entrega || !meses) return null
-  const [y, mo, d] = a.data_entrega.slice(0, 10).split('-').map(Number)
-  if (!y || !mo || !d) return null
-  const dt = new Date(y, mo - 1, d)
-  dt.setMonth(dt.getMonth() + meses)
-  dt.setDate(dt.getDate() - 1)
-  const iso = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
-  return iso
 }
 
 const hojeISO = () => {
@@ -49,16 +59,34 @@ function diasAte(iso: string): number {
   return Math.round((alvo - hoje) / 86400000)
 }
 
+// ─── Contrato = conjunto de registos mensais do mesmo aluguer ────────────────
+// Os contratos de vários meses são guardados como N registos (1 por mês), todos
+// criados na mesma instrução (mesmo created_at) com o mesmo serial. Agrupamos
+// por (cliente, serial, created_at) para reconstruir o contrato.
+type Contrato = {
+  chave: string
+  cliente_id: string | null
+  cliente_nome: string | null
+  serial_number: string | null
+  marca: string | null
+  modelo: string | null
+  meses: Aluguer[]        // ordenados por data_entrega asc
+  inicio: string | null   // primeiro mês
+  fim: string | null      // último mês (data_entrega)
+  nMeses: number
+  valorMes: number
+}
+
 type EstadoContrato = { chave: 'ativo' | 'a_expirar' | 'expirado' | 'terminado'; label: string; cor: string; bg: string }
 
-// Estado do contrato a partir das datas
-function estadoContrato(a: Aluguer): EstadoContrato {
+function estadoContrato(ct: Contrato): EstadoContrato {
   const hoje = hojeISO()
-  // Terminado: houve recolha e já passou
-  if (a.data_recolha && a.data_recolha.slice(0, 10) <= hoje) {
+  const ultimo = ct.meses[ct.meses.length - 1]
+  // Terminado: o último mês já foi recolhido.
+  if (ultimo?.data_recolha && ultimo.data_recolha.slice(0, 10) <= hoje) {
     return { chave: 'terminado', label: 'Terminado', cor: '#374151', bg: '#E5E7EB' }
   }
-  const fim = fimPrevisto(a)
+  const fim = ct.fim
   if (!fim) return { chave: 'ativo', label: 'Ativo', cor: '#065F46', bg: '#D1FAE5' }
   if (fim < hoje) return { chave: 'expirado', label: 'Expirado', cor: '#991B1B', bg: '#FEE2E2' }
   if (diasAte(fim) <= 90) return { chave: 'a_expirar', label: 'A expirar', cor: '#92400E', bg: '#FEF3C7' }
@@ -67,68 +95,144 @@ function estadoContrato(a: Aluguer): EstadoContrato {
 
 type Ordenacao = 'fim-asc' | 'inicio-desc' | 'cliente-asc' | 'valor-desc'
 
-const colunasExport: ColunaExport<Aluguer>[] = [
-  { cabecalho: 'Cliente', valor: (a) => a.cliente_nome ?? '' },
-  { cabecalho: 'Serial Number', valor: (a) => a.serial_number ?? '' },
-  { cabecalho: 'Equipamento', valor: (a) => [a.marca, a.modelo].filter(Boolean).join(' ') },
-  { cabecalho: 'Início', valor: (a) => formatarData(a.data_entrega) },
-  { cabecalho: 'Duração', valor: (a) => a.tipo_aluguer ?? '' },
-  { cabecalho: 'Fim previsto', valor: (a) => formatarData(fimPrevisto(a)) },
-  { cabecalho: 'Valor mensal', valor: (a) => formatarEuro(a.valor || 0) },
-  { cabecalho: 'Estado', valor: (a) => estadoContrato(a).label },
+const colunasExport: ColunaExport<Contrato>[] = [
+  { cabecalho: 'Cliente', valor: (ct) => ct.cliente_nome ?? '' },
+  { cabecalho: 'Serial Number', valor: (ct) => ct.serial_number ?? '' },
+  { cabecalho: 'Equipamento', valor: (ct) => [ct.marca, ct.modelo].filter(Boolean).join(' ') },
+  { cabecalho: 'Início', valor: (ct) => formatarData(ct.inicio) },
+  { cabecalho: 'Meses', valor: (ct) => String(ct.nMeses) },
+  { cabecalho: 'Fim', valor: (ct) => formatarData(ct.fim) },
+  { cabecalho: 'Valor mensal', valor: (ct) => formatarEuro(ct.valorMes) },
+  { cabecalho: 'Estado', valor: (ct) => estadoContrato(ct).label },
 ]
 
 export default function AlugueresInternacional() {
-  const { isAdmin } = useAuth()
+  const { isAdmin, perfil } = useAuth()
+  const podeFaturar = !!perfil
   const [alugueres, setAlugueres] = useState<Aluguer[]>([])
+  const [faturacao, setFaturacao] = useState<Map<string, Fat>>(new Map())
   const [pesquisa, setPesquisa] = useState('')
   const [fEstado, setFEstado] = useState('')
   const [ordenar, setOrdenar] = useState<Ordenacao>('fim-asc')
   const [carregando, setCarregando] = useState(true)
+  const [abertos, setAbertos] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     supabase
       .from('alugueres')
       .select('*')
       .eq('nacional', false)
-      .order('data_entrega', { ascending: false })
-      .then(({ data }) => {
-        setAlugueres((data as Aluguer[]) ?? [])
+      .order('data_entrega', { ascending: true })
+      .then(async ({ data }) => {
+        const lista = (data as Aluguer[]) ?? []
+        setAlugueres(lista)
+        const ids = lista.map((a) => a.id)
+        if (ids.length) {
+          const { data: fats } = await supabase
+            .from('alugueres_faturacao_mensal').select('*').in('aluguer_id', ids)
+          const m = new Map<string, Fat>()
+          for (const f of (fats as Fat[]) ?? []) m.set(`${f.aluguer_id}|${f.mes}`, f)
+          setFaturacao(m)
+        }
         setCarregando(false)
       })
   }, [])
 
-  const filtrados = useMemo(() => {
-    const q = pesquisa.trim().toLowerCase()
-    const lista = alugueres
-      .filter((a) => !fEstado || estadoContrato(a).chave === fEstado)
-      .filter((a) =>
-        !q ||
-        (a.cliente_nome ?? '').toLowerCase().includes(q) ||
-        (a.serial_number ?? '').toLowerCase().includes(q) ||
-        (a.modelo ?? '').toLowerCase().includes(q) ||
-        (a.marca ?? '').toLowerCase().includes(q)
-      )
-
-    return [...lista].sort((a, b) => {
-      switch (ordenar) {
-        case 'fim-asc':
-          return (fimPrevisto(a) ?? '9999').localeCompare(fimPrevisto(b) ?? '9999')
-        case 'inicio-desc':
-          return (b.data_entrega ?? '').localeCompare(a.data_entrega ?? '')
-        case 'cliente-asc':
-          return (a.cliente_nome ?? '').localeCompare(b.cliente_nome ?? '', 'pt')
-        case 'valor-desc':
-          return (b.valor ?? 0) - (a.valor ?? 0)
-        default:
-          return 0
+  // Reconstrói os contratos a partir dos registos mensais.
+  const contratos = useMemo<Contrato[]>(() => {
+    const m = new Map<string, Aluguer[]>()
+    for (const a of alugueres) {
+      const k = `${a.cliente_id ?? a.cliente_nome ?? ''}|${a.serial_number ?? ''}|${a.created_at}`
+      const arr = m.get(k)
+      if (arr) arr.push(a)
+      else m.set(k, [a])
+    }
+    return [...m.entries()].map(([chave, meses]) => {
+      const ord = [...meses].sort((x, y) => (x.data_entrega ?? '').localeCompare(y.data_entrega ?? ''))
+      const primeiro = ord[0]
+      const ultimo = ord[ord.length - 1]
+      return {
+        chave,
+        cliente_id: primeiro.cliente_id,
+        cliente_nome: primeiro.cliente_nome,
+        serial_number: primeiro.serial_number,
+        marca: primeiro.marca,
+        modelo: primeiro.modelo,
+        meses: ord,
+        inicio: primeiro.data_entrega ? primeiro.data_entrega.slice(0, 10) : null,
+        fim: ultimo.data_entrega ? ultimo.data_entrega.slice(0, 10) : null,
+        nMeses: ord.length,
+        valorMes: primeiro.valor ?? 0,
       }
     })
-  }, [alugueres, pesquisa, fEstado, ordenar])
+  }, [alugueres])
 
-  // Contratos em vigor (não terminados) e valor mensal total desses
-  const emVigor = filtrados.filter((a) => estadoContrato(a).chave !== 'terminado')
-  const mensalTotal = emVigor.reduce((acc, a) => acc + (a.valor || 0), 0)
+  const filtrados = useMemo(() => {
+    const q = pesquisa.trim().toLowerCase()
+    const lista = contratos
+      .filter((ct) => !fEstado || estadoContrato(ct).chave === fEstado)
+      .filter((ct) =>
+        !q ||
+        (ct.cliente_nome ?? '').toLowerCase().includes(q) ||
+        (ct.serial_number ?? '').toLowerCase().includes(q) ||
+        (ct.modelo ?? '').toLowerCase().includes(q) ||
+        (ct.marca ?? '').toLowerCase().includes(q)
+      )
+    return [...lista].sort((a, b) => {
+      switch (ordenar) {
+        case 'fim-asc': return (a.fim ?? '9999').localeCompare(b.fim ?? '9999')
+        case 'inicio-desc': return (b.inicio ?? '').localeCompare(a.inicio ?? '')
+        case 'cliente-asc': return (a.cliente_nome ?? '').localeCompare(b.cliente_nome ?? '', 'pt')
+        case 'valor-desc': return b.valorMes - a.valorMes
+        default: return 0
+      }
+    })
+  }, [contratos, pesquisa, fEstado, ordenar])
+
+  const emVigor = filtrados.filter((ct) => estadoContrato(ct).chave !== 'terminado')
+  const mensalTotal = emVigor.reduce((acc, ct) => acc + ct.valorMes, 0)
+
+  // Nº de meses pagos / por pagar de um contrato (ignora "não faturar").
+  function contagemPagos(ct: Contrato) {
+    let pagos = 0, porPagar = 0
+    for (const a of ct.meses) {
+      const mes = (a.data_entrega ?? '').slice(0, 7)
+      const f = faturacao.get(`${a.id}|${mes}`)
+      if (f?.nao_faturar) continue
+      if (f?.pago) pagos++
+      else porPagar++
+    }
+    return { pagos, porPagar }
+  }
+
+  function toggle(chave: string) {
+    setAbertos((prev) => {
+      const n = new Set(prev)
+      if (n.has(chave)) n.delete(chave); else n.add(chave)
+      return n
+    })
+  }
+
+  // Upsert da faturação de um mês (otimista + persistência imediata).
+  async function atualizarFaturacao(aluguerId: string, mes: string, patch: Partial<Fat>) {
+    const chave = `${aluguerId}|${mes}`
+    const atual = faturacao.get(chave) ?? fatVazia(aluguerId, mes)
+    setFaturacao((prev) => new Map(prev).set(chave, { ...atual, ...patch }))
+    if (atual.id) {
+      const { data, error } = await supabase
+        .from('alugueres_faturacao_mensal')
+        .update({ ...patch, updated_at: new Date().toISOString() })
+        .eq('id', atual.id).select().single()
+      if (error) return alert('Erro a guardar: ' + error.message)
+      setFaturacao((prev) => new Map(prev).set(chave, data as Fat))
+    } else {
+      const { data, error } = await supabase
+        .from('alugueres_faturacao_mensal')
+        .insert({ aluguer_id: aluguerId, mes, ...patch }).select().single()
+      if (error) return alert('Erro a guardar: ' + error.message)
+      setFaturacao((prev) => new Map(prev).set(chave, data as Fat))
+    }
+  }
 
   return (
     <main style={c.page}>
@@ -156,7 +260,7 @@ export default function AlugueresInternacional() {
           <option value="terminado">Terminado</option>
         </select>
         <select value={ordenar} onChange={(e) => setOrdenar(e.target.value as Ordenacao)} style={c.inputSel} title="Ordenar">
-          <option value="fim-asc">Fim previsto (mais próximo)</option>
+          <option value="fim-asc">Fim (mais próximo)</option>
           <option value="inicio-desc">Início (mais recente)</option>
           <option value="cliente-asc">Cliente (A → Z)</option>
           <option value="valor-desc">Valor (maior → menor)</option>
@@ -180,43 +284,203 @@ export default function AlugueresInternacional() {
           </p>
         </div>
       ) : (
-        <div style={c.tabela}>
-          <div style={{ ...c.linha, ...c.cab }}>
-            <span>Cliente</span>
-            <span>Equipamento</span>
-            <span>Início</span>
-            <span>Duração</span>
-            <span>Fim previsto</span>
-            <span style={{ textAlign: 'right' }}>Valor/mês</span>
-            <span>Estado</span>
-          </div>
-          {filtrados.map((a) => {
-            const est = estadoContrato(a)
+        <div style={c.lista}>
+          {filtrados.map((ct) => {
+            const est = estadoContrato(ct)
+            const aberto = abertos.has(ct.chave)
+            const { pagos, porPagar } = contagemPagos(ct)
             return (
-              <div key={a.id} style={c.linha}>
-                <span style={{ fontWeight: 600 }}>{a.cliente_nome ?? '—'}</span>
-                <span style={c.equip}>
-                  <span style={c.equipSn}>{a.serial_number ?? '—'}</span>
-                  <span style={c.equipMarca}>{[a.marca, a.modelo].filter(Boolean).join(' ') || '—'}</span>
-                </span>
-                <span>{formatarData(a.data_entrega)}</span>
-                <span>{a.tipo_aluguer ?? '—'}</span>
-                <span>{formatarData(fimPrevisto(a))}</span>
-                <span style={{ textAlign: 'right', fontWeight: 700 }}>{formatarEuro(a.valor || 0)}</span>
-                <span><span style={{ ...c.badge, color: est.cor, background: est.bg }}>{est.label}</span></span>
+              <div key={ct.chave} style={c.contrato}>
+                <button style={c.contratoCab} onClick={() => toggle(ct.chave)}>
+                  <span style={c.chevron}>{aberto ? '▼' : '▸'}</span>
+                  <span style={c.contratoCliente}>{ct.cliente_nome ?? '—'}</span>
+                  <span style={c.contratoEquip}>{[ct.marca, ct.modelo].filter(Boolean).join(' ') || '—'} · {ct.serial_number ?? '—'}</span>
+                  <span style={c.contratoMeta}>{formatarData(ct.inicio)} → {formatarData(ct.fim)} · {ct.nMeses} mês(es)</span>
+                  <span style={c.contratoValor}>{formatarEuro(ct.valorMes)}/mês</span>
+                  {porPagar > 0
+                    ? <span style={c.chipPorPagar}>🔴 {porPagar} por pagar</span>
+                    : <span style={c.chipPago}>✓ {pagos} pagos</span>}
+                  <span style={{ ...c.badge, color: est.cor, background: est.bg }}>{est.label}</span>
+                </button>
+
+                {aberto && (
+                  <div style={c.mesesTabela}>
+                    <div style={{ ...c.mesLinha, ...c.mesCab }}>
+                      <span>Mês</span>
+                      <span>Valor a faturar</span>
+                      <span>Fatura</span>
+                      <span style={{ textAlign: 'center' }}>Pago</span>
+                    </div>
+                    {ct.meses.map((a) => {
+                      const mes = (a.data_entrega ?? '').slice(0, 7)
+                      const fat = faturacao.get(`${a.id}|${mes}`) ?? fatVazia(a.id, mes)
+                      return (
+                        <div key={a.id} style={c.mesLinha}>
+                          <span style={{ textTransform: 'capitalize' }}>{nomeMes(mes)}</span>
+                          <span style={c.celula}>
+                            <CelulaFaturar valorTotal={a.valor ?? 0} fat={fat} podeEditar={podeFaturar} onChange={(p) => atualizarFaturacao(a.id, mes, p)} />
+                          </span>
+                          <span style={c.celula}>
+                            <CelulaFatura aluguerId={a.id} mes={mes} fat={fat} podeEditar={podeFaturar} onChange={(p) => atualizarFaturacao(a.id, mes, p)} />
+                          </span>
+                          <span style={{ ...c.celula, justifyContent: 'center' }}>
+                            <EstadoPago fat={fat} podeEditar={podeFaturar} onChange={(p) => atualizarFaturacao(a.id, mes, p)} />
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             )
           })}
         </div>
       )}
 
-      <p style={c.dica}>Para registar um contrato internacional usa o separador Registar; para editar, a Lista.</p>
+      <p style={c.dica}>Para registar um contrato internacional usa o separador Registar; para editar os dados do aluguer, a Lista.</p>
     </main>
   )
 }
 
+// ------------------------------------------------------ CÉLULA: VALOR A FATURAR
+function CelulaFaturar({
+  valorTotal, fat, podeEditar, onChange,
+}: {
+  valorTotal: number
+  fat: Fat
+  podeEditar: boolean
+  onChange: (patch: Partial<Fat>) => void
+}) {
+  const definido = fat.valor_a_faturar != null
+  const naoFaturar = !!fat.nao_faturar
+
+  let modo: '' | 'total' | 'outro' | 'nao' = ''
+  if (naoFaturar) modo = 'nao'
+  else if (definido) modo = fat.valor_a_faturar === valorTotal ? 'total' : 'outro'
+
+  const [editarOutro, setEditarOutro] = useState(false)
+  const [manual, setManual] = useState(definido ? String(fat.valor_a_faturar) : '')
+  const mostrarInput = modo === 'outro' || editarOutro
+
+  if (!podeEditar) {
+    if (naoFaturar) return <span style={c.badgeCinza}>Não faturar</span>
+    if (definido) return <span style={c.valorVerde}>{formatarEuro(fat.valor_a_faturar!)}</span>
+    return <span style={c.semDef}>—</span>
+  }
+
+  function aplicar(patch: Partial<Fat>) { onChange(patch); setEditarOutro(false) }
+
+  function aoMudar(v: string) {
+    if (v === 'outro') { setManual(definido ? String(fat.valor_a_faturar) : ''); setEditarOutro(true); return }
+    if (v === 'total') return aplicar({ valor_a_faturar: valorTotal, nao_faturar: false })
+    if (v === 'nao') return aplicar({ valor_a_faturar: null, nao_faturar: true })
+    aplicar({ valor_a_faturar: null, nao_faturar: false })
+  }
+
+  function guardarManual() {
+    const v = parseNumeroPt(manual)
+    if (v === null) { setEditarOutro(false); return }
+    aplicar({ valor_a_faturar: v, nao_faturar: false })
+  }
+
+  const estiloSelect = naoFaturar ? c.selectCinza : definido ? c.selectVerde : c.selectFaturar
+
+  return (
+    <span style={c.faturarLinha}>
+      <select style={estiloSelect} value={mostrarInput ? 'outro' : modo} onChange={(e) => aoMudar(e.target.value)}>
+        <option value="">— definir —</option>
+        <option value="total">Valor total ({formatarEuro(valorTotal)})</option>
+        <option value="outro">Outro valor…</option>
+        <option value="nao">Não faturar</option>
+      </select>
+      {mostrarInput && (
+        <input
+          style={c.inputManual} type="number" inputMode="decimal" placeholder="€" autoFocus
+          value={manual} onChange={(e) => setManual(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') guardarManual() }} onBlur={guardarManual}
+        />
+      )}
+    </span>
+  )
+}
+
+// ------------------------------------------------------------- CÉLULA: FATURA
+function CelulaFatura({
+  aluguerId, mes, fat, podeEditar, onChange,
+}: {
+  aluguerId: string
+  mes: string
+  fat: Fat
+  podeEditar: boolean
+  onChange: (patch: Partial<Fat>) => void
+}) {
+  const [aCarregar, setACarregar] = useState(false)
+  const temFatura = !!fat.fatura_url
+
+  async function carregar(file: File) {
+    setACarregar(true)
+    const caminho = `${aluguerId}/${mes}/${Date.now()}-${nomeSeguro(file.name)}`
+    const { error: erroUp } = await supabase.storage.from(BUCKET_FATURAS).upload(caminho, file)
+    if (erroUp) { setACarregar(false); alert('Erro a carregar a fatura: ' + erroUp.message); return }
+    const { data: pub } = supabase.storage.from(BUCKET_FATURAS).getPublicUrl(caminho)
+    onChange({ fatura_url: pub.publicUrl, fatura_caminho: caminho, fatura_nome: file.name })
+    setACarregar(false)
+  }
+
+  async function remover() {
+    if (!window.confirm(`Remover a fatura “${fat.fatura_nome ?? ''}”?`)) return
+    if (fat.fatura_caminho) await supabase.storage.from(BUCKET_FATURAS).remove([fat.fatura_caminho])
+    onChange({ fatura_url: null, fatura_caminho: null, fatura_nome: null })
+  }
+
+  if (temFatura) {
+    return (
+      <span style={c.faturaLinha}>
+        <a href={fat.fatura_url!} target="_blank" rel="noopener noreferrer" style={c.faturaLink}>
+          📄 {fat.fatura_nome ?? 'fatura'}
+        </a>
+        {podeEditar && <button style={c.chipApagar} onClick={remover} title="Remover fatura">×</button>}
+      </span>
+    )
+  }
+
+  if (!podeEditar) return <span style={c.semDef}>—</span>
+
+  return (
+    <label style={c.btnAnexar}>
+      {aCarregar ? '...' : '📎 Anexar'}
+      <input
+        type="file" accept="application/pdf,image/*" style={{ display: 'none' }}
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) carregar(f); e.target.value = '' }}
+      />
+    </label>
+  )
+}
+
+// -------------------------------------------------------------- CÉLULA: PAGO
+function EstadoPago({
+  fat, podeEditar, onChange,
+}: {
+  fat: Fat
+  podeEditar: boolean
+  onChange: (patch: Partial<Fat>) => void
+}) {
+  const pago = !!fat.pago
+  if (!podeEditar) return <span style={pago ? c.pagoVerde : c.pagoVermelho}>{pago ? 'Pago' : 'Não pago'}</span>
+  return (
+    <button
+      type="button"
+      style={pago ? c.pagoVerde : c.pagoVermelho}
+      onClick={() => onChange({ pago: !pago })}
+      title={pago ? 'Pago — clica para marcar como não pago' : 'Não pago — clica para marcar como pago'}
+    >
+      {pago ? 'Pago' : 'Não pago'}
+    </button>
+  )
+}
+
 const c: Record<string, React.CSSProperties> = {
-  page: { maxWidth: 980, margin: '0 auto', padding: 20 },
+  page: { maxWidth: 1000, margin: '0 auto', padding: 20 },
   cabecalho: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   titulo: { fontSize: 22, fontWeight: 700, color: 'var(--primary)' },
   voltar: { color: 'var(--muted)', textDecoration: 'none' },
@@ -228,12 +492,40 @@ const c: Record<string, React.CSSProperties> = {
   resumo: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--accent-bg, #eef1f6)', borderRadius: 10, padding: '10px 14px', marginBottom: 14, flexWrap: 'wrap', gap: 8, fontSize: 14 },
   estado: { color: 'var(--muted)', padding: 8 },
   vazio: { background: '#fff', border: '1px dashed var(--border)', borderRadius: 12, padding: 24, textAlign: 'center' },
-  tabela: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 8, overflowX: 'auto' },
-  linha: { display: 'grid', gridTemplateColumns: '1.4fr 1.5fr 0.9fr 0.9fr 0.9fr 0.9fr 0.9fr', gap: 10, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center', minWidth: 860 },
-  cab: { fontWeight: 700, color: 'var(--muted)', fontSize: 12, borderBottom: '2px solid var(--border)' },
-  equip: { display: 'flex', flexDirection: 'column', minWidth: 0 },
-  equipSn: { fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-  equipMarca: { color: 'var(--muted)', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  dica: { color: 'var(--muted)', fontSize: 13, marginTop: 12, textAlign: 'center' },
+
+  // Lista de contratos (accordion)
+  lista: { display: 'flex', flexDirection: 'column', gap: 10 },
+  contrato: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' },
+  contratoCab: { width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left', flexWrap: 'wrap', font: 'inherit' },
+  chevron: { color: 'var(--muted)', fontSize: 12, flexShrink: 0 },
+  contratoCliente: { fontWeight: 700, fontSize: 15 },
+  contratoEquip: { color: 'var(--muted)', fontSize: 13 },
+  contratoMeta: { color: 'var(--muted)', fontSize: 13, marginLeft: 'auto' },
+  contratoValor: { fontWeight: 700, fontSize: 14 },
+  chipPorPagar: { border: '1px solid #c62828', background: '#ffebee', color: '#c62828', fontWeight: 700, fontSize: 12, borderRadius: 999, padding: '3px 10px', whiteSpace: 'nowrap' },
+  chipPago: { border: '1px solid #1b873f', background: '#e8f5ec', color: '#1b873f', fontWeight: 700, fontSize: 12, borderRadius: 999, padding: '3px 10px', whiteSpace: 'nowrap' },
   badge: { fontSize: 11.5, fontWeight: 700, borderRadius: 999, padding: '2px 10px', whiteSpace: 'nowrap' },
-  dica: { color: 'var(--muted)', fontSize: 13, marginTop: 10, textAlign: 'center' },
+
+  // Tabela de meses (expandida)
+  mesesTabela: { borderTop: '1px solid #f0f0f0', padding: 8, background: '#fafafa', overflowX: 'auto' },
+  mesLinha: { display: 'grid', gridTemplateColumns: '1.2fr 1.4fr 1.8fr 0.9fr', gap: 10, padding: '8px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center', minWidth: 620 },
+  mesCab: { fontWeight: 700, color: 'var(--muted)', fontSize: 12, borderBottom: '2px solid var(--border)' },
+  celula: { display: 'flex', alignItems: 'center', minWidth: 0 },
+
+  // Células de faturação (espelham a Lista)
+  faturarLinha: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', minWidth: 0, maxWidth: '100%' },
+  selectFaturar: { padding: '5px 8px', border: '1px solid #ccc', borderRadius: 6, fontSize: 13, background: '#fff', color: 'var(--muted)', cursor: 'pointer', maxWidth: '100%', minWidth: 0 },
+  selectVerde: { padding: '5px 8px', border: '1px solid #1b873f', borderRadius: 6, fontSize: 13, background: '#fff', color: '#1b873f', fontWeight: 700, cursor: 'pointer', maxWidth: '100%', minWidth: 0 },
+  selectCinza: { padding: '5px 8px', border: '1px solid #ccc', borderRadius: 6, fontSize: 13, background: '#f3f3f3', color: 'var(--muted)', fontWeight: 600, cursor: 'pointer', maxWidth: '100%', minWidth: 0 },
+  inputManual: { width: 72, padding: '5px 6px', border: '1px solid #ccc', borderRadius: 6, fontSize: 13 },
+  valorVerde: { color: '#1b873f', fontWeight: 700, fontSize: 14 },
+  badgeCinza: { background: '#eee', color: 'var(--muted)', borderRadius: 999, padding: '2px 10px', fontSize: 12, fontWeight: 600 },
+  semDef: { color: 'var(--muted)' },
+  faturaLinha: { display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0, maxWidth: '100%' },
+  faturaLink: { fontSize: 13, color: 'var(--foreground)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 },
+  chipApagar: { width: 20, height: 20, borderRadius: 999, border: 'none', background: 'rgba(0,0,0,0.12)', color: 'var(--danger, #c62828)', fontSize: 14, lineHeight: 1, cursor: 'pointer', flexShrink: 0 },
+  btnAnexar: { background: '#fff', color: 'var(--primary)', border: '1px solid var(--primary)', borderRadius: 6, padding: '4px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' },
+  pagoVerde: { border: '1px solid #1b873f', background: '#e8f5ec', color: '#1b873f', fontWeight: 700, fontSize: 12, borderRadius: 999, padding: '4px 12px', cursor: 'pointer', whiteSpace: 'nowrap', lineHeight: 1 },
+  pagoVermelho: { border: '1px solid #c62828', background: '#ffebee', color: '#c62828', fontWeight: 700, fontSize: 12, borderRadius: 999, padding: '4px 12px', cursor: 'pointer', whiteSpace: 'nowrap', lineHeight: 1 },
 }
