@@ -118,6 +118,7 @@ export default function ListaAlugueres() {
   const [carregando, setCarregando] = useState(true)
   const [editar, setEditar] = useState<Aluguer | null>(null)
   const [enviarFatura, setEnviarFatura] = useState<{ aluguer: Aluguer; mes: string; fat: Fat } | null>(null)
+  const [recolher, setRecolher] = useState<Aluguer | null>(null)
 
   useEffect(() => {
     Promise.all([
@@ -258,6 +259,11 @@ export default function ListaAlugueres() {
     setEditar(null)
   }
 
+  function aoRecolhido(atualizado: Aluguer) {
+    setAlugueres((prev) => prev.map((a) => (a.id === atualizado.id ? atualizado : a)))
+    setRecolher(null)
+  }
+
   // ---- Render de uma linha (cartão em ecrã estreito, linha na tabela) --------
   function renderCartao(l: LinhaMes) {
     const a = l.aluguer
@@ -308,6 +314,10 @@ export default function ListaAlugueres() {
           <span style={c.cartaoLabel}>Validado</span>
           <VistoValidado fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, l.fat.mes, patch)} />
         </div>
+        <div style={c.cartaoLinha} onClick={(e) => e.stopPropagation()}>
+          <span style={c.cartaoLabel}>Recolha</span>
+          <CelulaRecolha aluguer={a} podeEditar={podeFaturar} onRecolher={() => setRecolher(a)} />
+        </div>
       </div>
     )
   }
@@ -350,6 +360,9 @@ export default function ListaAlugueres() {
         <span style={{ ...c.celula, justifyContent: 'center' }} onClick={(e) => e.stopPropagation()}>
           <EstadoPago fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, l.fat.mes, patch)} />
         </span>
+        <span style={c.celula} onClick={(e) => e.stopPropagation()}>
+          <CelulaRecolha aluguer={a} podeEditar={podeFaturar} onRecolher={() => setRecolher(a)} />
+        </span>
       </div>
     )
   }
@@ -368,6 +381,7 @@ export default function ListaAlugueres() {
           <span>Valor a Faturar</span>
           <span>Fatura</span>
           <span style={{ textAlign: 'center' }}>Pago</span>
+          <span>Recolha</span>
         </div>
         {lista.map(renderLinhaTabela)}
       </div>
@@ -505,6 +519,14 @@ export default function ListaAlugueres() {
           fat={enviarFatura.fat}
           onFechar={() => setEnviarFatura(null)}
           onEnviada={aoEnviadaFatura}
+        />
+      )}
+
+      {recolher && (
+        <ModalRecolha
+          aluguer={recolher}
+          onFechar={() => setRecolher(null)}
+          onRecolhido={aoRecolhido}
         />
       )}
     </main>
@@ -729,6 +751,29 @@ function EstadoPago({
   )
 }
 
+// -------------------------------------------------------------- CÉLULA: RECOLHA
+function CelulaRecolha({
+  aluguer, podeEditar, onRecolher,
+}: {
+  aluguer: Aluguer
+  podeEditar: boolean
+  onRecolher: () => void
+}) {
+  // Meses "só faturação" (meses intermédios de um contrato) não têm recolha.
+  if (aluguer.recolha_aplicavel === false) return <span style={c.semDef}>—</span>
+  // Já recolhido.
+  if (aluguer.data_recolha) {
+    return <span style={c.recolhido} title={`Recolhido em ${formatarData(aluguer.data_recolha)}`}>✓ {formatarData(aluguer.data_recolha)}</span>
+  }
+  // Por recolher: botão (staff) ou apenas indicação.
+  if (!podeEditar) return <span style={c.porRecolher}>Por recolher</span>
+  return (
+    <button type="button" style={c.btnRecolher} onClick={onRecolher} title="Registar a recolha do equipamento">
+      📥 Recolher
+    </button>
+  )
+}
+
 // ------------------------------------------------------ ENVIAR FATURA (EMAIL)
 function ModalEnviarFatura({
   aluguer, mes, fat, onFechar, onEnviada,
@@ -829,6 +874,62 @@ function ModalEnviarFatura({
           <button onClick={onFechar} style={c.btnGhost}>Cancelar</button>
           <button onClick={enviar} disabled={aEnviar} style={c.btnPrimario}>
             {aEnviar ? 'A enviar...' : 'Enviar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ------------------------------------------------------------- REGISTAR RECOLHA
+function ModalRecolha({
+  aluguer, onFechar, onRecolhido,
+}: {
+  aluguer: Aluguer
+  onFechar: () => void
+  onRecolhido: (a: Aluguer) => void
+}) {
+  const [data, setData] = useState(new Date().toISOString().slice(0, 10))
+  const [aGuardar, setAGuardar] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  async function guardar() {
+    setErro(null)
+    setAGuardar(true)
+    const { data: atualizado, error } = await supabase
+      .from('alugueres')
+      .update({ data_recolha: data || new Date().toISOString().slice(0, 10), updated_at: new Date().toISOString() })
+      .eq('id', aluguer.id)
+      .select()
+      .single()
+    setAGuardar(false)
+    if (error) return setErro('Erro ao registar a recolha: ' + error.message)
+    onRecolhido(atualizado as Aluguer)
+  }
+
+  return (
+    <div style={c.overlay} onClick={onFechar}>
+      <div style={c.modal} onClick={(e) => e.stopPropagation()}>
+        <div style={c.modalCab}>
+          <h2 style={c.modalTitulo}>Registar recolha</h2>
+          <button onClick={onFechar} style={c.fechar} aria-label="Fechar">✕</button>
+        </div>
+
+        {erro && <div style={c.erro}>{erro}</div>}
+
+        <p style={c.envInfo}>
+          <strong>Cliente:</strong> {aluguer.cliente_nome ?? '—'}<br />
+          <strong>Equipamento:</strong> {[aluguer.marca, aluguer.modelo].filter(Boolean).join(' ') || '—'} · {aluguer.serial_number ?? '—'}
+        </p>
+
+        <label style={c.label}>Data de recolha</label>
+        <input style={c.input} type="date" value={data} onChange={(e) => setData(e.target.value)} />
+        <span style={c.envNota}>O equipamento deixa de aparecer como “por devolver”.</span>
+
+        <div style={c.modalAcoes}>
+          <button onClick={onFechar} style={c.btnGhost}>Cancelar</button>
+          <button onClick={guardar} disabled={aGuardar} style={c.btnPrimario}>
+            {aGuardar ? 'A guardar...' : 'Registar recolha'}
           </button>
         </div>
       </div>
@@ -1044,7 +1145,7 @@ const c: Record<string, React.CSSProperties> = {
   cartaoLabel: { color: 'var(--muted)', fontSize: 13, fontWeight: 600, flexShrink: 0 },
 
   tabela: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 8, overflowX: 'auto' },
-  linha: { display: 'grid', gridTemplateColumns: '0.5fr 1.3fr 1.4fr 0.9fr 0.75fr 1.25fr 2fr 0.9fr', gap: 10, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center', minWidth: 920 },
+  linha: { display: 'grid', gridTemplateColumns: '0.5fr 1.3fr 1.4fr 0.9fr 0.75fr 1.25fr 2fr 0.9fr 1.1fr', gap: 10, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center', minWidth: 1040 },
   linhaClicavel: { cursor: 'pointer' },
   cab: { fontWeight: 700, color: 'var(--muted)', fontSize: 12, borderBottom: '2px solid var(--border)' },
   intl: { marginLeft: 6, fontSize: 10, fontWeight: 700, color: '#fff', background: 'var(--accent, #3552eb)', borderRadius: 999, padding: '1px 6px' },
@@ -1062,6 +1163,11 @@ const c: Record<string, React.CSSProperties> = {
   // Célula "Pago" (verde = pago, vermelho = por pagar)
   pagoVerde: { border: '1px solid #1b873f', background: '#e8f5ec', color: '#1b873f', fontWeight: 700, fontSize: 12, borderRadius: 999, padding: '4px 12px', cursor: 'pointer', whiteSpace: 'nowrap', lineHeight: 1 },
   pagoVermelho: { border: '1px solid #c62828', background: '#ffebee', color: '#c62828', fontWeight: 700, fontSize: 12, borderRadius: 999, padding: '4px 12px', cursor: 'pointer', whiteSpace: 'nowrap', lineHeight: 1 },
+
+  // Célula "Recolha"
+  btnRecolher: { background: '#fff', color: '#0E7490', border: '1px solid #0E7490', borderRadius: 6, padding: '4px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' },
+  recolhido: { fontSize: 12.5, color: '#065F46', fontWeight: 700, whiteSpace: 'nowrap' },
+  porRecolher: { fontSize: 12.5, color: 'var(--muted)', whiteSpace: 'nowrap' },
 
   // Célula "Valor a Faturar"
   celula: { display: 'flex', alignItems: 'center', minWidth: 0 },
