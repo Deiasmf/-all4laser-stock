@@ -13,11 +13,17 @@ export type Perfil = {
 
 // Roles do staff. 'standard' é o role não-privilegiado (antigo 'viewer', ainda
 // tolerado como sinónimo para retrocompatibilidade).
-export type Role = 'admin' | 'financeiro' | 'standard'
+export type Role = 'admin' | 'financeiro' | 'administrativo' | 'standard'
 
 // True se o role dá acesso ao módulo Financeiro (espelha has_financeiro_access() na BD).
 export function temAcessoFinanceiro(role: string | null | undefined): boolean {
   return role === 'admin' || role === 'financeiro'
+}
+
+// True se o role dá acesso à Área Administrativa — separador Tracking
+// (espelha has_administrativo_access() na BD).
+export function temAcessoAdministrativo(role: string | null | undefined): boolean {
+  return role === 'admin' || role === 'administrativo'
 }
 
 type AuthContexto = {
@@ -32,6 +38,8 @@ type AuthContexto = {
   // Acesso ao módulo Financeiro (admin ou financeiro). O bloqueio real é a RLS
   // na BD; isto só controla menus e a guarda de rota no cliente.
   isFinanceiro: boolean
+  // Acesso à Área Administrativa / separador Tracking (admin ou administrativo).
+  isAdministrativo: boolean
   sair: () => Promise<void>
 }
 
@@ -43,6 +51,7 @@ const Ctx = createContext<AuthContexto>({
   role: null,
   isAdmin: false,
   isFinanceiro: false,
+  isAdministrativo: false,
   sair: async () => {},
 })
 
@@ -124,6 +133,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         role: perfil?.role ?? null,
         isAdmin: perfil?.role === 'admin',
         isFinanceiro: temAcessoFinanceiro(perfil?.role),
+        isAdministrativo: temAcessoAdministrativo(perfil?.role),
         sair,
       }}
     >
