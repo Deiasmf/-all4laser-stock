@@ -1,0 +1,166 @@
+import { supabase } from './supabase'
+import type { Carrier, ShipmentTracking, TipoTransporte, Direcao, EstadoEnvio } from '@/types/tracking'
+import { DIAS_DESTAQUE } from '@/types/tracking'
+
+// Camada de dados do módulo Tracking. RLS: só admin + administrativo
+// (has_administrativo_access()); a leitura de carriers está aberta a staff.
+
+export const BUCKET_TRACKING = 'tracking-docs'
+
+// ─── Transportadoras ─────────────────────────────────────────────────────────
+export async function listarCarriers(incluirInativos = false): Promise<Carrier[]> {
+  let q = supabase.from('carriers').select('*').order('tipo').order('nome')
+  if (!incluirInativos) q = q.eq('ativo', true)
+  const { data } = await q
+  return (data as Carrier[]) ?? []
+}
+
+// ─── Envios (shipments_tracking) ─────────────────────────────────────────────
+export type FiltroEnvios = {
+  estado?: EstadoEnvio
+  tipo?: TipoTransporte
+  direcao?: Direcao
+  carrierId?: string
+  entidade?: string           // pesquisa por nome de entidade
+  procura?: string            // pesquisa por tracking / awb / entidade
+  de?: string
+  ate?: string
+}
+
+export async function listarEnvios(f: FiltroEnvios = {}): Promise<ShipmentTracking[]> {
+  let q = supabase.from('shipments_tracking').select('*').order('data_expedicao', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })
+  if (f.estado) q = q.eq('estado', f.estado)
+  if (f.tipo) q = q.eq('tipo_transporte', f.tipo)
+  if (f.direcao) q = q.eq('direcao', f.direcao)
+  if (f.carrierId) q = q.eq('carrier_id', f.carrierId)
+  if (f.de) q = q.gte('data_expedicao', f.de)
+  if (f.ate) q = q.lte('data_expedicao', f.ate)
+  if (f.procura && f.procura.trim()) {
+    const t = f.procura.trim()
+    q = q.or(`tracking_number.ilike.%${t}%,awb.ilike.%${t}%,entidade_nome.ilike.%${t}%,descricao_conteudo.ilike.%${t}%`)
+  }
+  const { data } = await q
+  return (data as ShipmentTracking[]) ?? []
+}
+
+export async function obterEnvio(id: string) {
+  return supabase.from('shipments_tracking').select('*').eq('id', id).single()
+}
+
+export type EnvioInput = {
+  tracking_number: string | null
+  awb: string | null
+  awb_check_valido: boolean | null
+  tipo_transporte: TipoTransporte
+  carrier_id: string | null
+  carrier_nome: string | null
+  direcao: Direcao
+  descricao_conteudo: string | null
+  entidade_tipo: 'cliente' | 'fornecedor' | null
+  cliente_id: string | null
+  supplier_id: string | null
+  entidade_nome: string | null
+  estado: EstadoEnvio
+  data_expedicao: string | null
+  entrega_prevista: string | null
+  entrega_efetiva: string | null
+  notas: string | null
+  aeroporto_origem: string | null
+  aeroporto_destino: string | null
+  num_volumes: number | null
+  peso_kg: number | null
+}
+
+type Autor = { id: string | null; nome: string | null }
+
+// Criação manual (origem='manual'; sem source_type/source_id).
+export async function criarEnvioManual(input: EnvioInput, criadoPor: Autor) {
+  return supabase.from('shipments_tracking').insert({
+    ...input,
+    origem: 'manual',
+    criado_por: criadoPor.id,
+    criado_por_nome: criadoPor.nome,
+  }).select().single()
+}
+
+export async function atualizarEnvio(id: string, patch: Partial<ShipmentTracking>) {
+  return supabase.from('shipments_tracking').update(patch).eq('id', id).select().single()
+}
+
+// Só entradas manuais podem ser apagadas; as sincronizadas mantêm-se (histórico).
+export async function apagarEnvioManual(id: string) {
+  return supabase.from('shipments_tracking').delete().eq('id', id).eq('origem', 'manual')
+}
+
+// Origens (referências ao documento de origem) de um envio.
+export type EnvioOrigem = { id: string; tracking_id: string; origem: string; source_type: string; source_id: string; anulada: boolean; created_at: string }
+export async function listarOrigens(trackingId: string): Promise<EnvioOrigem[]> {
+  const { data } = await supabase
+    .from('shipments_tracking_sources')
+    .select('*').eq('tracking_id', trackingId).order('created_at', { ascending: true })
+  return (data as EnvioOrigem[]) ?? []
+}
+
+// ─── Carta de porte (bucket privado, signed URLs) ────────────────────────────
+function nomeSeguro(nome: string) {
+  return nome.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w.\-]/g, '_')
+}
+
+export async function carregarCartaPorte(envioId: string, ficheiro: File): Promise<{ ok: boolean; motivo?: string }> {
+  const caminho = `${envioId}/${Date.now()}-${nomeSeguro(ficheiro.name)}`
+  const { error } = await supabase.storage.from(BUCKET_TRACKING).upload(caminho, ficheiro)
+  if (error) return { ok: false, motivo: error.message }
+  const { error: erroBd } = await supabase
+    .from('shipments_tracking')
+    .update({ carta_porte_caminho: caminho, carta_porte_url: null })
+    .eq('id', envioId)
+  if (erroBd) return { ok: false, motivo: erroBd.message }
+  return { ok: true }
+}
+
+// URL para abrir a carta de porte: signed URL (bucket privado) ou o url público
+// herdado da origem (envios_pecas grava carta_porte_url pública).
+export async function urlCartaPorte(envio: Pick<ShipmentTracking, 'carta_porte_caminho' | 'carta_porte_url'>, segundos = 120): Promise<string | null> {
+  if (envio.carta_porte_caminho) {
+    const { data } = await supabase.storage.from(BUCKET_TRACKING).createSignedUrl(envio.carta_porte_caminho, segundos)
+    if (data?.signedUrl) return data.signedUrl
+  }
+  return envio.carta_porte_url ?? null
+}
+
+// ─── Resumo para o dashboard administrativo ──────────────────────────────────
+export type ResumoTracking = {
+  emTransitoExpresso: number
+  emTransitoAerea: number
+  atrasadosExpresso: number
+  atrasadosAerea: number
+  problema: number
+}
+
+export async function resumoTracking(): Promise<ResumoTracking> {
+  const { data } = await supabase
+    .from('shipments_tracking')
+    .select('tipo_transporte, estado, data_expedicao, origem_anulada')
+    .in('estado', ['registado', 'em_transito', 'problema'])
+    .eq('origem_anulada', false)
+  const linhas = (data as Pick<ShipmentTracking, 'tipo_transporte' | 'estado' | 'data_expedicao' | 'origem_anulada'>[]) ?? []
+  const hoje = Date.now()
+  const r: ResumoTracking = { emTransitoExpresso: 0, emTransitoAerea: 0, atrasadosExpresso: 0, atrasadosAerea: 0, problema: 0 }
+  for (const l of linhas) {
+    if (l.estado === 'problema') { r.problema++; continue }
+    const aerea = l.tipo_transporte === 'carga_aerea'
+    if (aerea) r.emTransitoAerea++; else r.emTransitoExpresso++
+    if (l.data_expedicao) {
+      const dias = Math.floor((hoje - new Date(l.data_expedicao).getTime()) / 86400000)
+      const limite = aerea ? DIAS_DESTAQUE.carga_aerea : DIAS_DESTAQUE.expresso
+      if (dias >= limite) { if (aerea) r.atrasadosAerea++; else r.atrasadosExpresso++ }
+    }
+  }
+  return r
+}
+
+// Nº de dias em trânsito (para destacar na tabela). null se sem data.
+export function diasEmTransito(dataExpedicao: string | null): number | null {
+  if (!dataExpedicao) return null
+  return Math.floor((Date.now() - new Date(dataExpedicao).getTime()) / 86400000)
+}

@@ -9,11 +9,12 @@ type Utilizador = { id: string; nome: string | null; email: string | null; role:
 const ROLES: { valor: Role; label: string; cor: string; bg: string; ajuda: string }[] = [
   { valor: 'admin', label: 'Administrador', cor: '#7C2D12', bg: '#FEF3C7', ajuda: 'Acesso total, incluindo gestão de utilizadores.' },
   { valor: 'financeiro', label: 'Financeiro', cor: '#065F46', bg: '#D1FAE5', ajuda: 'Acesso ao módulo Financeiro (+ resto da app).' },
+  { valor: 'administrativo', label: 'Administrativo', cor: '#1E3A8A', bg: '#DBEAFE', ajuda: 'Acesso ao separador Tracking da Área Administrativa (+ resto da app).' },
   { valor: 'standard', label: 'Standard', cor: '#374151', bg: '#E5E7EB', ajuda: 'Utilizador normal, sem acesso ao Financeiro.' },
 ]
 
 function roleInfo(role: string) {
-  return ROLES.find((r) => r.valor === role) ?? ROLES[2]
+  return ROLES.find((r) => r.valor === role) ?? ROLES[ROLES.length - 1]
 }
 
 export default function GestaoUtilizadoresPage() {

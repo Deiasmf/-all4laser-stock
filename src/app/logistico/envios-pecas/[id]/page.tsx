@@ -29,7 +29,7 @@ export default function DetalheEnvioPage() {
   const params = useParams<{ id: string }>()
   const id = params.id
   const router = useRouter()
-  const { isAdmin, perfil } = useAuth()
+  const { isAdmin, isAdministrativo, perfil } = useAuth()
   const [envio, setEnvio] = useState<EnvioPeca | null>(null)
   const [itens, setItens] = useState<EnvioItem[]>([])
   const [fotos, setFotos] = useState<EnvioFoto[]>([])
@@ -499,6 +499,11 @@ export default function DetalheEnvioPage() {
             )}
           </label>
         </div>
+        {isAdministrativo && (
+          <Link href={`/admin-dept/tracking?q=${encodeURIComponent(envio.numero ?? '')}`} style={{ ...c.link, display: 'inline-block', marginTop: 12, fontSize: 13, fontWeight: 600 }}>
+            📦 Ver no separador Tracking ↗
+          </Link>
+        )}
       </section>
 
       {/* Fotos */}

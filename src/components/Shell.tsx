@@ -12,8 +12,8 @@ import { contarMinhaArea } from '@/lib/minhaArea'
 // recolhíveis (clicar no cabeçalho abre/fecha).
 // `requer` esconde o item para quem não tem o acesso (o bloqueio real é a RLS
 // + as guardas de rota; isto só limpa o menu).
-type Requer = 'admin' | 'financeiro'
-type SubItem = { href: string; label: string; icon: string }
+type Requer = 'admin' | 'financeiro' | 'administrativo'
+type SubItem = { href: string; label: string; icon: string; requer?: Requer }
 type Item = { href?: string; label: string; icon?: string; badge?: 'leads' | 'minhaArea'; filhos?: SubItem[]; requer?: Requer; exato?: boolean }
 type Seccao = { titulo: string; itens: Item[] }
 
@@ -34,6 +34,7 @@ const NAV: Seccao[] = [
         filhos: [
           { href: '/admin-dept/expedicao', label: 'Prontos a enviar', icon: '✈️' },
           { href: '/admin-dept/envios-pecas', label: 'Envios de Encomendas', icon: '📬' },
+          { href: '/admin-dept/tracking', label: 'Tracking', icon: '🚚', requer: 'administrativo' },
         ],
       },
       { href: '/financeiro', label: 'Financeiro', icon: '💶', requer: 'financeiro' },
@@ -143,7 +144,7 @@ function tituloDaRota(path: string): string {
 }
 
 export default function Shell({ children }: { children: React.ReactNode }) {
-  const { session, perfil, sair, isAdmin, isFinanceiro } = useAuth()
+  const { session, perfil, sair, isAdmin, isFinanceiro, isAdministrativo } = useAuth()
   const pathname = usePathname()
   const [leadsNovas, setLeadsNovas] = useState(0)
   const [minhaArea, setMinhaArea] = useState(0)
@@ -215,6 +216,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     if (!requer) return true
     if (requer === 'admin') return isAdmin
     if (requer === 'financeiro') return isFinanceiro
+    if (requer === 'administrativo') return isAdministrativo
     return true
   }
   // Aplica o filtro e descarta secções que ficam sem itens.
@@ -255,7 +257,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                         <span>{it.label}</span>
                         <span className={`a4l-sb-chevron${aberto ? ' aberto' : ''}`}>▸</span>
                       </button>
-                      {aberto && it.filhos.map((f) => (
+                      {aberto && it.filhos.filter((f) => podeVer(f.requer)).map((f) => (
                         <Link
                           key={f.href}
                           href={f.href}
