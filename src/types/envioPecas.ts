@@ -59,6 +59,33 @@ export const TRANSPORTADORA_LINK: Record<string, string> = {
   FedEx: 'https://www.fedex.com',
 }
 
+// Constrói o URL de seguimento direto a partir do número de tracking, por
+// transportadora. Devolve null quando não há número ou não há padrão conhecido.
+export function linkTracking(
+  e: Pick<EnvioPeca, 'transportadora' | 'tracking_numero'>
+): string | null {
+  const n = e.tracking_numero?.trim()
+  if (!n) return null
+  const num = encodeURIComponent(n)
+  switch (e.transportadora) {
+    case 'UPS':
+      return `https://www.ups.com/track?loc=pt_PT&tracknum=${num}`
+    case 'FedEx':
+      return `https://www.fedex.com/fedextrack/?trknbr=${num}`
+    case 'Nacex':
+      return `https://www.nacex.pt/seguimientoDetalle.do?agencia_origen=&numero_albaran=${num}`
+    default:
+      return null
+  }
+}
+
+// Localizador genérico de carga aérea por AWB (Air Waybill).
+export function linkAwb(awb: string | null | undefined): string | null {
+  const n = awb?.trim()
+  if (!n) return null
+  return `https://www.track-trace.com/aircargo?awb=${encodeURIComponent(n)}`
+}
+
 // Software de faturação (abre numa nova aba ao clicar em "Faturar").
 export const KEYINVOICE_URL = 'https://www.keyinvoice.com'
 
@@ -79,6 +106,8 @@ export type EnvioPeca = {
   responsavel_nome: string | null
   transportadora: string | null
   transportadora_outro: string | null
+  tracking_numero: string | null
+  awb_numero: string | null
   peso_kg: number | null
   comprimento_cm: number | null
   largura_cm: number | null
