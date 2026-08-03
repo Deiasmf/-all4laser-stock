@@ -12,7 +12,7 @@ import {
 } from '@/lib/enviosPecas'
 import {
   estadoInfo, transportadoraLabel, formatarEuro, calcularIva, motivoInfo, TRANSPORTADORA_LINK, TRANSPORTADORAS, KEYINVOICE_URL, ehEntregaEmMaos,
-  nomeFicheiroEnvio,
+  nomeFicheiroEnvio, linkTracking, linkAwb,
   type EnvioPeca, type EnvioItem,
 } from '@/types/envioPecas'
 import BotaoPdf from '@/components/BotaoPdf'
@@ -257,6 +257,8 @@ export default function DetalheEnvioPage() {
                   linhas: [
                     { rotulo: 'Responsável', valor: envio.responsavel_nome },
                     { rotulo: 'Transportadora', valor: transportadoraLabel(envio) },
+                    { rotulo: 'Nº de tracking', valor: envio.tracking_numero },
+                    { rotulo: 'Nº de AWB', valor: envio.awb_numero },
                     { rotulo: 'Peso (kg)', valor: envio.peso_kg },
                     {
                       rotulo: 'Dimensões',
@@ -367,6 +369,26 @@ export default function DetalheEnvioPage() {
         <Linha rotulo="Motivo" valor={motivoInfo(envio.motivo).label} />
         <Linha rotulo="Faturável" valor={envio.faturavel ? 'Sim' : 'Não (sem custo associado)'} />
         <Linha rotulo="Transportadora" valor={transportadoraLabel(envio)} />
+        {envio.tracking_numero && (
+          <div style={c.linhaInfo}>
+            <span style={c.linhaRotulo}>Nº de tracking</span>
+            <span>
+              {linkTracking(envio)
+                ? <a href={linkTracking(envio) as string} target="_blank" rel="noopener noreferrer" style={c.link}>{envio.tracking_numero} ↗</a>
+                : envio.tracking_numero}
+            </span>
+          </div>
+        )}
+        {envio.awb_numero && (
+          <div style={c.linhaInfo}>
+            <span style={c.linhaRotulo}>Nº de AWB</span>
+            <span>
+              {linkAwb(envio.awb_numero)
+                ? <a href={linkAwb(envio.awb_numero) as string} target="_blank" rel="noopener noreferrer" style={c.link}>{envio.awb_numero} ↗</a>
+                : envio.awb_numero}
+            </span>
+          </div>
+        )}
         {ehEntregaEmMaos(envio.transportadora) && (
           <>
             <Linha rotulo="Carta de porte" valor="Entrega em Mãos — sem carta de porte" />
@@ -437,6 +459,46 @@ export default function DetalheEnvioPage() {
             style={{ ...c.input, minHeight: 64, resize: 'vertical', marginTop: 4 }}
           />
         </label>
+      </section>
+
+      {/* Rastreio (tracking) e AWB */}
+      <section style={c.card}>
+        <div style={c.cardTitulo}>Rastreio e AWB</div>
+        <p style={c.ajuda}>Nº de tracking da transportadora para seguir a encomenda e nº de AWB (Air Waybill) para localizar envios aéreos. Guarda automaticamente ao sair do campo.</p>
+        <div style={c.grelhaDim}>
+          <label style={c.campoEdit}>
+            <span style={c.rotulo}>Nº de tracking (seguimento)</span>
+            <input
+              key={'trk' + (envio.tracking_numero ?? '')}
+              defaultValue={envio.tracking_numero ?? ''}
+              onBlur={(e) => guardarCampo({ tracking_numero: e.target.value.trim() || null })}
+              disabled={aTrabalhar}
+              placeholder="Ex.: 1Z999AA10123456784"
+              style={{ ...c.input, marginTop: 4 }}
+            />
+            {linkTracking(envio) && (
+              <a href={linkTracking(envio) as string} target="_blank" rel="noopener noreferrer" style={{ ...c.link, marginTop: 6, fontSize: 13 }}>
+                Seguir envio em {transportadoraLabel(envio)} ↗
+              </a>
+            )}
+          </label>
+          <label style={c.campoEdit}>
+            <span style={c.rotulo}>Nº de AWB (envio aéreo)</span>
+            <input
+              key={'awb' + (envio.awb_numero ?? '')}
+              defaultValue={envio.awb_numero ?? ''}
+              onBlur={(e) => guardarCampo({ awb_numero: e.target.value.trim() || null })}
+              disabled={aTrabalhar}
+              placeholder="Ex.: 020-12345675"
+              style={{ ...c.input, marginTop: 4 }}
+            />
+            {linkAwb(envio.awb_numero) && (
+              <a href={linkAwb(envio.awb_numero) as string} target="_blank" rel="noopener noreferrer" style={{ ...c.link, marginTop: 6, fontSize: 13 }}>
+                Localizar carga aérea ↗
+              </a>
+            )}
+          </label>
+        </div>
       </section>
 
       {/* Fotos */}
