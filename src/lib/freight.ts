@@ -4,7 +4,7 @@ import type {
   FreightRecipient, FreightQuote, FreightEmailTemplate, FreightSettings,
   IdiomaFreight, TipoTransporte, EstadoPedido,
 } from '@/types/freight'
-import { saudacaoPara } from '@/types/freight'
+import { saudacaoPara, REMETENTE_DEFAULT } from '@/types/freight'
 
 // Camada de dados do módulo Cotações de Transporte.
 // RLS na BD: só admin + administrativo (has_administrativo_access()).
@@ -160,7 +160,7 @@ export function pedidoVazio(): PedidoInput {
     destino_pais: null, destino_cidade_cp: null, destino_morada: null,
     data_recolha: null, flexibilidade: null,
     extra_paletizar: false, extra_seguro: false, extra_plataforma: false, extra_urgente: false,
-    observacoes: null, idioma: 'pt', assunto_email: null, group_id: null,
+    observacoes: null, idioma: 'pt', assunto_email: null, remetente: REMETENTE_DEFAULT, group_id: null,
   }
 }
 
@@ -224,7 +224,8 @@ export async function duplicarPedido(id: string, criadoPor: string | null): Prom
     data_recolha: null, flexibilidade: o.flexibilidade,
     extra_paletizar: o.extra_paletizar, extra_seguro: o.extra_seguro,
     extra_plataforma: o.extra_plataforma, extra_urgente: o.extra_urgente,
-    observacoes: o.observacoes, idioma: o.idioma, assunto_email: o.assunto_email, group_id: o.group_id,
+    observacoes: o.observacoes, idioma: o.idioma, assunto_email: o.assunto_email,
+    remetente: o.remetente, group_id: o.group_id,
   }
   const { data: novo, error: erroNovo } = await criarPedido(input, criadoPor)
   if (erroNovo || !novo) return { error: erroNovo?.message ?? 'Falha ao duplicar.' }
@@ -339,8 +340,10 @@ export async function obterSettings(): Promise<FreightSettings | null> {
   const { data } = await supabase.from('freight_settings').select('*').eq('id', 1).single()
   return (data as FreightSettings) ?? null
 }
-export async function atualizarSettings(dias_uteis_alerta: number) {
-  return supabase.from('freight_settings').update({ dias_uteis_alerta, updated_at: new Date().toISOString() }).eq('id', 1)
+export async function atualizarSettings(dias_uteis_alerta: number, remetentes?: string[]) {
+  const patch: Record<string, unknown> = { dias_uteis_alerta, updated_at: new Date().toISOString() }
+  if (remetentes) patch.remetentes = remetentes
+  return supabase.from('freight_settings').update(patch).eq('id', 1)
 }
 
 // ─── Contagens para a listagem (X de Y responderam, nº volumes) ──────────────

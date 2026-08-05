@@ -35,13 +35,14 @@ function carregarSA(): { sa?: ServiceAccount; erro?: string } {
   }
 }
 
-// Cache do token (separado do Calendar, pois o scope/subject são diferentes).
-let _tokenCache: { token: string; expira: number } | null = null
+// Cache de token por remetente personificado (cada pedido pode sair de uma
+// conta diferente; o token é específico do subject).
+const _tokenCache = new Map<string, { token: string; expira: number }>()
 
-async function obterAccessToken(sa: ServiceAccount): Promise<string> {
-  if (_tokenCache && _tokenCache.expira > Date.now() + 60_000) return _tokenCache.token
+async function obterAccessToken(sa: ServiceAccount, subject: string): Promise<string> {
+  const emCache = _tokenCache.get(subject)
+  if (emCache && emCache.expira > Date.now() + 60_000) return emCache.token
   const tokenUri = sa.token_uri || 'https://oauth2.googleapis.com/token'
-  const subject = process.env.GOOGLE_GMAIL_SUBJECT || GMAIL_SUBJECT_DEFAULT
   const now = Math.floor(Date.now() / 1000)
   const cabecalho = base64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))
   const corpo = base64url(JSON.stringify({
@@ -63,7 +64,7 @@ async function obterAccessToken(sa: ServiceAccount): Promise<string> {
   })
   const j = await r.json()
   if (!r.ok) throw new Error(`auth ${r.status}: ${j.error_description ?? j.error ?? JSON.stringify(j)}`)
-  _tokenCache = { token: j.access_token as string, expira: Date.now() + 3600_000 }
+  _tokenCache.set(subject, { token: j.access_token as string, expira: Date.now() + 3600_000 })
   return j.access_token as string
 }
 
@@ -97,12 +98,13 @@ export type ResultadoGmail = {
 }
 
 // Envia UM email (a um ou mais endereços do MESMO destinatário/empresa).
-// O remetente é comercial@all4laser.com (a conta personificada).
+// `remetente` é a conta @all4laser.com que envia (personificada via DWD);
+// por omissão usa GOOGLE_GMAIL_SUBJECT ou comercial@all4laser.com.
 export async function enviarGmail(opts: {
   para: string[]
   assunto: string
   corpoTexto: string
-  de?: string
+  remetente?: string
 }): Promise<ResultadoGmail> {
   const { sa, erro } = carregarSA()
   if (!sa) return { ok: false, configurado: false, erro }
@@ -110,9 +112,11 @@ export async function enviarGmail(opts: {
   const para = opts.para.map((e) => e.trim()).filter(Boolean)
   if (para.length === 0) return { ok: false, configurado: true, erro: 'Sem destinatários.' }
 
-  const de = opts.de ?? `All4laser <${process.env.GOOGLE_GMAIL_SUBJECT || GMAIL_SUBJECT_DEFAULT}>`
+  const remetente = (opts.remetente && opts.remetente.trim())
+    || process.env.GOOGLE_GMAIL_SUBJECT || GMAIL_SUBJECT_DEFAULT
+  const de = `All4laser <${remetente}>`
   try {
-    const token = await obterAccessToken(sa)
+    const token = await obterAccessToken(sa, remetente)
     const raw = base64url(construirMime({ de, para, assunto: opts.assunto, corpoTexto: opts.corpoTexto }))
     const r = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
       method: 'POST',
