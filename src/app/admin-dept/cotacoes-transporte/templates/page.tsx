@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import { listarTemplates, atualizarTemplate, obterSettings, atualizarSettings } from '@/lib/freight'
-import type { FreightEmailTemplate, IdiomaFreight } from '@/types/freight'
+import { remetenteValido, type FreightEmailTemplate, type IdiomaFreight } from '@/types/freight'
 
 const PLACEHOLDERS = ['saudacao', 'tipo', 'origem', 'destino', 'datas', 'tabela_volumes', 'extras', 'prazo_resposta']
 
@@ -12,11 +12,13 @@ export default function TemplatesPage() {
   const { isAdministrativo, perfilCarregado } = useAuth()
   const [templates, setTemplates] = useState<FreightEmailTemplate[]>([])
   const [dias, setDias] = useState(3)
+  const [remetentesTexto, setRemetentesTexto] = useState('')
   const [toast, setToast] = useState<string | null>(null)
 
   const carregar = useCallback(async () => {
     setTemplates(await listarTemplates())
-    const st = await obterSettings(); if (st) setDias(st.dias_uteis_alerta)
+    const st = await obterSettings()
+    if (st) { setDias(st.dias_uteis_alerta); setRemetentesTexto((st.remetentes ?? []).join(', ')) }
   }, [])
   useEffect(() => { carregar() }, [carregar])
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 3000); return () => clearTimeout(t) }, [toast])
@@ -28,8 +30,12 @@ export default function TemplatesPage() {
     const { error } = await atualizarTemplate(t.idioma, t.assunto_template, t.corpo_template)
     setToast(error ? 'Erro: ' + error.message : `Template ${t.idioma.toUpperCase()} guardado.`)
   }
-  async function guardarDias() {
-    const { error } = await atualizarSettings(dias)
+  async function guardarConfig() {
+    const remetentes = remetentesTexto.split(/[,;\n]/).map((e) => e.trim()).filter(Boolean)
+    const invalidos = remetentes.filter((e) => !remetenteValido(e))
+    if (invalidos.length) { setToast('Só emails @all4laser.com: ' + invalidos.join(', ')); return }
+    if (remetentes.length === 0) { setToast('Indica pelo menos um remetente.'); return }
+    const { error } = await atualizarSettings(dias, remetentes)
     setToast(error ? 'Erro: ' + error.message : 'Configuração guardada.')
   }
 
@@ -62,7 +68,11 @@ export default function TemplatesPage() {
         <label style={c.campo}><span style={c.rot}>Alertar quando passarem X dias úteis sem respostas</span>
           <input style={{ ...c.input, width: 120 }} type="number" min={1} value={dias} onChange={(e) => setDias(Math.max(1, Number(e.target.value)))} />
         </label>
-        <div style={c.acoes}><button style={c.btnPrimario} onClick={guardarDias}>Guardar configuração</button></div>
+        <label style={c.campo}><span style={c.rot}>Remetentes disponíveis (emails @all4laser.com, separados por vírgula)</span>
+          <input style={c.input} value={remetentesTexto} placeholder="comercial@all4laser.com, andreia.fernandes@all4laser.com, vanessa.tavares@all4laser.com" onChange={(e) => setRemetentesTexto(e.target.value)} />
+          <span style={c.dica}>Aparecem no seletor “Enviar de” de cada pedido. Só contas @all4laser.com (o envio personifica a conta).</span>
+        </label>
+        <div style={c.acoes}><button style={c.btnPrimario} onClick={guardarConfig}>Guardar configuração</button></div>
       </section>
 
       {toast && <div style={c.toast}>{toast}</div>}

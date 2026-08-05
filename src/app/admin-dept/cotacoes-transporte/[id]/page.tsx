@@ -30,7 +30,8 @@ function pedidoParaEditor(p: FreightRequest, linhas: CargoLine[]): EstadoEditor 
       data_recolha: p.data_recolha, flexibilidade: p.flexibilidade,
       extra_paletizar: p.extra_paletizar, extra_seguro: p.extra_seguro,
       extra_plataforma: p.extra_plataforma, extra_urgente: p.extra_urgente,
-      observacoes: p.observacoes, idioma: p.idioma, assunto_email: p.assunto_email, group_id: p.group_id,
+      observacoes: p.observacoes, idioma: p.idioma, assunto_email: p.assunto_email,
+      remetente: p.remetente, group_id: p.group_id,
     },
     linhas: linhas.map((l) => ({
       box_id: l.box_id, descricao: l.descricao, ext_c: l.ext_c, ext_l: l.ext_l, ext_a: l.ext_a,
@@ -61,6 +62,7 @@ export default function DetalhePedidoPage() {
   const [destinatarios, setDestinatarios] = useState<FreightRecipient[]>([])
   const [cotacoes, setCotacoes] = useState<FreightQuote[]>([])
   const [diasAlerta, setDiasAlerta] = useState(3)
+  const [remetentes, setRemetentes] = useState<string[]>([])
 
   const [aGravar, setAGravar] = useState(false)
   const [enviando, setEnviando] = useState(false)
@@ -79,7 +81,8 @@ export default function DetalhePedidoPage() {
     setEditor(pedidoParaEditor(ped, ls))
     setAssunto(ped.assunto_email ?? '')
     setBoxes(bx); setTemplates(tpl); setGrupos(gp); setForwarders(fw)
-    setDestinatarios(dst); setCotacoes(cot); if (st) setDiasAlerta(st.dias_uteis_alerta)
+    setDestinatarios(dst); setCotacoes(cot)
+    if (st) { setDiasAlerta(st.dias_uteis_alerta); setRemetentes(st.remetentes ?? []) }
   }, [id])
 
   useEffect(() => { carregar() }, [carregar])
@@ -227,6 +230,14 @@ export default function DetalhePedidoPage() {
       <section style={c.card}>
         <h2 style={c.h2}>Envio</h2>
         <div style={c.linhaEnvio}>
+          <label style={c.campo}><span style={c.rot}>Enviar de</span>
+            <select style={c.input} value={editor.pedido.remetente ?? ''} onChange={(e) => setEditor({ ...editor, pedido: { ...editor.pedido, remetente: e.target.value || null } })}>
+              {editor.pedido.remetente && !remetentes.includes(editor.pedido.remetente) && (
+                <option value={editor.pedido.remetente}>{editor.pedido.remetente}</option>
+              )}
+              {remetentes.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </label>
           <label style={c.campo}><span style={c.rot}>Grupo de transitários</span>
             <select style={c.input} value={editor.pedido.group_id ?? ''} onChange={(e) => setEditor({ ...editor, pedido: { ...editor.pedido, group_id: e.target.value || null } })}>
               <option value="">— escolher grupo —</option>

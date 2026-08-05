@@ -106,6 +106,7 @@ export type FreightRequest = {
   observacoes: string | null
   idioma: IdiomaFreight
   assunto_email: string | null
+  remetente: string | null   // email @all4laser.com de quem envia
   group_id: string | null
   vencedor_forwarder_id: string | null
   fechado_em: string | null
@@ -155,7 +156,15 @@ export type FreightEmailTemplate = {
 export type FreightSettings = {
   id: number
   dias_uteis_alerta: number
+  remetentes: string[]
   updated_at: string
+}
+
+// Remetente por omissão e validação (só contas @all4laser.com podem ser
+// personificadas pela Service Account via delegação de domínio).
+export const REMETENTE_DEFAULT = 'vanessa.tavares@all4laser.com'
+export function remetenteValido(email: string | null | undefined): boolean {
+  return !!email && /^[^\s@]+@all4laser\.com$/i.test(email.trim())
 }
 
 // ─── Cálculos de carga ───────────────────────────────────────────────────────

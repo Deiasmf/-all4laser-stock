@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { enviarGmail } from '@/lib/gmailSend'
 import {
   render, varsAssunto, moradaOrigem, moradaDestino, datasTexto, extrasTexto,
-  tabelaVolumesTexto, tipoTransporteAdjetivo,
+  tabelaVolumesTexto, tipoTransporteAdjetivo, remetenteValido,
   type FreightRequest, type CargoLine, type FreightRecipient, type FreightEmailTemplate, type FreightSettings,
 } from '@/types/freight'
 
@@ -90,6 +90,9 @@ export async function POST(req: Request) {
   // 5) Variáveis comuns do corpo (as específicas do destinatário juntam-se no loop).
   const assunto = (pedido.assunto_email && pedido.assunto_email.trim())
     || render(template.assunto_template, varsAssunto(pedido))
+  // Remetente do pedido (validado); só contas @all4laser.com podem ser
+  // personificadas. Fallback seguro para comercial@ se estiver em falta/inválido.
+  const remetente = remetenteValido(pedido.remetente) ? pedido.remetente!.trim() : 'comercial@all4laser.com'
   const varsComuns: Record<string, string> = {
     tipo: tipoTransporteAdjetivo(pedido.tipo_transporte),
     origem: moradaOrigem(pedido),
@@ -108,7 +111,7 @@ export async function POST(req: Request) {
 
     let ok = false, erroEnvio: string | undefined, messageId: string | undefined, threadId: string | undefined
     for (let tentativa = 1; tentativa <= TENTATIVAS_MAX && !ok; tentativa++) {
-      const r = await enviarGmail({ para: d.emails, assunto, corpoTexto: corpoEmail })
+      const r = await enviarGmail({ para: d.emails, assunto, corpoTexto: corpoEmail, remetente })
       if (r.ok) { ok = true; messageId = r.messageId; threadId = r.threadId }
       else { erroEnvio = r.erro; if (tentativa < TENTATIVAS_MAX) await sleep(400) }
     }
