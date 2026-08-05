@@ -11,6 +11,7 @@ import { extrairLead } from '@/lib/leadExtract'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
+// (deploy: garantir que a rota fica publicada em produção)
 
 const MAX_POR_CORRIDA = 25
 
