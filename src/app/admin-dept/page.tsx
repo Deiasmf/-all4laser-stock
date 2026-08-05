@@ -34,6 +34,14 @@ export default function AdminDeptPage() {
         </Link>
 
         {isAdministrativo && (
+          <Link href="/admin-dept/cotacoes-transporte" style={c.cartao}>
+            <div style={c.cartaoIcon}>📦</div>
+            <div style={c.cartaoTitulo}>Cotações de Transporte</div>
+            <div style={c.cartaoSub}>Pedidos de cotação a transitários por email, comparação e escolha.</div>
+          </Link>
+        )}
+
+        {isAdministrativo && (
           <Link href="/admin-dept/tracking" style={{ ...c.cartao, ...((resumo && (resumo.atrasadosExpresso + resumo.atrasadosAerea + resumo.problema) > 0) ? c.cartaoAlerta : {}) }}>
             <div style={c.cartaoIcon}>🚚</div>
             <div style={c.cartaoTitulo}>Tracking</div>
