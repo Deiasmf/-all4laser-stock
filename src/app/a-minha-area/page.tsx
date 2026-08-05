@@ -8,7 +8,7 @@ import EditarTarefaModal from '@/components/EditarTarefaModal'
 import {
   listarMinhasTarefas, criarTarefa, mudarMeuEstado, ordenarTarefas, prioridadeInfo,
   listarMeusRecados, marcarRecadoLido, listarRecadosEnviados, listarColaboradores,
-  atualizarRecado,
+  atualizarRecado, notificarConclusaoTarefa,
   obterPrefNotificacao, guardarPrefNotificacao,
   PRIORIDADES, type Prioridade, type MinhaTarefa, type Recado, type Colaborador,
 } from '@/lib/minhaArea'
@@ -69,7 +69,11 @@ export default function MinhaAreaPage() {
     return co?.nome ?? co?.email ?? '—'
   }
 
-  async function concluir(t: MinhaTarefa) { await mudarMeuEstado(t.assigneeId, 'concluida'); await carregar() }
+  async function concluir(t: MinhaTarefa) {
+    await mudarMeuEstado(t.assigneeId, 'concluida')
+    await notificarConclusaoTarefa(t.id)   // avisa quem atribuiu (exceto autoconclusão)
+    await carregar()
+  }
   async function reabrir(t: MinhaTarefa) { await mudarMeuEstado(t.assigneeId, 'pendente'); await carregar() }
   async function iniciar(t: MinhaTarefa) { await mudarMeuEstado(t.assigneeId, 'em_curso'); await carregar() }
   async function lerRecado(r: Recado) { await marcarRecadoLido(r.id); await carregar() }

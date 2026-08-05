@@ -154,6 +154,16 @@ export async function mudarMeuEstado(assigneeId: string, estado: EstadoTarefa) {
     .eq('id', assigneeId).select().single()
 }
 
+// Ao concluir, avisa por recado quem criou a tarefa (exceto se for a própria
+// pessoa a concluir). A função na BD (SECURITY DEFINER) decide e cria o recado.
+export async function notificarConclusaoTarefa(taskId: string): Promise<void> {
+  try {
+    await supabase.rpc('notificar_conclusao_tarefa', { p_task: taskId })
+  } catch {
+    /* o aviso é best-effort; nunca bloqueia a conclusão da tarefa */
+  }
+}
+
 export async function apagarTarefa(id: string) {
   return supabase.from('user_tasks').delete().eq('id', id)   // cascata: destinatários + comentários
 }
