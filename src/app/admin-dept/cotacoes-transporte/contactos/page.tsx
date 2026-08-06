@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import {
   listarForwarders, criarForwarder, atualizarForwarder, eliminarForwarder, forwarderVazio, type ForwarderInput,
+  alternarAtivoForwarder, forwarderTemHistorico, alternarAtivoGrupo,
   listarGrupos, criarGrupo, atualizarGrupo, eliminarGrupo, type GroupInput,
   membrosDoGrupo, adicionarMembro, removerMembro,
 } from '@/lib/freight'
@@ -50,8 +51,15 @@ export default function ContactosPage() {
     if (error) { setToast('Erro: ' + error.message); return }
     setFwAberto(false); setToast('Guardado.'); carregar()
   }
+  async function alternarFw(f: FreightForwarder) {
+    const { error } = await alternarAtivoForwarder(f.id, !f.ativo)
+    setToast(error ? 'Erro: ' + error.message : (f.ativo ? 'Desativado.' : 'Ativado.')); carregar()
+  }
   async function apagarFw(f: FreightForwarder) {
-    if (!window.confirm(`Apagar ${f.nome}?`)) return
+    if (await forwarderTemHistorico(f.id)) {
+      setToast('Tem histórico de pedidos — desativa em vez de apagar.'); return
+    }
+    if (!window.confirm(`Apagar ${f.nome}? (sem histórico)`)) return
     const { error } = await eliminarForwarder(f.id)
     setToast(error ? 'Erro: ' + error.message : 'Apagado.'); carregar()
   }
@@ -77,8 +85,12 @@ export default function ContactosPage() {
     }
     setGpAberto(false); setToast('Grupo guardado.'); carregar()
   }
+  async function alternarGp(g: ForwarderGroup) {
+    const { error } = await alternarAtivoGrupo(g.id, !g.ativo)
+    setToast(error ? 'Erro: ' + error.message : (g.ativo ? 'Desativado.' : 'Ativado.')); carregar()
+  }
   async function apagarGp(g: ForwarderGroup) {
-    if (!window.confirm(`Apagar o grupo ${g.nome}?`)) return
+    if (!window.confirm(`Apagar o grupo ${g.nome}? (os transitários mantêm-se)`)) return
     const { error } = await eliminarGrupo(g.id)
     setToast(error ? 'Erro: ' + error.message : 'Apagado.'); carregar()
   }
@@ -108,8 +120,9 @@ export default function ContactosPage() {
                     <div style={c.itemSub}>{f.pais ?? '—'} · {f.emails.length} email(s){f.pessoa_contacto ? ` · ${f.pessoa_contacto}` : ''}</div>
                   </div>
                   <div>
-                    <button style={c.btnMini} onClick={() => abrirFwEdicao(f)}>✏️</button>
-                    <button style={c.btnMini} onClick={() => apagarFw(f)}>🗑️</button>
+                    <button style={c.btnMini} title={f.ativo ? 'Desativar' : 'Ativar'} onClick={() => alternarFw(f)}>{f.ativo ? '⏸️' : '▶️'}</button>
+                    <button style={c.btnMini} title="Editar" onClick={() => abrirFwEdicao(f)}>✏️</button>
+                    <button style={c.btnMini} title="Apagar (só sem histórico)" onClick={() => apagarFw(f)}>🗑️</button>
                   </div>
                 </li>
               ))}
@@ -129,8 +142,9 @@ export default function ContactosPage() {
                     {g.notas && <div style={c.itemSub}>{g.notas}</div>}
                   </div>
                   <div>
-                    <button style={c.btnMini} onClick={() => abrirGpEdicao(g)}>✏️</button>
-                    <button style={c.btnMini} onClick={() => apagarGp(g)}>🗑️</button>
+                    <button style={c.btnMini} title={g.ativo ? 'Desativar' : 'Ativar'} onClick={() => alternarGp(g)}>{g.ativo ? '⏸️' : '▶️'}</button>
+                    <button style={c.btnMini} title="Editar" onClick={() => abrirGpEdicao(g)}>✏️</button>
+                    <button style={c.btnMini} title="Apagar grupo" onClick={() => apagarGp(g)}>🗑️</button>
                   </div>
                 </li>
               ))}
