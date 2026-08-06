@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { enviarGmail } from '@/lib/gmailSend'
 import {
   render, varsAssunto, moradaOrigem, moradaDestino, datasTexto, extrasTexto,
-  tabelaVolumesTexto, tipoTransporteAdjetivo, remetenteValido,
+  tabelaVolumesEmail, tipoTransporteAdjetivo, remetenteValido,
   type FreightRequest, type CargoLine, type FreightRecipient, type FreightEmailTemplate, type FreightSettings,
 } from '@/types/freight'
 
@@ -98,7 +98,7 @@ export async function POST(req: Request) {
     origem: moradaOrigem(pedido),
     destino: moradaDestino(pedido) || (pedido.destino_pais ?? ''),
     datas: datasTexto(pedido, pedido.idioma),
-    tabela_volumes: tabelaVolumesTexto(linhas, pedido.idioma),
+    tabela_volumes: tabelaVolumesEmail(linhas, pedido.idioma),
     extras: extrasTexto(pedido, pedido.idioma),
     prazo_resposta: prazoRespostaData(dias),
   }

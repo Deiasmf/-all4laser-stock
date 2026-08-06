@@ -257,6 +257,32 @@ function num(n: number): string {
   return Number.isInteger(n) ? String(n) : String(round2(n))
 }
 
+// Tabela de volumes para o EMAIL ao transitário: só nº de volume, dimensões
+// exteriores, peso e quantidade — SEM nomes de caixas nem referências a
+// equipamentos. Inclui a linha de totais. (Dentro da app os nomes mantêm-se.)
+export function tabelaVolumesEmail(
+  linhas: Pick<CargoLine, 'ext_c' | 'ext_l' | 'ext_a' | 'quantidade' | 'peso_volume'>[],
+  idioma: IdiomaFreight,
+): string {
+  const cab = idioma === 'en'
+    ? ['Vol', 'L×W×H (cm)', 'Weight (kg)', 'Qty']
+    : ['Vol', 'C×L×A (cm)', 'Peso (kg)', 'Qtd']
+  const linhasFmt = linhas.map((l, i) => [
+    String(i + 1),
+    `${num(l.ext_c)}×${num(l.ext_l)}×${num(l.ext_a)}`,
+    l.peso_volume != null ? num(l.peso_volume) : '—',
+    String(l.quantidade),
+  ])
+  const larguras = cab.map((c, i) => Math.max(c.length, ...linhasFmt.map((r) => r[i].length)))
+  const fmtLinha = (cols: string[]) => cols.map((c, i) => c.padEnd(larguras[i])).join('  ')
+  const sep = larguras.map((w) => '-'.repeat(w)).join('  ')
+  const t = totaisCarga(linhas)
+  const totais = idioma === 'en'
+    ? `Totals: ${t.volumes} packages · ${t.pesoTotal} kg · ${t.volumeM3} m³`
+    : `Totais: ${t.volumes} volumes · ${t.pesoTotal} kg · ${t.volumeM3} m³`
+  return [fmtLinha(cab), sep, ...linhasFmt.map(fmtLinha), '', totais].join('\n')
+}
+
 // ─── Render de template ──────────────────────────────────────────────────────
 // Substitui {{chave}} pelos valores. Chaves em falta ficam vazias.
 export function render(template: string, vars: Record<string, string>): string {
