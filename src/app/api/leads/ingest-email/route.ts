@@ -58,6 +58,10 @@ export async function GET(req: Request) {
       if (jaEmBd.has(id)) { resultados.push({ id, assunto: email.assunto, estado: 'ignorado (já em BD)' }); continue }
 
       const extra = await extrairLead(email, def.fonte)
+      // Sem qualquer forma de contacto → não é uma lead útil (ex.: auto-resposta).
+      if (!extra.email && !extra.telefone) {
+        resultados.push({ id, assunto: email.assunto, estado: 'ignorado (sem contacto)' }); continue
+      }
       const lead = {
         nome: extra.nome || '(sem nome)',
         email: extra.email,
