@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth'
 import { obterFolha, atualizarFolha, eliminarFolha, guardarPdfFolha } from '@/lib/folhasObra'
 import { gerarPdfFolha } from '@/lib/folhaPdf'
 import FolhaObraForm from '@/components/FolhaObraForm'
+import FolhaReutilizacaoPainel from '@/components/FolhaReutilizacaoPainel'
 import { limparRascunho } from '@/lib/useFormDraft'
 import AssinaturasFolha from '@/components/AssinaturasFolha'
 import FolhasObraFotos from '@/components/FolhasObraFotos'
@@ -127,6 +128,8 @@ export default function EditarFolhaPage() {
       )}
 
       {msg && <div style={s.ok}>{msg}</div>}
+
+      <FolhaReutilizacaoPainel folha={folha} onAtualizada={setFolha} />
 
       <FolhaObraForm key={versaoForm} inicial={folha} submitLabel="Guardar alterações" aGuardar={aGuardar} erro={erro} onSubmit={guardar} rascunhoKey={`folha-obra:edit:${id}`} />
 
