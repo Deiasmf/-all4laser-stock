@@ -84,6 +84,7 @@ function Conteudo() {
         </div>
         <div style={c.topoAcoes}>
           <Link href="/admin-dept/cotacoes-transporte/contactos" style={c.btnSecundario}>Transitários & grupos</Link>
+          <Link href="/admin-dept/cotacoes-transporte/packing-lists" style={c.btnSecundario}>Packing Lists</Link>
           <Link href="/admin-dept/cotacoes-transporte/caixas" style={c.btnSecundario}>Caixas</Link>
           <Link href="/admin-dept/cotacoes-transporte/templates" style={c.btnSecundario}>Templates</Link>
           <Link href="/admin-dept/cotacoes-transporte/novo" style={c.btnPrimario}>+ Novo pedido</Link>
