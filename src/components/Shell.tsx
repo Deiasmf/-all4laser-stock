@@ -13,7 +13,7 @@ import { contarMinhaArea } from '@/lib/minhaArea'
 // `requer` esconde o item para quem não tem o acesso (o bloqueio real é a RLS
 // + as guardas de rota; isto só limpa o menu).
 type Requer = 'admin' | 'financeiro' | 'administrativo'
-type SubItem = { href: string; label: string; icon: string; requer?: Requer }
+type SubItem = { href: string; label: string; icon: string; requer?: Requer; badge?: 'leads' | 'minhaArea' }
 type Item = { href?: string; label: string; icon?: string; badge?: 'leads' | 'minhaArea'; filhos?: SubItem[]; requer?: Requer; exato?: boolean }
 type Seccao = { titulo: string; itens: Item[] }
 
@@ -42,6 +42,7 @@ const NAV: Seccao[] = [
       {
         href: '/comercial', label: 'Comercial', icon: '🤝',
         filhos: [
+          { href: '/comercial/leads', label: 'Leads', icon: '🔔', badge: 'leads' },
           { href: '/comercial/clientes', label: 'Clientes', icon: '👥' },
           { href: '/comercial/registos', label: 'Registos de clientes', icon: '📝' },
           { href: '/comercial/notas-encomenda', label: 'Notas de encomenda', icon: '📋' },
@@ -72,7 +73,7 @@ const NAV: Seccao[] = [
         ],
       },
       { href: '/clinico', label: 'Clínico', icon: '🩺' },
-      { href: '/alugueres', label: 'Alugueres', icon: '🔄', badge: 'leads' },
+      { href: '/alugueres', label: 'Alugueres', icon: '🔄' },
       { href: '/projetos', label: 'Outros Projetos', icon: '🏗️' },
     ],
   },
@@ -113,6 +114,7 @@ const TITULOS: { prefixo: string; titulo: string }[] = [
   { prefixo: '/comercial/clientes', titulo: 'Clientes' },
   { prefixo: '/comercial/reservas-portal', titulo: 'Reservas Portal' },
   { prefixo: '/comercial/registos', titulo: 'Registos de Clientes' },
+  { prefixo: '/comercial/leads', titulo: 'Leads' },
   { prefixo: '/comercial', titulo: 'Comercial' },
   { prefixo: '/marketing', titulo: 'Marketing' },
   { prefixo: '/tecnico/preparacao', titulo: 'Em Preparação Técnica' },
@@ -267,6 +269,8 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                         >
                           <span className="a4l-sb-subicon">{f.icon}</span>
                           <span>{f.label}</span>
+                          {f.badge === 'leads' && leadsNovas > 0 && <span className="a4l-sb-badge">{leadsNovas}</span>}
+                          {f.badge === 'minhaArea' && minhaArea > 0 && <span className="a4l-sb-badge">{minhaArea}</span>}
                         </Link>
                       ))}
                     </div>
@@ -337,7 +341,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
               </Link>
             )}
             {leadsNovas > 0 && (
-              <Link href="/alugueres/leads" className="a4l-pill-leads">
+              <Link href="/comercial/leads" className="a4l-pill-leads">
                 🔔 {leadsNovas} {leadsNovas === 1 ? 'lead nova' : 'leads novas'}
               </Link>
             )}
