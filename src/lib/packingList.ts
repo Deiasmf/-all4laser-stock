@@ -113,3 +113,12 @@ export async function urlPdfPacking(path: string, segundos = 120): Promise<strin
   const { data } = await supabase.storage.from(BUCKET_FREIGHT).createSignedUrl(path, segundos)
   return data?.signedUrl ?? null
 }
+
+// Emails do transitário vencedor do pedido associado (para pré-preencher o envio).
+export async function emailsVencedor(requestId: string): Promise<string[]> {
+  const { data: p } = await supabase.from('freight_quote_requests').select('vencedor_forwarder_id').eq('id', requestId).single()
+  const fid = (p as { vencedor_forwarder_id?: string | null } | null)?.vencedor_forwarder_id
+  if (!fid) return []
+  const { data: f } = await supabase.from('freight_forwarders').select('emails').eq('id', fid).single()
+  return ((f as { emails?: string[] } | null)?.emails) ?? []
+}
