@@ -14,7 +14,7 @@ import {
   obterSettings, type QuoteInput,
 } from '@/lib/freight'
 import {
-  render, varsAssunto, moradaOrigem, moradaDestino, datasTexto, extrasTexto, tabelaVolumesTexto,
+  render, varsAssunto, moradaOrigem, moradaDestino, datasTexto, extrasTexto, tabelaVolumesEmail,
   tipoTransporteAdjetivo, estadoPedidoInfo, tipoTransporteLabel, destinoCurto,
   type FreightRequest, type StandardBox, type FreightEmailTemplate, type ForwarderGroup,
   type FreightForwarder, type FreightRecipient, type FreightQuote, type CargoLine, type EstadoPedido,
@@ -105,7 +105,7 @@ export default function DetalhePedidoPage() {
       origem: moradaOrigem(editor.pedido),
       destino: moradaDestino(editor.pedido) || (editor.pedido.destino_pais ?? ''),
       datas: datasTexto(editor.pedido, editor.pedido.idioma),
-      tabela_volumes: tabelaVolumesTexto(editor.linhas, editor.pedido.idioma),
+      tabela_volumes: tabelaVolumesEmail(editor.linhas, editor.pedido.idioma),
       extras: extrasTexto(editor.pedido, editor.pedido.idioma),
       prazo_resposta: diasUteisAhead(diasAlerta),
       saudacao: exemplo?.saudacao ?? exemplo?.nome_empresa ?? '[nome do transitário]',
