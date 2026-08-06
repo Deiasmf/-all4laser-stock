@@ -8,6 +8,7 @@ import { criarFolha } from '@/lib/folhasObra'
 import { obterNota } from '@/lib/notasEncomenda'
 import { limparRascunho } from '@/lib/useFormDraft'
 import FolhaObraForm from '@/components/FolhaObraForm'
+import FolhasReutilizaveis from '@/components/FolhasReutilizaveis'
 
 const RASCUNHO = 'folha-obra:novo'
 import type { FolhaInput, FolhaObra } from '@/types/folhaObra'
@@ -78,7 +79,12 @@ export default function NovaFolhaPage() {
       {!pronto ? (
         <p style={{ color: 'var(--muted)' }}>A carregar...</p>
       ) : (
-        <FolhaObraForm inicial={prefill} submitLabel="Criar folha" aGuardar={aGuardar} erro={erro} onSubmit={guardar} rascunhoKey={notaId ? undefined : RASCUNHO} />
+        <>
+          {notaId && prefill?.equipamento_sn && (
+            <FolhasReutilizaveis sn={prefill.equipamento_sn} notaId={notaId} />
+          )}
+          <FolhaObraForm inicial={prefill} submitLabel="Criar folha" aGuardar={aGuardar} erro={erro} onSubmit={guardar} rascunhoKey={notaId ? undefined : RASCUNHO} />
+        </>
       )}
     </main>
   )

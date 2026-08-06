@@ -9,6 +9,7 @@ import {
   alterarEstadoNota, eliminarNota,
 } from '@/lib/notasEncomenda'
 import NotaEncomendaForm from '@/components/NotaEncomendaForm'
+import FolhasReutilizaveis from '@/components/FolhasReutilizaveis'
 import { limparRascunho } from '@/lib/useFormDraft'
 import BotaoPdf from '@/components/BotaoPdf'
 import {
@@ -203,6 +204,9 @@ export default function DetalheNotaPage() {
 
       {msg && <div style={s.ok} className="no-print">{msg}</div>}
       {erro && <div style={s.erro} className="no-print">{erro}</div>}
+
+      {/* Reutilização de folhas de obra por S/N */}
+      <FolhasReutilizaveis sn={nota.equipamento_sn} notaId={nota.id} />
 
       {/* Documento (formato tipo PDF) */}
       <div style={s.doc}>

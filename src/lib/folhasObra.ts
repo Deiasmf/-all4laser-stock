@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import type { FolhaObra, FolhaInput } from '@/types/folhaObra'
+import type { FolhaObra, FolhaInput, FolhaHistorico } from '@/types/folhaObra'
 
 // ─── Folhas de obra ─────────────────────────────────────────────────────────
 
@@ -54,6 +54,69 @@ export async function atualizarFolha(id: string, input: Partial<FolhaInput>) {
 
 export async function eliminarFolha(id: string) {
   return supabase.from('folhas_obra').delete().eq('id', id)
+}
+
+// ─── Reutilização por Serial Number ──────────────────────────────────────────
+
+// Normaliza o S/N para a deteção (maiúsculas, sem espaços/hífens/símbolos).
+export function normalizarSn(s: string | null | undefined): string {
+  return (s ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+}
+
+// Procura FOs concluídas para um S/N: correspondência exata (normalizada) e,
+// se não houver, sugestões semelhantes (mesmo prefixo/conteúdo).
+export async function procurarFolhasPorSn(sn: string): Promise<{ exatas: FolhaObra[]; semelhantes: FolhaObra[] }> {
+  const alvo = normalizarSn(sn)
+  if (alvo.length < 3) return { exatas: [], semelhantes: [] }
+  const { data } = await supabase
+    .from('folhas_obra')
+    .select('*')
+    .eq('estado', 'concluida')
+    .not('equipamento_sn', 'is', null)
+    .order('data_intervencao', { ascending: false })
+    .order('created_at', { ascending: false })
+  const todas = (data as FolhaObra[]) ?? []
+  const exatas = todas.filter((f) => normalizarSn(f.equipamento_sn) === alvo)
+  if (exatas.length > 0) return { exatas, semelhantes: [] }
+  // Semelhantes: um contém o outro (>= 4 chars), para sugerir "é este equipamento?"
+  const semelhantes = alvo.length >= 4
+    ? todas.filter((f) => { const n = normalizarSn(f.equipamento_sn); return n.length >= 4 && (n.includes(alvo) || alvo.includes(n)) })
+    : []
+  return { exatas: [], semelhantes }
+}
+
+// Cria uma FO nova (rascunho) copiando a FO de origem para esta NE. Devolve o id.
+export async function copiarFolhaObra(origemId: string, notaId: string): Promise<{ id?: string; error?: string }> {
+  const { data, error } = await supabase.rpc('copiar_folha_obra', { p_origem: origemId, p_nota: notaId })
+  if (error) return { error: error.message }
+  return { id: data as string }
+}
+
+// Limiar de idade (meses) para o aviso "folha com mais de X".
+export async function mesesAvisoFolha(): Promise<number> {
+  const { data } = await supabase.from('folha_obra_config').select('meses_aviso').eq('id', 1).single()
+  return (data as { meses_aviso?: number } | null)?.meses_aviso ?? 12
+}
+
+// Histórico de alterações de uma FO (com o nome de quem alterou).
+export async function historicoFolha(folhaId: string): Promise<FolhaHistorico[]> {
+  const { data } = await supabase.from('folha_obra_historico').select('*').eq('folha_id', folhaId).order('em', { ascending: false })
+  const rows = (data as FolhaHistorico[]) ?? []
+  const ids = Array.from(new Set(rows.map((r) => r.por_id).filter(Boolean))) as string[]
+  const nomes = new Map<string, string | null>()
+  if (ids.length) {
+    const { data: profs } = await supabase.from('profiles').select('id, nome').in('id', ids)
+    for (const p of (profs as { id: string; nome: string | null }[]) ?? []) nomes.set(p.id, p.nome)
+  }
+  return rows.map((r) => ({ ...r, por_nome: r.por_id ? nomes.get(r.por_id) ?? null : null }))
+}
+
+// Desbloqueia uma FO (só admin — a BD impede caso contrário) e regista o motivo.
+export async function desbloquearFolha(folhaId: string, motivo: string, autor: { id: string | null; nome: string | null }): Promise<{ error?: string }> {
+  const { error } = await supabase.from('folhas_obra').update({ bloqueada: false, bloqueada_em: null }).eq('id', folhaId)
+  if (error) return { error: error.message }
+  await supabase.from('folha_obra_desbloqueios').insert({ folha_id: folhaId, por_id: autor.id, por_nome: autor.nome, motivo: motivo.trim() || null })
+  return {}
 }
 
 // ─── Assinaturas ────────────────────────────────────────────────────────────
