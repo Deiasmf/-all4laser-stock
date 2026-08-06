@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
+import { packingListDoPedido, criarPackingListDePedido } from '@/lib/packingList'
 import PedidoEditor, { type EstadoEditor } from '@/components/freight/PedidoEditor'
 import {
   obterPedido, listarLinhas, guardarLinhas, atualizarPedido, mudarEstadoPedido,
@@ -51,7 +52,8 @@ const quoteVazia = (): QuoteInput => ({ forwarder_id: null, recipient_id: null, 
 
 export default function DetalhePedidoPage() {
   const { id } = useParams<{ id: string }>()
-  const { isAdministrativo, perfilCarregado } = useAuth()
+  const router = useRouter()
+  const { isAdministrativo, perfilCarregado, perfil } = useAuth()
 
   const [pedido, setPedido] = useState<FreightRequest | null>(null)
   const [editor, setEditor] = useState<EstadoEditor | null>(null)
@@ -226,6 +228,15 @@ export default function DetalhePedidoPage() {
     await mudarEstadoPedido(id, e); carregar()
   }
 
+  // Abre (ou cria, pré-preenchida) a packing list deste pedido.
+  async function abrirPackingList() {
+    const existe = await packingListDoPedido(id)
+    if (existe) { router.push(`/admin-dept/cotacoes-transporte/packing-lists/${existe.id}`); return }
+    const r = await criarPackingListDePedido(id, perfil?.id ?? null)
+    if (r.error || !r.id) { setToast('Erro ao criar packing list: ' + (r.error ?? '')); return }
+    router.push(`/admin-dept/cotacoes-transporte/packing-lists/${r.id}`)
+  }
+
   async function guardarCotacao() {
     if (novaCotacao.valor == null && !novaCotacao.notas) { setToast('Indica pelo menos o valor.'); return }
     const fromRec = destinatarios.find((d) => d.id === novaCotacao.recipient_id)
@@ -270,6 +281,7 @@ export default function DetalhePedidoPage() {
         </div>
         <div style={c.topoAcoes}>
           <button style={c.btnSecundario} onClick={guardar} disabled={aGravar}>{aGravar ? 'A guardar…' : 'Guardar'}</button>
+          <button style={c.btnSecundario} onClick={abrirPackingList}>📦 Packing List</button>
           {pedido.estado !== 'cancelado' && pedido.estado !== 'fechado' && (
             <button style={c.btnSecundario} onClick={() => mudarEstado('cancelado')}>Cancelar pedido</button>
           )}
