@@ -1,0 +1,21 @@
+name: Ingestão de leads por email
+
+# O plano Hobby da Vercel só permite crons 1x/dia, por isso a frequência de
+# 15 em 15 min é feita aqui (GitHub Actions), chamando a rota de ingestão.
+# A rota é idempotente (dedup por message_id + etiqueta), por isso corridas
+# sobrepostas não criam duplicados.
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar endpoint de ingestão
+        run: |
+          curl -sS --fail-with-body --max-time 115 \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://all4laser-stock.vercel.app/api/leads/ingest-email"
