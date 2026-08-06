@@ -9,7 +9,8 @@ import PedidoEditor, { type EstadoEditor } from '@/components/freight/PedidoEdit
 import {
   obterPedido, listarLinhas, guardarLinhas, atualizarPedido, mudarEstadoPedido,
   listarBoxes, listarTemplates, listarGrupos, listarForwarders,
-  listarDestinatarios, prepararDestinatarios, removerDestinatario,
+  listarDestinatarios, prepararDestinatariosDe, removerDestinatario,
+  criarForwarderRapido, forwardersSugeridosPorDestino, membrosDoGrupo,
   listarCotacoes, criarCotacao, eliminarCotacao, anexarPdfCotacao, urlPdfCotacao, marcarVencedor,
   obterSettings, type QuoteInput,
 } from '@/lib/freight'
@@ -70,6 +71,14 @@ export default function DetalhePedidoPage() {
   const [novaCotacao, setNovaCotacao] = useState<QuoteInput>(quoteVazia)
   const [ordenarPor, setOrdenarPor] = useState<'valor' | 'prazo'>('valor')
 
+  // Seleção flexível de destinatários (membros do grupo + avulsos + inline).
+  const [sel, setSel] = useState<Set<string>>(new Set())
+  const [sugeridos, setSugeridos] = useState<Set<string>>(new Set())
+  const [procuraFw, setProcuraFw] = useState('')
+  const [painelSel, setPainelSel] = useState(false)
+  const [fwNovoNome, setFwNovoNome] = useState('')
+  const [fwNovoEmail, setFwNovoEmail] = useState('')
+
   const carregar = useCallback(async () => {
     const [{ data: p }, ls, bx, tpl, gp, fw, dst, cot, st] = await Promise.all([
       obterPedido(id), listarLinhas(id), listarBoxes(true), listarTemplates(),
@@ -87,6 +96,14 @@ export default function DetalhePedidoPage() {
 
   useEffect(() => { carregar() }, [carregar])
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 3500); return () => clearTimeout(t) }, [toast])
+
+  // Sugestão por destino: transitários que já responderam a pedidos para o país.
+  const destinoPais = editor?.pedido.destino_pais ?? null
+  useEffect(() => {
+    let ativo = true
+    forwardersSugeridosPorDestino(destinoPais).then((ids) => { if (ativo) setSugeridos(new Set(ids)) })
+    return () => { ativo = false }
+  }, [destinoPais])
 
   const template = useMemo(() => templates.find((t) => t.idioma === (editor?.pedido.idioma ?? 'pt')), [templates, editor])
 
@@ -119,6 +136,16 @@ export default function DetalhePedidoPage() {
   const fechado = pedido?.estado === 'fechado' || pedido?.estado === 'cancelado'
   const nomeForwarder = (fid: string | null) => forwarders.find((f) => f.id === fid)?.nome ?? '—'
 
+  // Lista para o seletor: ativos, filtrados por procura, sugeridos (por destino) primeiro.
+  const fwPicker = useMemo(() => {
+    const q = procuraFw.trim().toLowerCase()
+    const base = forwarders.filter((f) => f.ativo && (!q || f.nome.toLowerCase().includes(q) || (f.pais ?? '').toLowerCase().includes(q)))
+    return base.sort((a, b) => {
+      const sa = sugeridos.has(a.id) ? 0 : 1, sb = sugeridos.has(b.id) ? 0 : 1
+      return sa !== sb ? sa - sb : a.nome.localeCompare(b.nome, 'pt')
+    })
+  }, [forwarders, sugeridos, procuraFw])
+
   async function guardar() {
     if (!editor || !pedido) return
     setAGravar(true)
@@ -129,13 +156,45 @@ export default function DetalhePedidoPage() {
     if (!error) carregar()
   }
 
-  async function preparar() {
-    if (!editor?.pedido.group_id) { setToast('Escolhe primeiro um grupo de transitários.'); return }
-    // garante que o grupo escolhido fica gravado no pedido
-    await atualizarPedido(id, { group_id: editor.pedido.group_id })
-    const { criados, error } = await prepararDestinatarios(id, editor.pedido.group_id)
+  // Escolher um grupo pré-seleciona os seus membros (ativos). Podes depois
+  // desmarcar e juntar avulsos.
+  async function escolherGrupo(gid: string) {
+    if (!editor) return
+    setEditor({ ...editor, pedido: { ...editor.pedido, group_id: gid || null } })
+    if (!gid) return
+    const membros = await membrosDoGrupo(gid)
+    const ativosSet = new Set(forwarders.filter((f) => f.ativo).map((f) => f.id))
+    setSel(new Set(membros.filter((m) => ativosSet.has(m))))
+    setPainelSel(true)
+  }
+  function toggleSel(fid: string) {
+    setSel((s) => { const n = new Set(s); n.has(fid) ? n.delete(fid) : n.add(fid); return n })
+  }
+  async function criarFwInline() {
+    const nome = fwNovoNome.trim()
+    const email = fwNovoEmail.trim()
+    if (!nome || !email.includes('@')) { setToast('Indica nome e um email válido.'); return }
+    const { data, error } = await criarForwarderRapido(nome, [email], editor?.pedido.destino_pais ?? null)
+    if (error || !data) { setToast('Erro ao criar: ' + (error?.message ?? '')); return }
+    const novo = data as FreightForwarder
+    setForwarders((fs) => [...fs, novo].sort((a, b) => a.nome.localeCompare(b.nome, 'pt')))
+    setSel((s) => new Set(s).add(novo.id))
+    setFwNovoNome(''); setFwNovoEmail(''); setToast(`Transitário "${novo.nome}" criado e selecionado.`)
+  }
+
+  // Prepara os destinatários a partir da seleção atual: cria os que faltam e
+  // remove os pendentes que foram desmarcados (os já enviados mantêm-se).
+  async function prepararSelecao() {
+    if (!editor) return
+    if (sel.size === 0) { setToast('Seleciona pelo menos um transitário.'); return }
+    if (editor.pedido.group_id) await atualizarPedido(id, { group_id: editor.pedido.group_id })
+    // remover pendentes desmarcados
+    for (const d of destinatarios) {
+      if (d.estado === 'pendente' && d.forwarder_id && !sel.has(d.forwarder_id)) await removerDestinatario(d.id)
+    }
+    const { criados, error } = await prepararDestinatariosDe(id, [...sel])
     if (error) { setToast(error); return }
-    setToast(criados > 0 ? `${criados} destinatário(s) preparado(s).` : 'Sem novos destinatários a acrescentar.')
+    setToast(`Destinatários prontos (${sel.size} selecionado(s)${criados ? `, ${criados} novo(s)` : ''}).`)
     carregar()
   }
 
@@ -238,17 +297,46 @@ export default function DetalhePedidoPage() {
               {remetentes.map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
           </label>
-          <label style={c.campo}><span style={c.rot}>Grupo de transitários</span>
-            <select style={c.input} value={editor.pedido.group_id ?? ''} onChange={(e) => setEditor({ ...editor, pedido: { ...editor.pedido, group_id: e.target.value || null } })}>
+          <label style={c.campo}><span style={c.rot}>Grupo (pré-seleciona os membros)</span>
+            <select style={c.input} value={editor.pedido.group_id ?? ''} onChange={(e) => escolherGrupo(e.target.value)}>
               <option value="">— escolher grupo —</option>
               {grupos.map((g) => <option key={g.id} value={g.id}>{g.nome} ({g.idioma.toUpperCase()})</option>)}
             </select>
           </label>
-          <button style={c.btnSecundario} onClick={preparar} disabled={fechado}>Preparar destinatários</button>
+          <button style={c.btnSecundario} onClick={() => setPainelSel((v) => !v)} disabled={fechado}>
+            {painelSel ? 'Fechar seleção' : `Escolher destinatários (${sel.size})`}
+          </button>
+          <button style={c.btnSecundario} onClick={prepararSelecao} disabled={fechado || sel.size === 0}>Preparar destinatários</button>
           <button style={c.btnPrimario} onClick={() => enviar()} disabled={enviando || fechado || destinatarios.every((d) => d.estado === 'enviado')}>
             {enviando ? 'A enviar…' : 'Enviar a pendentes'}
           </button>
         </div>
+
+        {/* Painel de seleção flexível de destinatários */}
+        {painelSel && (
+          <div style={c.selPanel}>
+            <div style={c.selTopo}>
+              <input style={c.selProcura} placeholder="Procurar transitário ou país…" value={procuraFw} onChange={(e) => setProcuraFw(e.target.value)} />
+              <span style={c.selCount}>{sel.size} selecionado(s)</span>
+            </div>
+            <div style={c.selInline}>
+              <input style={c.selInlineIn} placeholder="Nome do novo transitário" value={fwNovoNome} onChange={(e) => setFwNovoNome(e.target.value)} />
+              <input style={c.selInlineIn} placeholder="email@transitario.com" value={fwNovoEmail} onChange={(e) => setFwNovoEmail(e.target.value)} />
+              <button style={c.btnSecundario} onClick={criarFwInline}>+ Novo transitário</button>
+            </div>
+            <div style={c.selLista}>
+              {fwPicker.map((f) => (
+                <label key={f.id} style={c.selItem}>
+                  <input type="checkbox" checked={sel.has(f.id)} onChange={() => toggleSel(f.id)} />
+                  <span style={c.selNome}>{f.nome}</span>
+                  {f.pais && <span style={c.selPais}>{f.pais}</span>}
+                  {sugeridos.has(f.id) && <span style={c.selSugerido} title="Já respondeu a pedidos para este destino">★ já cotou</span>}
+                </label>
+              ))}
+              {fwPicker.length === 0 && <p style={c.muted}>Nenhum transitário para a procura.</p>}
+            </div>
+          </div>
+        )}
 
         {/* Pré-visualização */}
         {preview && (
@@ -370,6 +458,17 @@ const c: Record<string, React.CSSProperties> = {
   rot: { fontSize: 12, color: 'var(--muted)', fontWeight: 600 },
   input: { padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 8, font: 'inherit', background: '#fff' },
   linhaEnvio: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 12 },
+  selPanel: { border: '1px solid #e5e7eb', borderRadius: 10, padding: 12, marginBottom: 12, background: '#fafafa' },
+  selTopo: { display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' },
+  selProcura: { flex: '1 1 220px', padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 8, font: 'inherit', background: '#fff' },
+  selCount: { fontSize: 12, color: 'var(--muted)', fontWeight: 600 },
+  selInline: { display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 },
+  selInlineIn: { flex: '1 1 180px', padding: '7px 9px', border: '1px solid #d1d5db', borderRadius: 8, font: 'inherit', background: '#fff' },
+  selLista: { display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 260, overflowY: 'auto', border: '1px solid #eee', borderRadius: 8, padding: 8, background: '#fff' },
+  selItem: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, padding: '4px 4px', borderRadius: 6 },
+  selNome: { fontWeight: 500 },
+  selPais: { fontSize: 11, color: '#374151', background: '#F3F4F6', borderRadius: 999, padding: '1px 7px' },
+  selSugerido: { fontSize: 11, color: '#92400E', background: '#FEF3C7', borderRadius: 999, padding: '1px 7px', fontWeight: 700 },
   preview: { border: '1px solid #e5e7eb', borderRadius: 8, padding: 8, marginBottom: 12, background: '#fafafa' },
   previewSum: { cursor: 'pointer', fontWeight: 600, fontSize: 13 },
   previewBox: { marginTop: 8 },

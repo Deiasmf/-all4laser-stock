@@ -61,6 +61,36 @@ export async function atualizarForwarder(id: string, input: ForwarderInput) {
 export async function eliminarForwarder(id: string) {
   return supabase.from('freight_forwarders').delete().eq('id', id)
 }
+// Soft delete: ativar/desativar (preferir a apagar quando há histórico).
+export async function alternarAtivoForwarder(id: string, ativo: boolean) {
+  return supabase.from('freight_forwarders').update({ ativo, updated_at: new Date().toISOString() }).eq('id', id)
+}
+// Tem histórico (foi destinatário de um pedido ou registou cotação)? Se sim,
+// não deve ser apagado — só desativado.
+export async function forwarderTemHistorico(id: string): Promise<boolean> {
+  const [{ count: nRec }, { count: nCot }] = await Promise.all([
+    supabase.from('freight_quote_recipients').select('id', { count: 'exact', head: true }).eq('forwarder_id', id),
+    supabase.from('freight_quotes').select('id', { count: 'exact', head: true }).eq('forwarder_id', id),
+  ])
+  return (nRec ?? 0) > 0 || (nCot ?? 0) > 0
+}
+// Criação rápida inline (só nome + emails chegam).
+export async function criarForwarderRapido(nome: string, emails: string[], pais: string | null = null) {
+  return supabase.from('freight_forwarders')
+    .insert({ nome: nome.trim(), emails: limparEmails(emails), pais, ativo: true })
+    .select().single()
+}
+// Transitários que já responderam (registaram cotação) a pedidos para este país
+// — para sugerir/destacar ao escolher o destino.
+export async function forwardersSugeridosPorDestino(pais: string | null): Promise<string[]> {
+  const p = (pais ?? '').trim()
+  if (!p) return []
+  const { data: reqs } = await supabase.from('freight_quote_requests').select('id').ilike('destino_pais', `%${p}%`)
+  const ids = ((reqs as { id: string }[]) ?? []).map((r) => r.id)
+  if (ids.length === 0) return []
+  const { data: cots } = await supabase.from('freight_quotes').select('forwarder_id').in('request_id', ids).not('forwarder_id', 'is', null)
+  return Array.from(new Set(((cots as { forwarder_id: string }[]) ?? []).map((c) => c.forwarder_id)))
+}
 
 // ─── Grupos (forwarder_groups + membros N:N) ─────────────────────────────────
 export type GroupInput = { nome: string; idioma: IdiomaFreight; notas: string | null; ativo: boolean }
@@ -79,6 +109,9 @@ export async function atualizarGrupo(id: string, input: GroupInput) {
 }
 export async function eliminarGrupo(id: string) {
   return supabase.from('forwarder_groups').delete().eq('id', id)
+}
+export async function alternarAtivoGrupo(id: string, ativo: boolean) {
+  return supabase.from('forwarder_groups').update({ ativo, updated_at: new Date().toISOString() }).eq('id', id)
 }
 
 export async function membrosDoGrupo(groupId: string): Promise<string[]> {
@@ -269,6 +302,29 @@ export async function prepararDestinatarios(requestId: string, groupId: string):
 
 export async function removerDestinatario(id: string) {
   return supabase.from('freight_quote_recipients').delete().eq('id', id)
+}
+
+// Prepara destinatários a partir de uma SELEÇÃO explícita de transitários
+// (membros de grupo desmarcados + avulsos). Não duplica os já existentes.
+export async function prepararDestinatariosDe(requestId: string, forwarderIds: string[]): Promise<{ criados: number; error?: string }> {
+  const ids = Array.from(new Set(forwarderIds))
+  if (ids.length === 0) return { criados: 0 }
+  const { data } = await supabase.from('freight_forwarders').select('*').in('id', ids).eq('ativo', true)
+  const forwarders = (data as FreightForwarder[]) ?? []
+  const existentes = await listarDestinatarios(requestId)
+  const jaTem = new Set(existentes.map((r) => r.forwarder_id))
+  const novos = forwarders.filter((f) => !jaTem.has(f.id) && f.emails.length > 0).map((f) => ({
+    request_id: requestId,
+    forwarder_id: f.id,
+    nome_empresa: f.nome,
+    emails: f.emails,
+    saudacao: saudacaoPara(f),
+    estado: 'pendente' as const,
+  }))
+  if (novos.length === 0) return { criados: 0 }
+  const { error } = await supabase.from('freight_quote_recipients').insert(novos)
+  if (error) return { criados: 0, error: error.message }
+  return { criados: novos.length }
 }
 
 // ─── Cotações recebidas (freight_quotes) ─────────────────────────────────────
