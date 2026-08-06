@@ -31,11 +31,12 @@ const FONTES: Definicao[] = [
   {
     fonte: 'website', canal: 'website',
     // Formulário do site (Wix) reencaminhado a partir de comercial@.
+    // Marca robusta e multilingue: o link de submissão do Wix ("/so/tr/"),
+    // presente nas notificações de envio mas não nas auto-respostas de cortesia.
     corresponde: (e) =>
       inc(e.remetente, 'comercial@all4laser.com') &&
-      (inc(e.corpo, 'formulário') || inc(e.corpo, 'formulario') ||
-       inc(e.corpo, 'enviou seu') || inc(e.corpo, 'ha appena inviato') ||
-       inc(e.assunto, 'submission') || inc(e.assunto, 'contact')),
+      (inc(e.corpo, '/so/tr/') || inc(e.corpo, 'enviou seu formulário') ||
+       inc(e.corpo, 'resumo do envio') || inc(e.corpo, 'ha appena inviato')),
   },
 ]
 

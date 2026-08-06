@@ -68,7 +68,13 @@ export async function extrairLead(email: EmailLead, fonte: FonteLead): Promise<L
 
   const bloco = resp.content.find((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use')
   const dados = (bloco?.input ?? {}) as Partial<LeadExtraida>
-  const t = (v: unknown) => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null)
+  // Sentinelas que o modelo às vezes devolve em vez de null.
+  const SENTINELAS = new Set(['', 'unknown', '<unknown>', 'n/a', 'na', 'null', 'none', 'desconhecido', 'sem nome', '-'])
+  const t = (v: unknown) => {
+    if (typeof v !== 'string') return null
+    const s = v.trim()
+    return s && !SENTINELAS.has(s.toLowerCase()) ? s : null
+  }
   return {
     nome: t(dados.nome),
     email: t(dados.email),
