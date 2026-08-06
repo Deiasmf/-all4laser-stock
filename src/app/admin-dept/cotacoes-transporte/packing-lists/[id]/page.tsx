@@ -4,10 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
+import { supabase } from '@/lib/supabase'
 import { listarBoxes } from '@/lib/freight'
 import {
   obterPackingList, listarLinhasPacking, listarPdfsPacking, atualizarPackingList,
-  guardarLinhasPacking, guardarVersaoPdf, urlPdfPacking, type CabecalhoPacking,
+  guardarLinhasPacking, guardarVersaoPdf, urlPdfPacking, emailsVencedor, type CabecalhoPacking,
 } from '@/lib/packingList'
 import { gerarPdfDocumento, descarregarPdf } from '@/lib/fichaPdf'
 import { documentoPackingList, totaisPacking, type PackingList, type PackingListPdf, type LinhaPackingInput } from '@/types/packing'
@@ -27,6 +28,13 @@ export default function PackingListEditorPage() {
   const [aGuardar, setAGuardar] = useState(false)
   const [aGerar, setAGerar] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
+
+  // Envio por email
+  const [envAberto, setEnvAberto] = useState(false)
+  const [envPara, setEnvPara] = useState('')
+  const [envAssunto, setEnvAssunto] = useState('')
+  const [envCorpo, setEnvCorpo] = useState('')
+  const [aEnviar, setAEnviar] = useState(false)
 
   const carregar = useCallback(async () => {
     const [{ data: p }, ls, pd, bx] = await Promise.all([
@@ -94,6 +102,33 @@ export default function PackingListEditorPage() {
     if (url) window.open(url, '_blank', 'noopener'); else setToast('PDF indisponível.')
   }
 
+  async function abrirEnvio() {
+    setEnvAssunto(`All4laser — Packing List ${pl?.numero ?? ''}`.trim())
+    setEnvCorpo('')
+    let para = ''
+    if (pl?.request_id) { const e = await emailsVencedor(pl.request_id); para = e.join(', ') }
+    setEnvPara(para); setEnvAberto(true)
+  }
+  async function enviarEmail() {
+    const para = envPara.split(/[,;\n]/).map((e) => e.trim()).filter((e) => e.includes('@'))
+    if (para.length === 0) { setToast('Indica pelo menos um email.'); return }
+    setAEnviar(true)
+    const { data: sess } = await supabase.auth.getSession()
+    const token = sess.session?.access_token
+    if (!token) { setAEnviar(false); setToast('Sessão expirada.'); return }
+    try {
+      const r = await fetch('/api/freight/packing-list/send', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ packingListId: id, para, assunto: envAssunto || undefined, corpo: envCorpo || undefined }),
+      })
+      const j = await r.json()
+      if (!r.ok || !j.ok) setToast('Envio: ' + (j.erro ?? `erro ${r.status}`))
+      else { setToast('Packing list enviada por email.'); setEnvAberto(false) }
+    } catch { setToast('Erro de rede ao enviar.') }
+    setAEnviar(false)
+  }
+
   if (perfilCarregado && !isAdministrativo) return <main style={c.page}><p style={c.muted}>Sem acesso.</p></main>
   if (!pl || !cab) return <main style={c.page}><p style={c.muted}>A carregar…</p></main>
 
@@ -108,6 +143,7 @@ export default function PackingListEditorPage() {
         <div style={c.topoAcoes}>
           <button style={c.btnSecundario} onClick={guardarERecarregar} disabled={aGuardar}>{aGuardar ? 'A guardar…' : 'Guardar'}</button>
           <button style={c.btnPrimario} onClick={gerarPdf} disabled={aGerar || linhas.length === 0}>{aGerar ? 'A gerar…' : 'Gerar Packing List (PDF)'}</button>
+          <button style={c.btnSecundario} onClick={abrirEnvio} disabled={pdfs.length === 0} title={pdfs.length === 0 ? 'Gera o PDF primeiro' : 'Enviar a última versão por email'}>Enviar por email</button>
         </div>
       </div>
 
@@ -194,6 +230,31 @@ export default function PackingListEditorPage() {
         )}
       </section>
 
+      {/* Modal enviar por email */}
+      {envAberto && (
+        <div style={c.overlay} onClick={() => setEnvAberto(false)}>
+          <div style={c.modal} onClick={(e) => e.stopPropagation()}>
+            <div style={c.modalTopo}><strong>Enviar packing list por email</strong><button style={c.btnFechar} onClick={() => setEnvAberto(false)}>✕</button></div>
+            <div style={c.grelha}>
+              <label style={{ ...c.campo, gridColumn: '1 / -1' }}><span style={c.rot}>Para (emails separados por vírgula)</span>
+                <input style={c.input} value={envPara} placeholder="transitario@exemplo.com" onChange={(e) => setEnvPara(e.target.value)} />
+              </label>
+              <label style={{ ...c.campo, gridColumn: '1 / -1' }}><span style={c.rot}>Assunto</span>
+                <input style={c.input} value={envAssunto} onChange={(e) => setEnvAssunto(e.target.value)} />
+              </label>
+              <label style={{ ...c.campo, gridColumn: '1 / -1' }}><span style={c.rot}>Mensagem (opcional)</span>
+                <textarea style={{ ...c.input, minHeight: 70 }} value={envCorpo} onChange={(e) => setEnvCorpo(e.target.value)} />
+              </label>
+            </div>
+            <p style={{ ...c.rot, marginTop: 8 }}>Anexa a última versão do PDF, enviado de comercial@all4laser.com.</p>
+            <div style={c.modalAcoes}>
+              <button style={c.btnSecundario} onClick={() => setEnvAberto(false)} disabled={aEnviar}>Cancelar</button>
+              <button style={c.btnPrimario} onClick={enviarEmail} disabled={aEnviar}>{aEnviar ? 'A enviar…' : 'Enviar'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {toast && <div style={c.toast}>{toast}</div>}
     </main>
   )
@@ -229,4 +290,9 @@ const c: Record<string, React.CSSProperties> = {
   btnPrimario: { padding: '9px 16px', border: 'none', borderRadius: 8, background: '#111827', color: '#fff', fontWeight: 700, cursor: 'pointer', font: 'inherit' },
   btnSecundario: { padding: '9px 14px', border: '1px solid #d1d5db', borderRadius: 8, background: '#fff', cursor: 'pointer', font: 'inherit' },
   toast: { position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', background: '#111827', color: '#fff', padding: '10px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, zIndex: 60 },
+  overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 16, overflowY: 'auto', zIndex: 50 },
+  modal: { background: '#fff', borderRadius: 12, padding: 16, width: 'min(560px, 100%)', marginTop: 24 },
+  modalTopo: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  btnFechar: { border: 'none', background: 'transparent', fontSize: 18, cursor: 'pointer' },
+  modalAcoes: { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 },
 }

@@ -75,18 +75,46 @@ function encodeAssunto(assunto: string): string {
   return `=?UTF-8?B?${Buffer.from(assunto, 'utf8').toString('base64')}?=`
 }
 
-function construirMime(opts: { de: string; para: string[]; assunto: string; corpoTexto: string }): string {
-  const linhas = [
+export type AnexoGmail = { filename: string; contentBase64: string; mimeType?: string }
+
+function construirMime(opts: { de: string; para: string[]; assunto: string; corpoTexto: string; anexos?: AnexoGmail[] }): string {
+  const cabecalho = [
     `From: ${opts.de}`,
     `To: ${opts.para.join(', ')}`,
     `Subject: ${encodeAssunto(opts.assunto)}`,
     'MIME-Version: 1.0',
+  ]
+  const corpoB64 = Buffer.from(opts.corpoTexto, 'utf8').toString('base64')
+
+  if (!opts.anexos?.length) {
+    return [...cabecalho, 'Content-Type: text/plain; charset="UTF-8"', 'Content-Transfer-Encoding: base64', '', corpoB64].join('\r\n')
+  }
+
+  // multipart/mixed: corpo de texto + anexos.
+  const b = `a4l_${crypto.randomBytes(12).toString('hex')}`
+  const wrap = (s: string) => s.replace(/(.{76})/g, '$1\r\n')
+  const partes: string[] = [
+    ...cabecalho,
+    `Content-Type: multipart/mixed; boundary="${b}"`,
+    '',
+    `--${b}`,
     'Content-Type: text/plain; charset="UTF-8"',
     'Content-Transfer-Encoding: base64',
     '',
-    Buffer.from(opts.corpoTexto, 'utf8').toString('base64'),
+    corpoB64,
   ]
-  return linhas.join('\r\n')
+  for (const a of opts.anexos) {
+    partes.push(
+      `--${b}`,
+      `Content-Type: ${a.mimeType ?? 'application/octet-stream'}; name="${a.filename}"`,
+      'Content-Transfer-Encoding: base64',
+      `Content-Disposition: attachment; filename="${a.filename}"`,
+      '',
+      wrap(a.contentBase64),
+    )
+  }
+  partes.push(`--${b}--`)
+  return partes.join('\r\n')
 }
 
 export type ResultadoGmail = {
@@ -105,6 +133,7 @@ export async function enviarGmail(opts: {
   assunto: string
   corpoTexto: string
   remetente?: string
+  anexos?: AnexoGmail[]
 }): Promise<ResultadoGmail> {
   const { sa, erro } = carregarSA()
   if (!sa) return { ok: false, configurado: false, erro }
@@ -117,7 +146,7 @@ export async function enviarGmail(opts: {
   const de = `All4laser <${remetente}>`
   try {
     const token = await obterAccessToken(sa, remetente)
-    const raw = base64url(construirMime({ de, para, assunto: opts.assunto, corpoTexto: opts.corpoTexto }))
+    const raw = base64url(construirMime({ de, para, assunto: opts.assunto, corpoTexto: opts.corpoTexto, anexos: opts.anexos }))
     const r = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
