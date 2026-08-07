@@ -9,6 +9,10 @@ import BotaoExportar from '@/components/BotaoExportar'
 import type { ColunaExport } from '@/lib/exportar'
 import { formatarEuro, mesAtual, nomeMes, somar, parseNumeroPt } from '@/lib/alugueres'
 import {
+  render, periodoDoMes, nFaturaDoNome, formatarValor, criticosEmFalta,
+  type FaturaEmailTemplate, type FaturaEmailVars, type TemplateChave,
+} from '@/lib/faturaEmailRender'
+import {
   TIPOS_ALUGUER,
   TIPOS_INTERNACIONAL,
   METODOS_PAGAMENTO,
@@ -98,12 +102,13 @@ const colunasExport: ColunaExport<LinhaMes>[] = [
 type Ordenacao = 'cliente-asc' | 'cliente-desc' | 'valor-desc' | 'valor-asc' | 'data-desc' | 'data-asc'
 
 export default function ListaAlugueres() {
-  const { isAdmin, perfil } = useAuth()
+  const { isAdmin, isFinanceiro, perfil } = useAuth()
   // Editar/apagar o aluguer em si continua reservado a admin (clique na linha).
-  // A faturação do mês (anexar/enviar/remover fatura, valor, pago, validado) fica
-  // disponível a qualquer colaborador com perfil de staff — é o que a RLS da BD
-  // já permite (escrita para 'authenticated'; só apagar linhas é de admin).
+  // A faturação do mês (anexar/valor/pago/validado) fica disponível a qualquer
+  // colaborador com perfil de staff — é o que a RLS da BD já permite.
   const podeFaturar = !!perfil
+  // Enviar a fatura por email fica restrito a admin + financeiro.
+  const podeEnviar = isAdmin || isFinanceiro
   const estreito = useEcraEstreito()
   const [alugueres, setAlugueres] = useState<Aluguer[]>([])
   const [faturacao, setFaturacao] = useState<Map<string, Fat>>(new Map())
@@ -114,6 +119,7 @@ export default function ListaAlugueres() {
   const [mesAte, setMesAte] = useState(mesAtual())
   const [pesquisa, setPesquisa] = useState('')
   const [fPago, setFPago] = useState<'' | 'nao-pagos' | 'pagos'>('')
+  const [fEnviada, setFEnviada] = useState<'' | 'enviadas' | 'por-enviar'>('')
   const [ordenar, setOrdenar] = useState<Ordenacao>('cliente-asc')
   const [carregando, setCarregando] = useState(true)
   const [editar, setEditar] = useState<Aluguer | null>(null)
@@ -161,8 +167,8 @@ export default function ListaAlugueres() {
   // Lista mostrada = mês + filtro de pagamento + ordenação
   const linhas = useMemo<LinhaMes[]>(() => {
     const lista = linhasMes.filter((l) =>
-      fPago === '' ||
-      (fPago === 'pagos' ? l.fat.pago : !l.fat.pago)
+      (fPago === '' || (fPago === 'pagos' ? l.fat.pago : !l.fat.pago)) &&
+      (fEnviada === '' || (fEnviada === 'enviadas' ? !!l.fat.fatura_enviada_em : !l.fat.fatura_enviada_em))
     )
 
     return [...lista].sort((x, y) => {
@@ -177,7 +183,7 @@ export default function ListaAlugueres() {
         default: return 0
       }
     })
-  }, [linhasMes, fPago, ordenar])
+  }, [linhasMes, fPago, fEnviada, ordenar])
 
   const total = somar(linhas, (l) => l.aluguer.valor)
 
@@ -237,15 +243,15 @@ export default function ListaAlugueres() {
     }
   }
 
-  // Após enviar a fatura com sucesso: marca como enviada e guarda o email no cliente
-  async function aoEnviadaFatura(aluguer: Aluguer, mesX: string, email: string) {
-    await atualizarFaturacao(aluguer.id, mesX, {
-      fatura_enviada_em: new Date().toISOString(),
-      fatura_enviada_para: email,
+  // Após enviar com sucesso: o servidor já gravou fatura_enviada_em/para e o
+  // email de faturação do cliente. Aqui só refletimos no estado local.
+  function aoEnviadaFatura(aluguer: Aluguer, mesX: string, email: string) {
+    const chave = `${aluguer.id}|${mesX}`
+    setFaturacao((prev) => {
+      const atual = prev.get(chave)
+      if (!atual) return prev
+      return new Map(prev).set(chave, { ...atual, fatura_enviada_em: new Date().toISOString(), fatura_enviada_para: email })
     })
-    if (aluguer.cliente_id) {
-      await supabase.from('clientes').update({ email }).eq('id', aluguer.cliente_id)
-    }
     setEnviarFatura(null)
   }
 
@@ -306,6 +312,7 @@ export default function ListaAlugueres() {
             mes={l.fat.mes}
             fat={l.fat}
             podeEditar={podeFaturar}
+            podeEnviar={podeEnviar}
             onChange={(patch) => atualizarFaturacao(a.id, l.fat.mes, patch)}
             onEnviar={() => setEnviarFatura({ aluguer: a, mes: l.fat.mes, fat: l.fat })}
           />
@@ -353,6 +360,7 @@ export default function ListaAlugueres() {
             mes={l.fat.mes}
             fat={l.fat}
             podeEditar={podeFaturar}
+            podeEnviar={podeEnviar}
             onChange={(patch) => atualizarFaturacao(a.id, l.fat.mes, patch)}
             onEnviar={() => setEnviarFatura({ aluguer: a, mes: l.fat.mes, fat: l.fat })}
           />
@@ -396,6 +404,12 @@ export default function ListaAlugueres() {
       </div>
       <AlugueresNav />
 
+      {podeEnviar && (
+        <div style={{ marginBottom: 10 }}>
+          <Link href="/alugueres/envio-mensal" style={{ color: 'var(--primary)', textDecoration: 'none', fontWeight: 600, fontSize: 14 }}>📧 Envio mensal de faturas →</Link>
+        </div>
+      )}
+
       <div style={c.filtros}>
         <select
           value={modo}
@@ -429,6 +443,16 @@ export default function ListaAlugueres() {
           <option value="">Pagos e não pagos</option>
           <option value="nao-pagos">Só não pagos</option>
           <option value="pagos">Só pagos</option>
+        </select>
+        <select
+          value={fEnviada}
+          onChange={(e) => setFEnviada(e.target.value as '' | 'enviadas' | 'por-enviar')}
+          style={c.inputOrden}
+          title="Filtrar por envio da fatura"
+        >
+          <option value="">Enviadas e por enviar</option>
+          <option value="por-enviar">Só por enviar</option>
+          <option value="enviadas">Só enviadas</option>
         </select>
         <select
           value={ordenar}
@@ -623,12 +647,13 @@ function CelulaFaturar({
 
 // ------------------------------------------------------------- CÉLULA: FATURA
 function CelulaFatura({
-  aluguerId, mes, fat, podeEditar, onChange, onEnviar,
+  aluguerId, mes, fat, podeEditar, podeEnviar, onChange, onEnviar,
 }: {
   aluguerId: string
   mes: string
   fat: Fat
   podeEditar: boolean
+  podeEnviar: boolean
   onChange: (patch: Partial<Fat>) => void
   onEnviar: () => void
 }) {
@@ -662,7 +687,7 @@ function CelulaFatura({
         <a href={fat.fatura_url!} target="_blank" rel="noopener noreferrer" style={c.faturaLink}>
           📄 {fat.fatura_nome ?? 'fatura'}
         </a>
-        {podeEditar && (
+        {podeEnviar && (
           <button
             style={enviada ? c.btnEnviada : c.btnEnviar}
             onClick={onEnviar}
@@ -775,6 +800,9 @@ function CelulaRecolha({
 }
 
 // ------------------------------------------------------ ENVIAR FATURA (EMAIL)
+// Modal com template gerível (normal/curto), pré-visualização completa do email
+// (assunto + corpo com placeholders preenchidos), edição livre, CC e aviso de
+// campos em falta antes de enviar. Envia via Gmail (comercial@).
 function ModalEnviarFatura({
   aluguer, mes, fat, onFechar, onEnviada,
 }: {
@@ -784,52 +812,88 @@ function ModalEnviarFatura({
   onFechar: () => void
   onEnviada: (aluguer: Aluguer, mes: string, email: string) => void
 }) {
-  const [email, setEmail] = useState(fat.fatura_enviada_para ?? '')
+  const { perfil } = useAuth()
+  const [templates, setTemplates] = useState<Map<string, FaturaEmailTemplate>>(new Map())
+  const [chave, setChave] = useState<TemplateChave>('normal')
+  const [para, setPara] = useState(fat.fatura_enviada_para ?? '')
+  const [cc, setCc] = useState('')
+  const [assunto, setAssunto] = useState('')
+  const [corpo, setCorpo] = useState('')
+  const [vars, setVars] = useState<FaturaEmailVars | null>(null)
+  const [editado, setEditado] = useState(false)
   const [aCarregar, setACarregar] = useState(true)
   const [aEnviar, setAEnviar] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
-  // Pré-preencher com o email guardado no cliente (se houver)
+  // Carrega templates + dados do cliente e constrói as variáveis (uma vez).
   useEffect(() => {
     let ativo = true
-    async function buscar() {
-      if (aluguer.cliente_id && !fat.fatura_enviada_para) {
-        const { data } = await supabase
-          .from('clientes')
-          .select('email')
-          .eq('id', aluguer.cliente_id)
-          .single()
-        if (ativo && data?.email) setEmail(data.email as string)
-      }
-      if (ativo) setACarregar(false)
+    async function init() {
+      const [tmplRes, cliRes] = await Promise.all([
+        supabase.from('alugueres_email_templates').select('*'),
+        aluguer.cliente_id
+          ? supabase.from('clientes').select('contacto_nome, nome, email, email_faturacao').eq('id', aluguer.cliente_id).single()
+          : Promise.resolve({ data: null }),
+      ])
+      if (!ativo) return
+      const map = new Map<string, FaturaEmailTemplate>()
+      for (const t of (tmplRes.data as FaturaEmailTemplate[] | null) ?? []) map.set(t.chave, t)
+      setTemplates(map)
+      const cli = cliRes.data as { contacto_nome: string | null; nome: string | null; email: string | null; email_faturacao: string | null } | null
+      setVars({
+        n_fatura: nFaturaDoNome(fat.fatura_nome),
+        periodo: periodoDoMes(mes),
+        valor: formatarValor(fat.valor_a_faturar),
+        equipamento: aluguer.modelo ?? '',
+        serial_number: aluguer.serial_number ?? '',
+        nome_contacto: cli?.contacto_nome ?? aluguer.cliente_nome ?? cli?.nome ?? '',
+        cliente_nome: aluguer.cliente_nome ?? cli?.nome ?? '',
+        nome_colaborador: perfil?.nome ?? perfil?.email ?? '',
+        email_colaborador: perfil?.email ?? '',
+        telefone: '',
+      })
+      // Destinatário: último usado > email de faturação > email geral.
+      if (!fat.fatura_enviada_para) setPara(cli?.email_faturacao || cli?.email || '')
+      setACarregar(false)
     }
-    buscar()
+    init()
     return () => { ativo = false }
-  }, [aluguer.cliente_id, fat.fatura_enviada_para])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Renderiza assunto/corpo a partir do template escolhido (enquanto não editado).
+  useEffect(() => {
+    if (!vars || editado) return
+    const t = templates.get(chave)
+    if (!t) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setAssunto(render(t.assunto_template, vars))
+    setCorpo(render(t.corpo_template, vars))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chave, vars, templates])
+
+  const faltam = vars ? criticosEmFalta(vars) : []
 
   async function enviar() {
     setErro(null)
-    const para = email.trim()
-    if (!para.includes('@')) return setErro('Indica um email válido.')
-
+    if (!fat.id) return setErro('Fatura por gravar — anexa/reanexa o PDF primeiro.')
+    const dest = para.trim()
+    if (!dest.includes('@')) return setErro('Indica um email de destino válido.')
     setAEnviar(true)
     try {
-      const r = await fetch('/api/alugueres/enviar-fatura', {
+      const { data: sess } = await supabase.auth.getSession()
+      const token = sess.session?.access_token
+      const r = await fetch('/api/alugueres/enviar-faturas', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          para,
-          clienteNome: aluguer.cliente_nome ?? 'cliente',
-          faturaUrl: fat.fatura_url,
-          faturaNome: fat.fatura_nome ?? 'fatura',
-        }),
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ itens: [{ faturacaoId: fat.id, para: dest, cc: cc.trim() || undefined, templateChave: chave, assuntoOverride: assunto, corpoOverride: corpo }] }),
       })
       const dados = await r.json().catch(() => ({}))
       setAEnviar(false)
-      if (!r.ok || !dados.enviado) {
-        return setErro(dados.motivo ?? 'Não foi possível enviar a fatura.')
-      }
-      onEnviada(aluguer, mes, para)
+      if (!r.ok || !dados.ok) return setErro(dados.erro ?? 'Não foi possível enviar a fatura.')
+      const res = (dados.resultados ?? [])[0] as { estado: string; motivo?: string } | undefined
+      if (!res || res.estado !== 'enviado') return setErro(res?.motivo ?? 'Falha no envio.')
+      onEnviada(aluguer, mes, dest)
     } catch {
       setAEnviar(false)
       setErro('Erro de rede ao enviar.')
@@ -838,7 +902,7 @@ function ModalEnviarFatura({
 
   return (
     <div style={c.overlay} onClick={onFechar}>
-      <div style={c.modal} onClick={(e) => e.stopPropagation()}>
+      <div style={{ ...c.modal, maxWidth: 640 }} onClick={(e) => e.stopPropagation()}>
         <div style={c.modalCab}>
           <h2 style={c.modalTitulo}>Enviar fatura por email</h2>
           <button onClick={onFechar} style={c.fechar} aria-label="Fechar">✕</button>
@@ -847,33 +911,47 @@ function ModalEnviarFatura({
         {erro && <div style={c.erro}>{erro}</div>}
 
         <p style={c.envInfo}>
-          <strong>Cliente:</strong> {aluguer.cliente_nome ?? '—'}<br />
-          <strong>Mês:</strong> {nomeMes(mes)}<br />
-          <strong>Ficheiro:</strong> {fat.fatura_nome ?? 'fatura'} (em anexo)
+          <strong>Cliente:</strong> {aluguer.cliente_nome ?? '—'} · <strong>Mês:</strong> {nomeMes(mes)}<br />
+          <strong>Anexo:</strong> {fat.fatura_nome ?? '— (sem PDF)'}{' · enviado de comercial@all4laser.com'}
         </p>
 
-        <label style={c.label}>Email do cliente</label>
-        <input
-          style={c.input}
-          type="email"
-          inputMode="email"
-          placeholder={aCarregar ? 'A carregar...' : 'cliente@exemplo.com'}
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        <span style={c.envNota}>O email fica guardado no cliente para a próxima vez.</span>
+        {faltam.length > 0 && (
+          <div style={{ ...c.erro, background: '#FEF3C7', border: '1px solid #FCD34D', color: '#92400E' }}>
+            ⚠ Em falta para um email completo: {faltam.join(', ')}. Podes preencher a fatura/valor ou editar o texto abaixo.
+          </div>
+        )}
+
+        <div style={c.linha2}>
+          <div>
+            <label style={c.label}>Template</label>
+            <select style={c.input} value={chave} onChange={(e) => { setChave(e.target.value as TemplateChave); setEditado(false) }}>
+              <option value="normal">Normal</option>
+              <option value="curto">Curto</option>
+            </select>
+          </div>
+          <div>
+            <label style={c.label}>Para</label>
+            <input style={c.input} type="email" placeholder={aCarregar ? 'A carregar…' : 'cliente@exemplo.com'} value={para} onChange={(e) => setPara(e.target.value)} />
+          </div>
+        </div>
+
+        <label style={c.label}>CC (opcional, separar por vírgula)</label>
+        <input style={c.input} value={cc} onChange={(e) => setCc(e.target.value)} placeholder="contabilidade@exemplo.com" />
+
+        <label style={c.label}>Assunto</label>
+        <input style={c.input} value={assunto} onChange={(e) => { setAssunto(e.target.value); setEditado(true) }} />
+
+        <label style={c.label}>Mensagem (pré-visualização — editável)</label>
+        <textarea style={{ ...c.input, minHeight: 220, fontFamily: 'inherit', whiteSpace: 'pre-wrap' }} value={corpo} onChange={(e) => { setCorpo(e.target.value); setEditado(true) }} />
 
         {fat.fatura_enviada_em && (
-          <span style={c.envNota}>
-            Já enviada em {formatarData(fat.fatura_enviada_em)}
-            {fat.fatura_enviada_para ? ` para ${fat.fatura_enviada_para}` : ''}.
-          </span>
+          <span style={c.envNota}>Já enviada em {formatarData(fat.fatura_enviada_em)}{fat.fatura_enviada_para ? ` para ${fat.fatura_enviada_para}` : ''} — este envio fica no histórico como reenvio.</span>
         )}
 
         <div style={c.modalAcoes}>
           <button onClick={onFechar} style={c.btnGhost}>Cancelar</button>
-          <button onClick={enviar} disabled={aEnviar} style={c.btnPrimario}>
-            {aEnviar ? 'A enviar...' : 'Enviar'}
+          <button onClick={enviar} disabled={aEnviar || aCarregar} style={c.btnPrimario}>
+            {aEnviar ? 'A enviar…' : 'Enviar'}
           </button>
         </div>
       </div>

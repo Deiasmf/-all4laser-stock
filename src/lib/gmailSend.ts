@@ -77,10 +77,11 @@ function encodeAssunto(assunto: string): string {
 
 export type AnexoGmail = { filename: string; contentBase64: string; mimeType?: string }
 
-function construirMime(opts: { de: string; para: string[]; assunto: string; corpoTexto: string; anexos?: AnexoGmail[] }): string {
+function construirMime(opts: { de: string; para: string[]; cc?: string[]; assunto: string; corpoTexto: string; anexos?: AnexoGmail[] }): string {
   const cabecalho = [
     `From: ${opts.de}`,
     `To: ${opts.para.join(', ')}`,
+    ...(opts.cc?.length ? [`Cc: ${opts.cc.join(', ')}`] : []),
     `Subject: ${encodeAssunto(opts.assunto)}`,
     'MIME-Version: 1.0',
   ]
@@ -130,6 +131,7 @@ export type ResultadoGmail = {
 // por omissão usa GOOGLE_GMAIL_SUBJECT ou comercial@all4laser.com.
 export async function enviarGmail(opts: {
   para: string[]
+  cc?: string[]
   assunto: string
   corpoTexto: string
   remetente?: string
@@ -140,13 +142,14 @@ export async function enviarGmail(opts: {
 
   const para = opts.para.map((e) => e.trim()).filter(Boolean)
   if (para.length === 0) return { ok: false, configurado: true, erro: 'Sem destinatários.' }
+  const cc = (opts.cc ?? []).map((e) => e.trim()).filter(Boolean)
 
   const remetente = (opts.remetente && opts.remetente.trim())
     || process.env.GOOGLE_GMAIL_SUBJECT || GMAIL_SUBJECT_DEFAULT
   const de = `All4laser <${remetente}>`
   try {
     const token = await obterAccessToken(sa, remetente)
-    const raw = base64url(construirMime({ de, para, assunto: opts.assunto, corpoTexto: opts.corpoTexto, anexos: opts.anexos }))
+    const raw = base64url(construirMime({ de, para, cc, assunto: opts.assunto, corpoTexto: opts.corpoTexto, anexos: opts.anexos }))
     const r = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
