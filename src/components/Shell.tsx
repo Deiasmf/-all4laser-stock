@@ -33,6 +33,7 @@ const NAV: Seccao[] = [
         href: '/admin-dept', label: 'Administrativo', icon: '🗂️',
         filhos: [
           { href: '/admin-dept/expedicao', label: 'Prontos a enviar', icon: '✈️' },
+          { href: '/admin-dept/expedicoes', label: 'Expedições', icon: '🚚', requer: 'administrativo' },
           { href: '/admin-dept/envios-pecas', label: 'Envios de Encomendas', icon: '📬' },
           { href: '/admin-dept/tracking', label: 'Tracking', icon: '🚚', requer: 'administrativo' },
           { href: '/admin-dept/cotacoes-transporte', label: 'Cotações de Transporte', icon: '📦', requer: 'administrativo' },
@@ -98,6 +99,7 @@ const TITULOS: { prefixo: string; titulo: string }[] = [
   { prefixo: '/a-minha-area/atribuir', titulo: 'Atribuir Tarefa / Recado' },
   { prefixo: '/a-minha-area/equipa', titulo: 'Equipa' },
   { prefixo: '/a-minha-area', titulo: 'A Minha Área' },
+  { prefixo: '/admin-dept/expedicoes', titulo: 'Expedições' },
   { prefixo: '/admin-dept/expedicao', titulo: 'Prontos a Enviar' },
   { prefixo: '/admin-dept/envios-pecas', titulo: 'Envios de Encomendas' },
   { prefixo: '/admin-dept/cotacoes-transporte', titulo: 'Cotações de Transporte' },
