@@ -16,6 +16,7 @@ import {
   type Carrier, type ShipmentTracking, type TipoTransporte, type Direcao, type EstadoEnvio,
 } from '@/types/tracking'
 import { useFormDraft, RascunhoAviso } from '@/lib/useFormDraft'
+import UploadCartaPorte from './UploadCartaPorte'
 
 const VAZIO: EnvioInput = {
   tracking_number: null, awb: null, awb_check_valido: null, tipo_transporte: 'expresso',
@@ -186,8 +187,15 @@ function TrackingConteudo() {
   return (
     <main style={c.page}>
       <div style={c.topo}>
-        <p style={c.subtitulo}>Todos os envios com tracking / AWB / carta de porte. Sincroniza automaticamente a partir dos Envios de Encomendas e dos Equipamentos.</p>
-        <button style={c.btnPrimario} onClick={abrirNovo}>+ Novo envio</button>
+        <p style={c.subtitulo}>Todos os envios com tracking / AWB / carta de porte. Sincroniza automaticamente a partir dos Envios de Encomendas e dos Equipamentos. <Link href="/admin-dept/tracking/extracoes" style={c.link}>Log de extrações ↗</Link></p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <UploadCartaPorte
+            carriers={carriers}
+            perfil={{ id: perfil?.id ?? null, nome: perfil?.nome ?? null }}
+            onConcluido={(msg) => { setToast(msg); carregar() }}
+          />
+          <button style={c.btnPrimario} onClick={abrirNovo}>+ Novo envio</button>
+        </div>
       </div>
 
       {/* Filtros */}

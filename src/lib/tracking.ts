@@ -71,13 +71,30 @@ export type EnvioInput = {
   peso_kg: number | null
 }
 
-type Autor = { id: string | null; nome: string | null }
+export type Autor = { id: string | null; nome: string | null }
 
 // Criação manual (origem='manual'; sem source_type/source_id).
 export async function criarEnvioManual(input: EnvioInput, criadoPor: Autor) {
   return supabase.from('shipments_tracking').insert({
     ...input,
     origem: 'manual',
+    criado_por: criadoPor.id,
+    criado_por_nome: criadoPor.nome,
+  }).select().single()
+}
+
+// Criação a partir de upload de carta de porte (origem='upload'). Guarda o
+// JSON extraído + confiança por campo para auditoria da qualidade da extração.
+export async function criarEnvioUpload(
+  input: EnvioInput,
+  extracao: { json: unknown; confianca: unknown },
+  criadoPor: Autor,
+) {
+  return supabase.from('shipments_tracking').insert({
+    ...input,
+    origem: 'upload',
+    extracao_json: extracao.json,
+    extracao_confianca: extracao.confianca,
     criado_por: criadoPor.id,
     criado_por_nome: criadoPor.nome,
   }).select().single()
@@ -99,6 +116,29 @@ export async function listarOrigens(trackingId: string): Promise<EnvioOrigem[]> 
     .from('shipments_tracking_sources')
     .select('*').eq('tracking_id', trackingId).order('created_at', { ascending: true })
   return (data as EnvioOrigem[]) ?? []
+}
+
+// ─── Log de extrações (auditoria da qualidade da extração AI) ────────────────
+export type ExtracaoLog = {
+  id: string
+  ficheiro_nome: string | null
+  content_type: string | null
+  tamanho: number | null
+  sucesso: boolean
+  modelo: string | null
+  erro: string | null
+  extracao_json: unknown
+  duplicado_de: string | null
+  tracking_id: string | null
+  user_nome: string | null
+  created_at: string
+}
+
+export async function listarExtracaoLog(opts: { soErros?: boolean; limite?: number } = {}): Promise<ExtracaoLog[]> {
+  let q = supabase.from('tracking_extracao_log').select('*').order('created_at', { ascending: false }).limit(opts.limite ?? 200)
+  if (opts.soErros) q = q.eq('sucesso', false)
+  const { data } = await q
+  return (data as ExtracaoLog[]) ?? []
 }
 
 // ─── Carta de porte (bucket privado, signed URLs) ────────────────────────────
