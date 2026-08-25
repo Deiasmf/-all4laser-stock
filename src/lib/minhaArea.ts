@@ -265,6 +265,63 @@ export async function listarHistorico(taskId: string): Promise<HistoricoItem[]> 
   return (data as HistoricoItem[]) ?? []
 }
 
+// ─── Anexos (ficheiros/fotos na tarefa e nos comentários) ─────────────────────
+// Bucket privado: os URLs são sempre assinados (expiram). A RLS do Storage
+// (1ª pasta do caminho = task_id) impede o acesso a quem não participa na tarefa.
+
+export type Anexo = {
+  id: string
+  task_id: string
+  comment_id: string | null
+  caminho: string
+  nome: string
+  mime: string | null
+  tamanho: number | null
+  created_by: string | null
+  created_at: string
+}
+export type AnexoComUrl = Anexo & { url: string | null }
+
+const BUCKET_ANEXOS = 'tarefas-anexos'
+
+// Todos os anexos de uma tarefa (da tarefa e dos comentários), com URL assinado.
+export async function listarAnexos(taskId: string): Promise<AnexoComUrl[]> {
+  const { data } = await supabase.from('user_task_attachments')
+    .select('*').eq('task_id', taskId).order('created_at', { ascending: true })
+  const linhas = (data as Anexo[]) ?? []
+  if (linhas.length === 0) return []
+  const { data: urls } = await supabase.storage.from(BUCKET_ANEXOS)
+    .createSignedUrls(linhas.map((l) => l.caminho), 3600)   // 1h
+  const porCaminho = new Map<string, string>()
+  for (const u of urls ?? []) if (u.path && u.signedUrl) porCaminho.set(u.path, u.signedUrl)
+  return linhas.map((l) => ({ ...l, url: porCaminho.get(l.caminho) ?? null }))
+}
+
+// Upload de um ficheiro + registo na tabela. A 1ª pasta do caminho é o task_id
+// (exigido pela RLS do Storage). commentId liga o anexo a um comentário.
+export async function carregarAnexo(
+  taskId: string, file: File, createdBy: string | null, commentId: string | null = null,
+): Promise<{ error: { message: string } | null }> {
+  const seguro = file.name.replace(/[^\w.\-]+/g, '_')
+  const caminho = `${taskId}/${Date.now()}-${Math.round(Math.random() * 1e6)}-${seguro}`
+  const { error: erroUp } = await supabase.storage.from(BUCKET_ANEXOS)
+    .upload(caminho, file, { contentType: file.type || undefined })
+  if (erroUp) return { error: erroUp }
+  const { error } = await supabase.from('user_task_attachments').insert({
+    task_id: taskId, comment_id: commentId, caminho, nome: file.name,
+    mime: file.type || null, tamanho: file.size, created_by: createdBy,
+  })
+  return { error: error ?? null }
+}
+
+// Apaga o registo (a RLS decide quem pode) e remove o ficheiro do bucket.
+export async function apagarAnexo(a: Anexo): Promise<{ error: { message: string } | null }> {
+  const { error } = await supabase.from('user_task_attachments').delete().eq('id', a.id)
+  if (error) return { error }
+  await supabase.storage.from(BUCKET_ANEXOS).remove([a.caminho])   // best-effort
+  return { error: null }
+}
+
 // ─── Respostas novas (badge de "comentário novo") ────────────────────────────
 // Uma tarefa tem "resposta nova" para mim quando alguém (não eu) comentou depois
 // da última vez que abri o fio dessa tarefa. A marca de leitura vive em

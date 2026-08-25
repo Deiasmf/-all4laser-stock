@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 import ComentariosTarefa from '@/components/ComentariosTarefa'
 import HistoricoTarefa from '@/components/HistoricoTarefa'
+import AnexosTarefa from '@/components/AnexosTarefa'
 import EditarTarefaModal from '@/components/EditarTarefaModal'
 import {
   criarTarefa, criarRecado, notificarRecadoUrgente,
@@ -36,6 +37,7 @@ export default function AtribuirPage() {
   const [msg, setMsg] = useState<string | null>(null)
   const [comentariosAberto, setComentariosAberto] = useState<string | null>(null)
   const [historicoAberto, setHistoricoAberto] = useState<string | null>(null)
+  const [anexosAberto, setAnexosAberto] = useState<string | null>(null)
   const [editarT, setEditarT] = useState<TarefaComAssignees | null>(null)
 
   // Tarefa (vários destinatários)
@@ -175,6 +177,7 @@ export default function AtribuirPage() {
                     <button style={c.btnSecMini} onClick={() => setEditarT(t)} title="Editar tarefa">✏️</button>
                     <button style={c.btnSecMini} onClick={() => setComentariosAberto((v) => (v === t.id ? null : t.id))} title="Ver respostas">💬</button>
                     <button style={c.btnSecMini} onClick={() => setHistoricoAberto((v) => (v === t.id ? null : t.id))} title="Ver histórico">🕘</button>
+                    <button style={c.btnSecMini} onClick={() => setAnexosAberto((v) => (v === t.id ? null : t.id))} title="Ver anexos">📎</button>
                   </div>
                   <div style={c.assignees}>
                     {t.assignees.map((a) => {
@@ -190,6 +193,7 @@ export default function AtribuirPage() {
                   </div>
                   {comentariosAberto === t.id && <ComentariosTarefa taskId={t.id} autor={autor} />}
                   {historicoAberto === t.id && <HistoricoTarefa taskId={t.id} />}
+                  {anexosAberto === t.id && <AnexosTarefa taskId={t.id} autorId={autor.id} />}
                 </div>
               )
             })}
