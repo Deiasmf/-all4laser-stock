@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import ComentariosTarefa from '@/components/ComentariosTarefa'
+import HistoricoTarefa from '@/components/HistoricoTarefa'
 import EditarTarefaModal from '@/components/EditarTarefaModal'
 import SeletorEstado from '@/components/SeletorEstado'
 import {
@@ -42,6 +43,7 @@ export default function MinhaAreaPage() {
   const [verLidos, setVerLidos] = useState(false)
   const [verEnviados, setVerEnviados] = useState(false)
   const [respostaAberta, setRespostaAberta] = useState<string | null>(null)
+  const [historicoAberto, setHistoricoAberto] = useState<string | null>(null)
   const [novidades, setNovidades] = useState<Set<string>>(new Set())
   const [editarTarefa, setEditarTarefa] = useState<MinhaTarefa | null>(null)
   const [editarRecado, setEditarRecado] = useState<Recado | null>(null)
@@ -93,6 +95,7 @@ export default function MinhaAreaPage() {
   }
   async function lerRecado(r: Recado) { await marcarRecadoLido(r.id); await carregar() }
   async function togglePref() { const novo = !pref; setPref(novo); if (uid) await guardarPrefNotificacao(uid, novo) }
+  function toggleHistorico(id: string) { setHistoricoAberto((v) => (v === id ? null : id)) }
   async function toggleResposta(id: string) {
     const abrir = respostaAberta !== id
     setRespostaAberta(abrir ? id : null)
@@ -199,9 +202,11 @@ export default function MinhaAreaPage() {
                         <div style={c.acoes}>
                           <button style={c.btnSecMini} onClick={() => setEditarTarefa(t)}>✏️ Editar</button>
                           <button style={{ ...c.btnSecMini, ...(novidades.has(t.id) ? c.btnSecMiniNovo : {}) }} onClick={() => toggleResposta(t.id)}>💬 Responder{novidades.has(t.id) ? ' ●' : ''}</button>
+                          <button style={c.btnSecMini} onClick={() => toggleHistorico(t.id)}>🕘 Histórico</button>
                         </div>
                       </div>
                       {respostaAberta === t.id && <ComentariosTarefa taskId={t.id} autor={autor} />}
+                      {historicoAberto === t.id && <HistoricoTarefa taskId={t.id} />}
                     </div>
                   )
                 })}
@@ -229,10 +234,12 @@ export default function MinhaAreaPage() {
                         </div>
                         <div style={c.acoes}>
                           <button style={{ ...c.btnSecMini, ...(novidades.has(t.id) ? c.btnSecMiniNovo : {}) }} onClick={() => toggleResposta(t.id)}>💬{novidades.has(t.id) ? ' ●' : ''}</button>
+                          <button style={c.btnSecMini} onClick={() => toggleHistorico(t.id)}>🕘</button>
                           <button style={c.btnSecMini} onClick={() => reabrir(t)}>Reabrir</button>
                         </div>
                       </div>
                       {respostaAberta === t.id && <ComentariosTarefa taskId={t.id} autor={autor} />}
+                      {historicoAberto === t.id && <HistoricoTarefa taskId={t.id} />}
                     </div>
                   ))}
                 </div>

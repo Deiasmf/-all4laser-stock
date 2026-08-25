@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 import ComentariosTarefa from '@/components/ComentariosTarefa'
+import HistoricoTarefa from '@/components/HistoricoTarefa'
 import EditarTarefaModal from '@/components/EditarTarefaModal'
 import {
   criarTarefa, criarRecado, notificarRecadoUrgente,
@@ -34,6 +35,7 @@ export default function AtribuirPage() {
   const [estados, setEstados] = useState<EstadoInfo[]>([])
   const [msg, setMsg] = useState<string | null>(null)
   const [comentariosAberto, setComentariosAberto] = useState<string | null>(null)
+  const [historicoAberto, setHistoricoAberto] = useState<string | null>(null)
   const [editarT, setEditarT] = useState<TarefaComAssignees | null>(null)
 
   // Tarefa (vários destinatários)
@@ -171,7 +173,8 @@ export default function AtribuirPage() {
                     <span style={{ flex: 1, fontWeight: 600 }}>{t.titulo}</span>
                     <span style={c.muted}>{formatarData(t.data_limite)}</span>
                     <button style={c.btnSecMini} onClick={() => setEditarT(t)} title="Editar tarefa">✏️</button>
-                    <button style={c.btnSecMini} onClick={() => setComentariosAberto((v) => (v === t.id ? null : t.id))}>💬</button>
+                    <button style={c.btnSecMini} onClick={() => setComentariosAberto((v) => (v === t.id ? null : t.id))} title="Ver respostas">💬</button>
+                    <button style={c.btnSecMini} onClick={() => setHistoricoAberto((v) => (v === t.id ? null : t.id))} title="Ver histórico">🕘</button>
                   </div>
                   <div style={c.assignees}>
                     {t.assignees.map((a) => {
@@ -186,6 +189,7 @@ export default function AtribuirPage() {
                     })}
                   </div>
                   {comentariosAberto === t.id && <ComentariosTarefa taskId={t.id} autor={autor} />}
+                  {historicoAberto === t.id && <HistoricoTarefa taskId={t.id} />}
                 </div>
               )
             })}

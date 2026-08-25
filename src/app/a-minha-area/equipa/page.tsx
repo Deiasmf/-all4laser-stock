@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import ComentariosTarefa from '@/components/ComentariosTarefa'
+import HistoricoTarefa from '@/components/HistoricoTarefa'
 import {
   listarColaboradores, listarTodasTarefas, resumoPorPessoa,
   prioridadeInfo, listarEstados, estadoInfo, SLUG_AGUARDA,
@@ -27,6 +28,7 @@ export default function EquipaPage() {
   const [filtroPessoa, setFiltroPessoa] = useState<string>('')   // '' = todas
   const [verConcluidas, setVerConcluidas] = useState(false)
   const [comentariosAberto, setComentariosAberto] = useState<string | null>(null)
+  const [historicoAberto, setHistoricoAberto] = useState<string | null>(null)
 
   const nomeDe = useCallback(
     (id: string) => colaboradores.find((c) => c.id === id)?.nome ?? colaboradores.find((c) => c.id === id)?.email ?? '—',
@@ -120,6 +122,7 @@ export default function EquipaPage() {
                         <span style={{ flex: 1, fontWeight: 600 }}>{t.titulo}</span>
                         {t.data_limite && <span style={{ ...c.prazo, ...(atrasada ? c.prazoAtraso : {}) }}>{atrasada ? '⚠ ' : ''}{formatarData(t.data_limite)}</span>}
                         <button style={c.btnSecMini} onClick={() => setComentariosAberto((v) => (v === t.id ? null : t.id))} title="Ver respostas">💬</button>
+                        <button style={c.btnSecMini} onClick={() => setHistoricoAberto((v) => (v === t.id ? null : t.id))} title="Ver histórico">🕘</button>
                       </div>
                       {t.descricao && <div style={c.desc}>{t.descricao}</div>}
                       <div style={c.assignees}>
@@ -136,6 +139,7 @@ export default function EquipaPage() {
                       </div>
                       <div style={c.criador}>Criada por {t.created_by ? nomeDe(t.created_by) : '—'}</div>
                       {comentariosAberto === t.id && <ComentariosTarefa taskId={t.id} autor={autor} soLeitura />}
+                      {historicoAberto === t.id && <HistoricoTarefa taskId={t.id} />}
                     </div>
                   )
                 })}

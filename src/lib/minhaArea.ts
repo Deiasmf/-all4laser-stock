@@ -247,6 +247,24 @@ export async function adicionarComentario(taskId: string, autor: Autor, mensagem
   }).select().single()
 }
 
+// ─── Histórico (linha do tempo automática, gravada por triggers na BD) ────────
+
+export type HistoricoItem = {
+  id: string
+  task_id: string
+  ator_id: string | null
+  ator_nome: string | null
+  tipo: string            // 'criacao' | 'campo' | 'estado' | 'reatribuicao'
+  descricao: string
+  created_at: string
+}
+
+export async function listarHistorico(taskId: string): Promise<HistoricoItem[]> {
+  const { data } = await supabase.from('user_task_history')
+    .select('*').eq('task_id', taskId).order('created_at', { ascending: true })
+  return (data as HistoricoItem[]) ?? []
+}
+
 // ─── Respostas novas (badge de "comentário novo") ────────────────────────────
 // Uma tarefa tem "resposta nova" para mim quando alguém (não eu) comentou depois
 // da última vez que abri o fio dessa tarefa. A marca de leitura vive em
