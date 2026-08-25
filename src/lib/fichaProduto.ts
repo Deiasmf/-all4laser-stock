@@ -142,3 +142,32 @@ export async function obterCompletude(equipamentoId: string): Promise<Completude
   const leituraDesat = handpieces.some((h) => h.contador_pulsos != null && leituraDesatualizada(h.data_leitura, cfg.meses_leitura_valida))
   return { feitos, total, pct: Math.round((feitos / total) * 100), faltam, leituraDesatualizada: leituraDesat }
 }
+
+// ─── Completude em lote (para a lista de stock) ───────────────────────────────
+// Usa a view equipamento_completude (1 linha por equipamento) — eficiente.
+export type CompletudeMini = { feitos: number; total: number }
+
+export async function carregarCompletudeMapa(): Promise<Map<string, CompletudeMini>> {
+  const mapa = new Map<string, CompletudeMini>()
+  let de = 0
+  const lote = 1000
+  while (true) {
+    const { data, error } = await supabase.from('equipamento_completude')
+      .select('equipamento_id, feitos, total').range(de, de + lote - 1)
+    if (error || !data || data.length === 0) break
+    for (const r of data as { equipamento_id: string; feitos: number; total: number }[]) {
+      mapa.set(r.equipamento_id, { feitos: r.feitos, total: r.total })
+    }
+    if (data.length < lote) break
+    de += lote
+  }
+  return mapa
+}
+
+// Cor/estado do badge de completude (verde=100%, amarelo=parcial, vermelho=0).
+export function completudeCor(feitos: number, total: number) {
+  const pct = total ? Math.round((feitos / total) * 100) : 0
+  if (pct === 100) return { pct, cor: '#065F46', bg: '#D1FAE5' }
+  if (feitos > 0) return { pct, cor: '#92400E', bg: '#FEF3C7' }
+  return { pct, cor: '#B91C1C', bg: '#FEE2E2' }
+}

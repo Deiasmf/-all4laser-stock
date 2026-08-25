@@ -12,6 +12,7 @@ import { nomeClienteStock } from '@/lib/clientesStock'
 import FiltroMulti from '@/components/FiltroMulti'
 import FiltroData from '@/components/FiltroData'
 import StatusEquipamento from '@/components/StatusEquipamento'
+import { carregarCompletudeMapa, completudeCor, type CompletudeMini } from '@/lib/fichaProduto'
 import { imprimirEtiquetas } from '@/lib/etiquetas'
 import BotaoExportar from '@/components/BotaoExportar'
 import type { ColunaExport } from '@/lib/exportar'
@@ -100,6 +101,7 @@ export default function Home() {
   const { isAdmin } = useAuth()
 
   const [todos, setTodos] = useState<Equipamento[]>([])
+  const [completude, setCompletude] = useState<Map<string, CompletudeMini>>(new Map())
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
 
@@ -162,6 +164,9 @@ export default function Home() {
     }
     carregar()
   }, [])
+
+  // Completude da ficha de produto por equipamento (view; badge na lista)
+  useEffect(() => { carregarCompletudeMapa().then(setCompletude) }, [])
 
   // Guarda os filtros no sessionStorage sempre que algum muda (restaurados ao voltar)
   useEffect(() => {
@@ -274,6 +279,21 @@ export default function Home() {
     !!recDe || !!recAte || !!envDe || !!envAte ||
     soIncompletos
 
+  // Badge de completude da ficha de produto (verde/amarelo/vermelho)
+  function badgeFicha(id: string) {
+    const c = completude.get(id)
+    if (!c) return null
+    const cor = completudeCor(c.feitos, c.total)
+    return (
+      <span
+        title={`Ficha de produto ${cor.pct}% completa`}
+        style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, color: cor.cor, background: cor.bg, whiteSpace: 'nowrap' }}
+      >
+        📋 {cor.pct}%
+      </span>
+    )
+  }
+
   // Constrói linhas da tabela com cabeçalhos de grupo (Marca → Modelo)
   function linhasTabela() {
     let ultimaMarca: string | null = null
@@ -319,7 +339,12 @@ export default function Home() {
           <td>{clienteDe(e) || '—'}</td>
           <td>{formatarData(e.data_entrada)}</td>
           <td>{formatarEuro(e.valor_compra)}</td>
-          <td>{falta.length > 0 && <span className={styles.badgeFalta}>{falta.length} em falta</span>}</td>
+          <td>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              {badgeFicha(e.id)}
+              {falta.length > 0 && <span className={styles.badgeFalta}>{falta.length} em falta</span>}
+            </div>
+          </td>
         </tr>
       )
     }
@@ -360,7 +385,10 @@ export default function Home() {
         <div key={e.id} className={styles.card} onClick={() => router.push(`/equipamentos/${e.id}`)}>
           <div className={styles.cardTop}>
             <span className={styles.cardModelo}>Serial: {e.serial_number ?? '— sem serial'}</span>
-            {falta.length > 0 && <span className={styles.badgeFalta}>{falta.length} em falta</span>}
+            <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              {badgeFicha(e.id)}
+              {falta.length > 0 && <span className={styles.badgeFalta}>{falta.length} em falta</span>}
+            </span>
           </div>
           <div className={styles.cardLinha}>
             {e.status ? <StatusEquipamento status={e.status} /> : 'Sem status'}
