@@ -15,6 +15,7 @@ import AcessoriosEquip from '@/components/AcessoriosEquip'
 import CompletudeFicha from '@/components/CompletudeFicha'
 import PedirDadosFalta from '@/components/PedirDadosFalta'
 import GerarFichaProduto from '@/components/GerarFichaProduto'
+import LinksPartilha from '@/components/LinksPartilha'
 import { obterCompletude } from '@/lib/fichaProduto'
 import QrEquipamento from '@/components/QrEquipamento'
 import EquipamentoPecasFalta from '@/components/EquipamentoPecasFalta'
@@ -275,6 +276,7 @@ export default function DetalheEquipamento() {
       <DadosProdutoEquip equipamentoId={eq.id} onChange={bump} />
       <HandpiecesEquip equipamentoId={eq.id} onChange={bump} />
       <AcessoriosEquip equipamentoId={eq.id} textoLegado={eq.acessorios} onChange={bump} />
+      <LinksPartilha equipamentoId={eq.id} />
 
       <div className={styles.seccao}>
         <div className={styles.seccaoTitulo}>Movimento</div>

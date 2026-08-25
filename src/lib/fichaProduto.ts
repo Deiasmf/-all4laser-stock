@@ -171,3 +171,44 @@ export function completudeCor(feitos: number, total: number) {
   if (feitos > 0) return { pct, cor: '#92400E', bg: '#FEF3C7' }
   return { pct, cor: '#B91C1C', bg: '#FEE2E2' }
 }
+
+// ─── Links partilháveis (página pública /p/[token]) ───────────────────────────
+
+export type FichaLink = {
+  id: string
+  equipamento_id: string
+  token: string
+  idioma: string
+  incluir_preco: boolean
+  incluir_sn_completo: boolean
+  expira_em: string
+  revogado: boolean
+  views: number
+  ultima_view: string | null
+  criado_em: string
+}
+
+export function urlLinkPublico(token: string): string {
+  const base = typeof window !== 'undefined' ? window.location.origin : ''
+  return `${base}/p/${token}`
+}
+
+export async function listarLinks(equipamentoId: string): Promise<FichaLink[]> {
+  const { data } = await supabase.from('ficha_links')
+    .select('*').eq('equipamento_id', equipamentoId).order('criado_em', { ascending: false })
+  return (data as FichaLink[]) ?? []
+}
+
+export async function criarLink(
+  equipamentoId: string,
+  opts: { idioma: string; incluir_preco: boolean; incluir_sn_completo: boolean },
+  criadoPor: string | null,
+) {
+  return supabase.from('ficha_links')
+    .insert({ equipamento_id: equipamentoId, ...opts, criado_por: criadoPor })
+    .select().single()
+}
+
+export async function revogarLink(id: string) {
+  return supabase.from('ficha_links').update({ revogado: true }).eq('id', id)
+}
