@@ -182,6 +182,36 @@ export async function adicionarComentario(taskId: string, autor: Autor, mensagem
   }).select().single()
 }
 
+// ─── Respostas novas (badge de "comentário novo") ────────────────────────────
+// Uma tarefa tem "resposta nova" para mim quando alguém (não eu) comentou depois
+// da última vez que abri o fio dessa tarefa. A marca de leitura vive em
+// user_task_comment_reads (uma linha por tarefa/pessoa).
+
+// Marca o fio de uma tarefa como lido até agora (upsert da minha marca).
+export async function marcarTarefaLida(taskId: string, userId: string) {
+  return supabase.from('user_task_comment_reads')
+    .upsert({ task_id: taskId, user_id: userId, last_read_at: new Date().toISOString() }, { onConflict: 'task_id,user_id' })
+}
+
+// Conjunto de tarefas (entre as indicadas) com respostas novas para o utilizador.
+export async function tarefasComNovidades(userId: string, taskIds: string[]): Promise<Set<string>> {
+  const res = new Set<string>()
+  if (taskIds.length === 0) return res
+  const [comentariosR, leiturasR] = await Promise.all([
+    supabase.from('user_task_comments').select('task_id, autor_id, created_at').in('task_id', taskIds),
+    supabase.from('user_task_comment_reads').select('task_id, last_read_at').eq('user_id', userId),
+  ])
+  const lidoEm = new Map<string, number>()
+  for (const l of (leiturasR.data as { task_id: string; last_read_at: string }[]) ?? []) {
+    lidoEm.set(l.task_id, new Date(l.last_read_at).getTime())
+  }
+  for (const co of (comentariosR.data as { task_id: string; autor_id: string | null; created_at: string }[]) ?? []) {
+    if (co.autor_id === userId) continue                       // as minhas respostas não contam
+    if (new Date(co.created_at).getTime() > (lidoEm.get(co.task_id) ?? 0)) res.add(co.task_id)
+  }
+  return res
+}
+
 // ─── Recados ─────────────────────────────────────────────────────────────────
 
 export async function listarMeusRecados(userId: string): Promise<Recado[]> {
@@ -296,7 +326,7 @@ export function resumoPorPessoa(
 
 // ─── Contadores para o badge do header ───────────────────────────────────────
 
-export type ContadorMinhaArea = { pendentes: number; naoLidos: number }
+export type ContadorMinhaArea = { pendentes: number; naoLidos: number; novidades: number }
 
 export async function contarMinhaArea(userId: string): Promise<ContadorMinhaArea> {
   const pendentesQ = supabase.from('user_task_assignees')
@@ -305,6 +335,11 @@ export async function contarMinhaArea(userId: string): Promise<ContadorMinhaArea
   const naoLidosQ = supabase.from('user_notes')
     .select('id', { count: 'exact', head: true })
     .eq('to_user', userId).eq('lida', false)
-  const [pendentes, naoLidos] = await Promise.all([pendentesQ, naoLidosQ])
-  return { pendentes: pendentes.count ?? 0, naoLidos: naoLidos.count ?? 0 }
+  const novidadesQ = supabase.rpc('contar_tarefas_novidades')   // respostas novas nas minhas tarefas
+  const [pendentes, naoLidos, novidades] = await Promise.all([pendentesQ, naoLidosQ, novidadesQ])
+  return {
+    pendentes: pendentes.count ?? 0,
+    naoLidos: naoLidos.count ?? 0,
+    novidades: (novidades.data as number | null) ?? 0,
+  }
 }
