@@ -9,6 +9,7 @@ import {
   listarMinhasTarefas, criarTarefa, mudarMeuEstado, ordenarTarefas, prioridadeInfo,
   listarMeusRecados, marcarRecadoLido, listarRecadosEnviados, listarColaboradores,
   atualizarRecado, notificarConclusaoTarefa,
+  tarefasComNovidades, marcarTarefaLida,
   obterPrefNotificacao, guardarPrefNotificacao,
   PRIORIDADES, type Prioridade, type MinhaTarefa, type Recado, type Colaborador,
 } from '@/lib/minhaArea'
@@ -38,6 +39,7 @@ export default function MinhaAreaPage() {
   const [verLidos, setVerLidos] = useState(false)
   const [verEnviados, setVerEnviados] = useState(false)
   const [respostaAberta, setRespostaAberta] = useState<string | null>(null)
+  const [novidades, setNovidades] = useState<Set<string>>(new Set())
   const [editarTarefa, setEditarTarefa] = useState<MinhaTarefa | null>(null)
   const [editarRecado, setEditarRecado] = useState<Recado | null>(null)
   // Nova tarefa pessoal (o próprio adiciona-se tarefas).
@@ -53,7 +55,9 @@ export default function MinhaAreaPage() {
       listarMinhasTarefas(uid), listarMeusRecados(uid), listarRecadosEnviados(uid),
       listarColaboradores(), obterPrefNotificacao(uid),
     ])
-    setTarefas(ts); setRecados(rs); setEnviados(en); setColaboradores(cs); setPref(p); setCarregando(false)
+    setTarefas(ts); setRecados(rs); setEnviados(en); setColaboradores(cs); setPref(p)
+    setNovidades(await tarefasComNovidades(uid, ts.map((t) => t.id)))
+    setCarregando(false)
   }, [uid])
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { carregar() }, [carregar])
@@ -78,7 +82,15 @@ export default function MinhaAreaPage() {
   async function iniciar(t: MinhaTarefa) { await mudarMeuEstado(t.assigneeId, 'em_curso'); await carregar() }
   async function lerRecado(r: Recado) { await marcarRecadoLido(r.id); await carregar() }
   async function togglePref() { const novo = !pref; setPref(novo); if (uid) await guardarPrefNotificacao(uid, novo) }
-  function toggleResposta(id: string) { setRespostaAberta((v) => (v === id ? null : id)) }
+  async function toggleResposta(id: string) {
+    const abrir = respostaAberta !== id
+    setRespostaAberta(abrir ? id : null)
+    // Ao abrir um fio com resposta nova, marca como lido e limpa a marca.
+    if (abrir && uid && novidades.has(id)) {
+      await marcarTarefaLida(id, uid)
+      setNovidades((s) => { const n = new Set(s); n.delete(id); return n })
+    }
+  }
 
   async function adicionarTarefa() {
     if (!uid || !nTitulo.trim()) return
@@ -162,13 +174,14 @@ export default function MinhaAreaPage() {
                           <div style={c.tarefaMeta}>
                             <span style={{ ...c.pill, color: pi.cor, background: pi.bg }}>{pi.label}</span>
                             {t.meuEstado === 'em_curso' && <span style={c.pillCurso}>Em curso</span>}
+                            {novidades.has(t.id) && <span style={c.pillNova}>● nova resposta</span>}
                             {t.data_limite && <span style={{ ...c.prazo, ...(atrasada ? c.prazoAtraso : {}) }}>{atrasada ? '⚠ ' : ''}{formatarData(t.data_limite)}</span>}
                           </div>
                         </div>
                         <div style={c.acoes}>
                           {t.meuEstado !== 'em_curso' && <button style={c.btnSecMini} onClick={() => iniciar(t)}>Iniciar</button>}
                           <button style={c.btnSecMini} onClick={() => setEditarTarefa(t)}>✏️ Editar</button>
-                          <button style={c.btnSecMini} onClick={() => toggleResposta(t.id)}>💬 Responder</button>
+                          <button style={{ ...c.btnSecMini, ...(novidades.has(t.id) ? c.btnSecMiniNovo : {}) }} onClick={() => toggleResposta(t.id)}>💬 Responder{novidades.has(t.id) ? ' ●' : ''}</button>
                         </div>
                       </div>
                       {respostaAberta === t.id && <ComentariosTarefa taskId={t.id} autor={autor} />}
@@ -187,13 +200,22 @@ export default function MinhaAreaPage() {
               concluidas.length === 0 ? <p style={c.muted}>Ainda nada concluído.</p> : (
                 <div style={c.lista}>
                   {concluidas.map((t) => (
-                    <div key={t.id} style={{ ...c.tarefa, opacity: 0.7 }}>
-                      <span style={c.checkFeito}>✓</span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ ...c.tarefaTitulo, textDecoration: 'line-through' }}>{t.titulo}</div>
-                        <div style={c.metaMuted}>Concluída {formatarDataHora(t.meuConcluidaEm)}</div>
+                    <div key={t.id} style={c.tarefaCard}>
+                      <div style={{ ...c.tarefa, opacity: 0.7 }}>
+                        <span style={c.checkFeito}>✓</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ ...c.tarefaTitulo, textDecoration: 'line-through' }}>{t.titulo}</div>
+                          <div style={c.metaMuted}>
+                            Concluída {formatarDataHora(t.meuConcluidaEm)}
+                            {novidades.has(t.id) && <span style={{ ...c.pillNova, marginLeft: 8 }}>● nova resposta</span>}
+                          </div>
+                        </div>
+                        <div style={c.acoes}>
+                          <button style={{ ...c.btnSecMini, ...(novidades.has(t.id) ? c.btnSecMiniNovo : {}) }} onClick={() => toggleResposta(t.id)}>💬{novidades.has(t.id) ? ' ●' : ''}</button>
+                          <button style={c.btnSecMini} onClick={() => reabrir(t)}>Reabrir</button>
+                        </div>
                       </div>
-                      <button style={c.btnSecMini} onClick={() => reabrir(t)}>Reabrir</button>
+                      {respostaAberta === t.id && <ComentariosTarefa taskId={t.id} autor={autor} />}
                     </div>
                   ))}
                 </div>
@@ -346,6 +368,8 @@ const c: Record<string, React.CSSProperties> = {
   tarefaMeta: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 5 },
   pill: { padding: '2px 10px', borderRadius: 999, fontSize: 11.5, fontWeight: 700 },
   pillCurso: { padding: '2px 10px', borderRadius: 999, fontSize: 11.5, fontWeight: 700, color: '#92400E', background: '#FEF3C7' },
+  pillNova: { padding: '2px 10px', borderRadius: 999, fontSize: 11.5, fontWeight: 700, color: '#B91C1C', background: '#FEF2F2' },
+  btnSecMiniNovo: { borderColor: '#FCA5A5', color: '#B91C1C', fontWeight: 700 },
   prazo: { fontSize: 12, color: 'var(--muted)' },
   prazoAtraso: { color: '#B91C1C', fontWeight: 700 },
   acoes: { display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' },

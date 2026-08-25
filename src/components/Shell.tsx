@@ -179,7 +179,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     if (!session || !perfil?.id) return
     let ativo = true
     contarMinhaArea(perfil.id).then((r) => {
-      if (ativo) setMinhaArea(r.pendentes + r.naoLidos)
+      if (ativo) setMinhaArea(r.pendentes + r.naoLidos + r.novidades)
     })
     return () => {
       ativo = false
@@ -338,7 +338,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
           </div>
           <div className="a4l-topbar-right">
             {minhaArea > 0 && (
-              <Link href="/a-minha-area" className="a4l-pill-leads" title="Tarefas pendentes e recados por ler">
+              <Link href="/a-minha-area" className="a4l-pill-leads" title="Tarefas pendentes, recados por ler e respostas novas">
                 📌 {minhaArea}
               </Link>
             )}
