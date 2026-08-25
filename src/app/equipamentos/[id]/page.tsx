@@ -9,6 +9,7 @@ import type { Equipamento } from '@/types/equipamento'
 import { camposEmFalta, ROTULO_OBRIGATORIO } from '@/types/equipamento'
 import type { FaturacaoEquip } from '@/types/aluguer'
 import MediaGaleria from '@/components/MediaGaleria'
+import DadosProdutoEquip from '@/components/DadosProdutoEquip'
 import QrEquipamento from '@/components/QrEquipamento'
 import EquipamentoPecasFalta from '@/components/EquipamentoPecasFalta'
 import StatusEquipamento from '@/components/StatusEquipamento'
@@ -225,6 +226,8 @@ export default function DetalheEquipamento() {
           <Linha rotulo="Original/Upgraded" valor={eq.original_upgraded} />
         )}
       </div>
+
+      <DadosProdutoEquip equipamentoId={eq.id} />
 
       <div className={styles.seccao}>
         <div className={styles.seccaoTitulo}>Movimento</div>
