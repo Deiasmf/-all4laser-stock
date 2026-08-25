@@ -10,6 +10,9 @@ import { camposEmFalta, ROTULO_OBRIGATORIO } from '@/types/equipamento'
 import type { FaturacaoEquip } from '@/types/aluguer'
 import MediaGaleria from '@/components/MediaGaleria'
 import DadosProdutoEquip from '@/components/DadosProdutoEquip'
+import HandpiecesEquip from '@/components/HandpiecesEquip'
+import AcessoriosEquip from '@/components/AcessoriosEquip'
+import CompletudeFicha from '@/components/CompletudeFicha'
 import QrEquipamento from '@/components/QrEquipamento'
 import EquipamentoPecasFalta from '@/components/EquipamentoPecasFalta'
 import StatusEquipamento from '@/components/StatusEquipamento'
@@ -83,6 +86,8 @@ export default function DetalheEquipamento() {
   const [erro, setErro] = useState<string | null>(null)
   const [aApagar, setAApagar] = useState(false)
   const [fatur, setFatur] = useState<FaturacaoEquip | null>(null)
+  const [rk, setRk] = useState(0)   // refrescar o indicador de completude
+  const bump = () => setRk((v) => v + 1)
 
   useEffect(() => {
     supabase
@@ -211,6 +216,8 @@ export default function DetalheEquipamento() {
         </div>
       )}
 
+      <CompletudeFicha equipamentoId={eq.id} refreshKey={rk} />
+
       <div className={styles.seccao}>
         <div className={styles.seccaoTitulo}>Identificação</div>
         <Linha rotulo="Modelo" valor={eq.modelo} />
@@ -227,7 +234,9 @@ export default function DetalheEquipamento() {
         )}
       </div>
 
-      <DadosProdutoEquip equipamentoId={eq.id} />
+      <DadosProdutoEquip equipamentoId={eq.id} onChange={bump} />
+      <HandpiecesEquip equipamentoId={eq.id} onChange={bump} />
+      <AcessoriosEquip equipamentoId={eq.id} textoLegado={eq.acessorios} onChange={bump} />
 
       <div className={styles.seccao}>
         <div className={styles.seccaoTitulo}>Movimento</div>
@@ -300,7 +309,7 @@ export default function DetalheEquipamento() {
 
       <QrEquipamento equipamentoId={eq.id} modelo={eq.modelo} marca={eq.marca} serial={eq.serial_number} />
 
-      <MediaGaleria equipamentoId={eq.id} />
+      <MediaGaleria equipamentoId={eq.id} onChange={bump} />
 
       {isAdmin && (
         <div className={styles.zonaApagar}>
