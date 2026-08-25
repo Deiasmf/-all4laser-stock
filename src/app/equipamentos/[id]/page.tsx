@@ -14,6 +14,7 @@ import HandpiecesEquip from '@/components/HandpiecesEquip'
 import AcessoriosEquip from '@/components/AcessoriosEquip'
 import CompletudeFicha from '@/components/CompletudeFicha'
 import PedirDadosFalta from '@/components/PedirDadosFalta'
+import GerarFichaProduto from '@/components/GerarFichaProduto'
 import { obterCompletude } from '@/lib/fichaProduto'
 import QrEquipamento from '@/components/QrEquipamento'
 import EquipamentoPecasFalta from '@/components/EquipamentoPecasFalta'
@@ -80,7 +81,7 @@ function Linha({ rotulo, valor }: { rotulo: string; valor: React.ReactNode }) {
 export default function DetalheEquipamento() {
   const params = useParams()
   const router = useRouter()
-  const { isAdmin } = useAuth()
+  const { isAdmin, isAdministrativo } = useAuth()
   const id = params.id as string
 
   const [eq, setEq] = useState<Equipamento | null>(null)
@@ -202,6 +203,16 @@ export default function DetalheEquipamento() {
               ],
             })}
           />
+          {isAdministrativo && (
+            <GerarFichaProduto
+              equipamentoId={eq.id}
+              marca={eq.marca}
+              modelo={eq.modelo}
+              ano={eq.ano}
+              serialNumber={eq.serial_number}
+              precoVenda={eq.preco_venda}
+            />
+          )}
           {isAdmin && (
             <>
               <Link href={`/equipamentos/${eq.id}/edit?saida=1`} className={styles.btnSaida}>
