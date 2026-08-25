@@ -249,3 +249,28 @@ export function emailFichaDefault(idioma: string, nomeEquip: string): { assunto:
 export function labelFichaOnline(idioma: string): string {
   return idioma === 'en' ? 'Online sheet' : idioma === 'es' ? 'Ficha online' : idioma === 'fr' ? 'Fiche en ligne' : 'Ficha online'
 }
+
+// Histórico de fichas enviadas A ESTA lead (que equipamentos, quando, por quem).
+export type EnvioFichaLead = {
+  criado_em: string
+  enviado_por_nome: string | null
+  idioma: string | null
+  equipamentos: string[]
+}
+export async function listarEnviosLead(leadId: string): Promise<EnvioFichaLead[]> {
+  const { data } = await supabase.from('ficha_envios')
+    .select('criado_em, enviado_por_nome, idioma, itens:ficha_envio_itens(equipamento:equipamentos(marca, modelo))')
+    .eq('lead_id', leadId).order('criado_em', { ascending: false })
+  const rows = (data as unknown as {
+    criado_em: string; enviado_por_nome: string | null; idioma: string | null
+    itens: { equipamento: { marca: string | null; modelo: string | null } | null }[] | null
+  }[]) ?? []
+  return rows.map((r) => ({
+    criado_em: r.criado_em,
+    enviado_por_nome: r.enviado_por_nome,
+    idioma: r.idioma,
+    equipamentos: (r.itens ?? [])
+      .map((i) => [i.equipamento?.marca, i.equipamento?.modelo].filter(Boolean).join(' '))
+      .filter(Boolean),
+  }))
+}

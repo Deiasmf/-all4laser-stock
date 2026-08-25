@@ -6,6 +6,8 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
 import { criarLead, atualizarLead, eliminarLead } from '@/lib/leads'
 import BotaoExportar from '@/components/BotaoExportar'
+import EnviarFichaLead from '@/components/EnviarFichaLead'
+import HistoricoEnviosLead from '@/components/HistoricoEnviosLead'
 import type { ColunaExport } from '@/lib/exportar'
 import {
   CANAL_CONFIG, ESTADO_CONFIG, CANAL_OPCOES, ESTADO_OPCOES,
@@ -302,6 +304,7 @@ function LeadDrawer({
   const [nota, setNota] = useState(lead.nota_interna ?? '')
   const [aGravar, setAGravar] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  const [rkEnv, setRkEnv] = useState(0)
 
   async function eliminar() {
     if (!confirm('Eliminar esta lead? Esta ação não pode ser anulada.')) return
@@ -348,6 +351,11 @@ function LeadDrawer({
             <p style={{ fontSize: 14, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{lead.mensagem}</p>
           </div>
         )}
+
+        <div style={{ marginTop: 18 }}>
+          <EnviarFichaLead lead={{ id: lead.id, nome: lead.nome, email: lead.email }} onEnviado={() => setRkEnv((v) => v + 1)} />
+          <HistoricoEnviosLead leadId={lead.id} refreshKey={rkEnv} />
+        </div>
 
         <div style={{ marginTop: 18 }}>
           <label style={c.rotulo}>Estado</label>
