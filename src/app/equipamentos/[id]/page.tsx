@@ -15,7 +15,9 @@ import AcessoriosEquip from '@/components/AcessoriosEquip'
 import CompletudeFicha from '@/components/CompletudeFicha'
 import PedirDadosFalta from '@/components/PedirDadosFalta'
 import GerarFichaProduto from '@/components/GerarFichaProduto'
+import EnviarFichaProduto from '@/components/EnviarFichaProduto'
 import LinksPartilha from '@/components/LinksPartilha'
+import HistoricoEnviosEquip from '@/components/HistoricoEnviosEquip'
 import { obterCompletude } from '@/lib/fichaProduto'
 import QrEquipamento from '@/components/QrEquipamento'
 import EquipamentoPecasFalta from '@/components/EquipamentoPecasFalta'
@@ -93,6 +95,8 @@ export default function DetalheEquipamento() {
   const [rk, setRk] = useState(0)   // refrescar o indicador de completude
   const bump = () => setRk((v) => v + 1)
   const [pctFicha, setPctFicha] = useState<number | null>(null)
+  const [rkEnvios, setRkEnvios] = useState(0)
+  const bumpEnvios = () => setRkEnvios((v) => v + 1)
 
   useEffect(() => {
     let ativo = true
@@ -205,14 +209,25 @@ export default function DetalheEquipamento() {
             })}
           />
           {isAdministrativo && (
-            <GerarFichaProduto
-              equipamentoId={eq.id}
-              marca={eq.marca}
-              modelo={eq.modelo}
-              ano={eq.ano}
-              serialNumber={eq.serial_number}
-              precoVenda={eq.preco_venda}
-            />
+            <>
+              <GerarFichaProduto
+                equipamentoId={eq.id}
+                marca={eq.marca}
+                modelo={eq.modelo}
+                ano={eq.ano}
+                serialNumber={eq.serial_number}
+                precoVenda={eq.preco_venda}
+              />
+              <EnviarFichaProduto
+                equipamentoId={eq.id}
+                marca={eq.marca}
+                modelo={eq.modelo}
+                ano={eq.ano}
+                serialNumber={eq.serial_number}
+                precoVenda={eq.preco_venda}
+                onEnviado={bumpEnvios}
+              />
+            </>
           )}
           {isAdmin && (
             <>
@@ -277,6 +292,7 @@ export default function DetalheEquipamento() {
       <HandpiecesEquip equipamentoId={eq.id} onChange={bump} />
       <AcessoriosEquip equipamentoId={eq.id} textoLegado={eq.acessorios} onChange={bump} />
       <LinksPartilha equipamentoId={eq.id} />
+      <HistoricoEnviosEquip equipamentoId={eq.id} refreshKey={rkEnvios} />
 
       <div className={styles.seccao}>
         <div className={styles.seccaoTitulo}>Movimento</div>

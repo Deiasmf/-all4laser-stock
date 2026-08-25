@@ -1,10 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { supabase } from '@/lib/supabase'
 import { descarregarPdf } from '@/lib/fichaPdf'
-import { obterProduto, listarHandpieces, listarAcessorios } from '@/lib/fichaProduto'
-import { gerarPdfFichaProduto, type IdiomaFicha } from '@/lib/fichaProdutoPdf'
+import { gerarFichaBlob } from '@/lib/fichaProdutoGerar'
+import { type IdiomaFicha } from '@/lib/fichaProdutoPdf'
 
 // Botão + opções para gerar a ficha de produto em PDF (on-demand, dados atuais).
 const IDIOMAS: { v: IdiomaFicha; label: string }[] = [
@@ -30,35 +29,11 @@ export default function GerarFichaProduto({ equipamentoId, marca, modelo, ano, s
   async function gerar() {
     setAGerar(true); setErro(null)
     try {
-      const [produto, handpieces, acess, mediaR] = await Promise.all([
-        obterProduto(equipamentoId),
-        listarHandpieces(equipamentoId),
-        listarAcessorios(equipamentoId),
-        supabase.from('media').select('url, capa, ordem, tipo, created_at')
-          .eq('equipamento_id', equipamentoId).or('tipo.is.null,tipo.eq.foto'),
-      ])
-      const fotos = ((mediaR.data as { url: string; capa: boolean | null; ordem: number | null; created_at: string }[]) ?? [])
-        .sort((a, b) => (Number(b.capa) - Number(a.capa)) || ((a.ordem ?? 0) - (b.ordem ?? 0)) || a.created_at.localeCompare(b.created_at))
-        .map((m) => m.url)
-
-      const blob = await gerarPdfFichaProduto({
-        idioma,
-        marca, modelo, ano,
-        serialCompleto: serialNumber, incluirSnCompleto: incluirSn,
-        condicao: produto?.condicao ?? null,
-        condicaoDescricao: produto?.condicao_descricao ?? null,
-        voltagem: produto?.voltagem ?? null,
-        frequencia: produto?.frequencia ?? null,
-        dimensoes: produto?.dimensoes ?? null,
-        pesoKg: produto?.peso_kg ?? null,
-        softwareVersao: produto?.software_versao ?? null,
-        handpieces: handpieces.map((h) => ({ nome: h.nome, contador_pulsos: h.contador_pulsos, data_leitura: h.data_leitura })),
-        acessorios: acess.map((a) => a.descricao),
-        preco: incluirPreco ? precoVenda : null,
-        fotos,
+      const { blob, nomeFicheiro } = await gerarFichaBlob({
+        equipamentoId, idioma, marca, modelo, ano, serialNumber, precoVenda,
+        incluirPreco, incluirSnCompleto: incluirSn,
       })
-      const nomeFich = `All4laser - ${[marca, modelo, ano].filter(Boolean).join(' ')} - Ref ${equipamentoId.slice(0, 8)}`
-      await descarregarPdf(blob, nomeFich)
+      await descarregarPdf(blob, nomeFicheiro)
       setAberto(false)
     } catch (e) {
       setErro('Não foi possível gerar a ficha: ' + (e instanceof Error ? e.message : 'erro'))
