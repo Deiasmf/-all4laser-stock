@@ -13,6 +13,8 @@ import DadosProdutoEquip from '@/components/DadosProdutoEquip'
 import HandpiecesEquip from '@/components/HandpiecesEquip'
 import AcessoriosEquip from '@/components/AcessoriosEquip'
 import CompletudeFicha from '@/components/CompletudeFicha'
+import PedirDadosFalta from '@/components/PedirDadosFalta'
+import { obterCompletude } from '@/lib/fichaProduto'
 import QrEquipamento from '@/components/QrEquipamento'
 import EquipamentoPecasFalta from '@/components/EquipamentoPecasFalta'
 import StatusEquipamento from '@/components/StatusEquipamento'
@@ -88,6 +90,13 @@ export default function DetalheEquipamento() {
   const [fatur, setFatur] = useState<FaturacaoEquip | null>(null)
   const [rk, setRk] = useState(0)   // refrescar o indicador de completude
   const bump = () => setRk((v) => v + 1)
+  const [pctFicha, setPctFicha] = useState<number | null>(null)
+
+  useEffect(() => {
+    let ativo = true
+    obterCompletude(id).then((c) => { if (ativo) setPctFicha(c.pct) })
+    return () => { ativo = false }
+  }, [id, rk])
 
   useEffect(() => {
     supabase
@@ -217,6 +226,24 @@ export default function DetalheEquipamento() {
       )}
 
       <CompletudeFicha equipamentoId={eq.id} refreshKey={rk} />
+
+      {eq.status === 'Em stock' && pctFicha !== null && pctFicha < 100 && (
+        <div style={{ marginTop: 12, border: '1px solid #FDE68A', background: '#FFFBEB', borderRadius: 12, padding: '12px 14px' }}>
+          <div style={{ fontSize: 14, marginBottom: 10 }}>
+            Este equipamento está <strong>Em stock</strong> mas a <strong>ficha de produto</strong> está a {pctFicha}%.
+            Completa-a para poder gerar e enviar fichas.
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Link
+              href={`/equipamentos/${eq.id}/ficha`}
+              style={{ background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 16px', fontWeight: 700, textDecoration: 'none' }}
+            >
+              📋 Completar dados de produto
+            </Link>
+            <PedirDadosFalta equipamentoId={eq.id} tituloEquip={[eq.marca, eq.modelo].filter(Boolean).join(' ') || 'Equipamento'} />
+          </div>
+        </div>
+      )}
 
       <div className={styles.seccao}>
         <div className={styles.seccaoTitulo}>Identificação</div>
