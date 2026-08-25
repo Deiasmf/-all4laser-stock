@@ -19,7 +19,7 @@ type Media = {
   capa: boolean | null
 }
 
-export default function MediaGaleria({ equipamentoId }: { equipamentoId: string }) {
+export default function MediaGaleria({ equipamentoId, onChange }: { equipamentoId: string; onChange?: () => void }) {
   const [media, setMedia] = useState<Media[]>([])
   const [aCarregar, setACarregar] = useState(false)
   const [progresso, setProgresso] = useState('')
@@ -63,14 +63,14 @@ export default function MediaGaleria({ equipamentoId }: { equipamentoId: string 
     if (inputRef.current) inputRef.current.value = ''
     setMensagem(resumoUpload(resultado))
     setMensagemErro(houveProblemas(resultado))
-    carregarMedia()
+    carregarMedia(); onChange?.()
   }
 
   async function apagar(m: Media) {
     if (!window.confirm('Apagar este ficheiro?')) return
     if (m.caminho) await supabase.storage.from(BUCKET_MEDIA).remove([m.caminho])
     await supabase.from('media').delete().eq('id', m.id)
-    carregarMedia()
+    carregarMedia(); onChange?.()
   }
 
   async function definirCapa(m: Media) {

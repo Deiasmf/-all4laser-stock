@@ -14,7 +14,7 @@ const VAZIO: EquipamentoProduto = {
   voltagem: null, frequencia: null, dimensoes: null, peso_kg: null, software_versao: null,
 }
 
-export default function DadosProdutoEquip({ equipamentoId }: { equipamentoId: string }) {
+export default function DadosProdutoEquip({ equipamentoId, onChange }: { equipamentoId: string; onChange?: () => void }) {
   const { perfil } = useAuth()
   const podeEditar = !!perfil?.id
   const [prod, setProd] = useState<EquipamentoProduto>(VAZIO)
@@ -49,7 +49,7 @@ export default function DadosProdutoEquip({ equipamentoId }: { equipamentoId: st
     setAGuardar(false)
     if (error) { setErro('Erro a guardar: ' + error.message); return }
     setAEditar(false)
-    await carregar()
+    await carregar(); onChange?.()
   }
 
   const disp = disponibilidadeInfo(prod.disponibilidade)
