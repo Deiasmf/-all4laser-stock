@@ -212,3 +212,40 @@ export async function criarLink(
 export async function revogarLink(id: string) {
   return supabase.from('ficha_links').update({ revogado: true }).eq('id', id)
 }
+
+// ─── Envio por email: histórico + template por defeito ────────────────────────
+
+export type EnvioFichaEquip = {
+  criado_em: string
+  para_email: string
+  para_nome: string | null
+  enviado_por_nome: string | null
+  idioma: string | null
+  views: number | null
+}
+
+// Histórico de envios da ficha DESTE equipamento (a que leads/clientes foi enviado).
+export async function listarEnviosEquipamento(equipamentoId: string): Promise<EnvioFichaEquip[]> {
+  const { data } = await supabase.from('ficha_envio_itens')
+    .select('envio:ficha_envios(criado_em, para_email, para_nome, enviado_por_nome, idioma), link:ficha_links(views)')
+    .eq('equipamento_id', equipamentoId)
+  const rows = (data as unknown as { envio: Omit<EnvioFichaEquip, 'views'> | null; link: { views: number } | null }[]) ?? []
+  return rows
+    .filter((r) => r.envio)
+    .map((r) => ({ ...(r.envio as Omit<EnvioFichaEquip, 'views'>), views: r.link?.views ?? null }))
+    .sort((a, b) => (b.criado_em ?? '').localeCompare(a.criado_em ?? ''))
+}
+
+// Assunto/corpo por defeito do email (editável no envio), por idioma.
+export function emailFichaDefault(idioma: string, nomeEquip: string): { assunto: string; corpo: string } {
+  const n = nomeEquip || 'equipamento'
+  switch (idioma) {
+    case 'en': return { assunto: `All4laser – ${n}`, corpo: `Hello,\n\nPlease find attached the product sheet for the ${n}. We remain at your disposal for any questions or to arrange a viewing.\n\nBest regards,\nAll4laser Sales Team` }
+    case 'es': return { assunto: `All4laser – ${n}`, corpo: `Buenas tardes,\n\nAdjuntamos la ficha del equipo ${n}. Quedamos a su disposición para cualquier aclaración o para concertar una visita.\n\nUn cordial saludo,\nEquipo Comercial All4laser` }
+    case 'fr': return { assunto: `All4laser – ${n}`, corpo: `Bonjour,\n\nVeuillez trouver ci-joint la fiche de l'équipement ${n}. Nous restons à votre disposition pour toute question ou pour organiser une visite.\n\nCordialement,\nÉquipe Commerciale All4laser` }
+    default: return { assunto: `All4laser – ${n}`, corpo: `Boa tarde,\n\nConforme o interesse demonstrado, segue em anexo a ficha do equipamento ${n}. Ficamos ao dispor para qualquer esclarecimento ou para agendar uma visita.\n\nCom os melhores cumprimentos,\nEquipa Comercial All4laser` }
+  }
+}
+export function labelFichaOnline(idioma: string): string {
+  return idioma === 'en' ? 'Online sheet' : idioma === 'es' ? 'Ficha online' : idioma === 'fr' ? 'Fiche en ligne' : 'Ficha online'
+}
