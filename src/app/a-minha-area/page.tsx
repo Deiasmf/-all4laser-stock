@@ -5,13 +5,15 @@ import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import ComentariosTarefa from '@/components/ComentariosTarefa'
 import EditarTarefaModal from '@/components/EditarTarefaModal'
+import SeletorEstado from '@/components/SeletorEstado'
 import {
   listarMinhasTarefas, criarTarefa, mudarMeuEstado, ordenarTarefas, prioridadeInfo,
   listarMeusRecados, marcarRecadoLido, listarRecadosEnviados, listarColaboradores,
   atualizarRecado, notificarConclusaoTarefa,
   tarefasComNovidades, marcarTarefaLida,
+  listarEstados, estadoInfo, slugConcluido, slugAberto,
   obterPrefNotificacao, guardarPrefNotificacao,
-  PRIORIDADES, type Prioridade, type MinhaTarefa, type Recado, type Colaborador,
+  PRIORIDADES, type Prioridade, type MinhaTarefa, type Recado, type Colaborador, type EstadoInfo,
 } from '@/lib/minhaArea'
 
 function formatarData(d: string | null): string {
@@ -33,6 +35,7 @@ export default function MinhaAreaPage() {
   const [recados, setRecados] = useState<Recado[]>([])
   const [enviados, setEnviados] = useState<Recado[]>([])
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
+  const [estados, setEstados] = useState<EstadoInfo[]>([])
   const [pref, setPref] = useState(false)
   const [carregando, setCarregando] = useState(true)
   const [verConcluidas, setVerConcluidas] = useState(false)
@@ -51,20 +54,22 @@ export default function MinhaAreaPage() {
 
   const carregar = useCallback(async () => {
     if (!uid) return
-    const [ts, rs, en, cs, p] = await Promise.all([
+    const [ts, rs, en, cs, es, p] = await Promise.all([
       listarMinhasTarefas(uid), listarMeusRecados(uid), listarRecadosEnviados(uid),
-      listarColaboradores(), obterPrefNotificacao(uid),
+      listarColaboradores(), listarEstados(), obterPrefNotificacao(uid),
     ])
-    setTarefas(ts); setRecados(rs); setEnviados(en); setColaboradores(cs); setPref(p)
+    setTarefas(ts); setRecados(rs); setEnviados(en); setColaboradores(cs); setEstados(es); setPref(p)
     setNovidades(await tarefasComNovidades(uid, ts.map((t) => t.id)))
     setCarregando(false)
   }, [uid])
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { carregar() }, [carregar])
 
-  const ativas = ordenarTarefas(tarefas.filter((t) => t.meuEstado !== 'concluida'))
-  const concluidas = tarefas.filter((t) => t.meuEstado === 'concluida')
+  const estaConcluida = (t: MinhaTarefa) => estadoInfo(t.meuEstado, estados).is_concluido
+  const ativas = ordenarTarefas(tarefas.filter((t) => !estaConcluida(t)))
+  const concluidas = tarefas.filter(estaConcluida)
     .sort((a, b) => (b.meuConcluidaEm ?? '').localeCompare(a.meuConcluidaEm ?? ''))
+  const estadosAbertos = estados.filter((e) => !e.is_concluido)
   const naoLidos = recados.filter((r) => !r.lida)
   const lidos = recados.filter((r) => r.lida)
   const nomeDe = (id: string | null) => {
@@ -74,12 +79,18 @@ export default function MinhaAreaPage() {
   }
 
   async function concluir(t: MinhaTarefa) {
-    await mudarMeuEstado(t.assigneeId, 'concluida')
+    await mudarMeuEstado(t.assigneeId, slugConcluido(estados), true)
     await notificarConclusaoTarefa(t.id)   // avisa quem atribuiu (exceto autoconclusão)
     await carregar()
   }
-  async function reabrir(t: MinhaTarefa) { await mudarMeuEstado(t.assigneeId, 'pendente'); await carregar() }
-  async function iniciar(t: MinhaTarefa) { await mudarMeuEstado(t.assigneeId, 'em_curso'); await carregar() }
+  async function reabrir(t: MinhaTarefa) { await mudarMeuEstado(t.assigneeId, slugAberto(estados), false); await carregar() }
+  // Mudança de estado a partir do seletor (pendente / em andamento / aguarda info).
+  async function mudarEstado(t: MinhaTarefa, estado: string, aguarda: string | null) {
+    const concluido = estadoInfo(estado, estados).is_concluido
+    await mudarMeuEstado(t.assigneeId, estado, concluido, aguarda)
+    if (concluido) await notificarConclusaoTarefa(t.id)
+    await carregar()
+  }
   async function lerRecado(r: Recado) { await marcarRecadoLido(r.id); await carregar() }
   async function togglePref() { const novo = !pref; setPref(novo); if (uid) await guardarPrefNotificacao(uid, novo) }
   async function toggleResposta(id: string) {
@@ -173,13 +184,19 @@ export default function MinhaAreaPage() {
                           {t.descricao && <div style={c.metaMuted}>{t.descricao}</div>}
                           <div style={c.tarefaMeta}>
                             <span style={{ ...c.pill, color: pi.cor, background: pi.bg }}>{pi.label}</span>
-                            {t.meuEstado === 'em_curso' && <span style={c.pillCurso}>Em curso</span>}
                             {novidades.has(t.id) && <span style={c.pillNova}>● nova resposta</span>}
                             {t.data_limite && <span style={{ ...c.prazo, ...(atrasada ? c.prazoAtraso : {}) }}>{atrasada ? '⚠ ' : ''}{formatarData(t.data_limite)}</span>}
                           </div>
+                          <div style={c.estadoLinha}>
+                            <SeletorEstado
+                              estados={estadosAbertos}
+                              valor={t.meuEstado}
+                              aguardaOQue={t.meuAguardaOQue}
+                              onMudar={(estado, aguarda) => mudarEstado(t, estado, aguarda)}
+                            />
+                          </div>
                         </div>
                         <div style={c.acoes}>
-                          {t.meuEstado !== 'em_curso' && <button style={c.btnSecMini} onClick={() => iniciar(t)}>Iniciar</button>}
                           <button style={c.btnSecMini} onClick={() => setEditarTarefa(t)}>✏️ Editar</button>
                           <button style={{ ...c.btnSecMini, ...(novidades.has(t.id) ? c.btnSecMiniNovo : {}) }} onClick={() => toggleResposta(t.id)}>💬 Responder{novidades.has(t.id) ? ' ●' : ''}</button>
                         </div>
@@ -366,6 +383,7 @@ const c: Record<string, React.CSSProperties> = {
   checkFeito: { width: 26, height: 26, borderRadius: 999, background: '#065F46', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 14 },
   tarefaTitulo: { fontWeight: 600, fontSize: 14.5 },
   tarefaMeta: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 5 },
+  estadoLinha: { marginTop: 8 },
   pill: { padding: '2px 10px', borderRadius: 999, fontSize: 11.5, fontWeight: 700 },
   pillCurso: { padding: '2px 10px', borderRadius: 999, fontSize: 11.5, fontWeight: 700, color: '#92400E', background: '#FEF3C7' },
   pillNova: { padding: '2px 10px', borderRadius: 999, fontSize: 11.5, fontWeight: 700, color: '#B91C1C', background: '#FEF2F2' },

@@ -97,6 +97,7 @@ const NAV: Seccao[] = [
 // Título da página a partir da rota (mais específico primeiro).
 const TITULOS: { prefixo: string; titulo: string }[] = [
   { prefixo: '/a-minha-area/atribuir', titulo: 'Atribuir Tarefa / Recado' },
+  { prefixo: '/a-minha-area/estados', titulo: 'Estados das Tarefas' },
   { prefixo: '/a-minha-area/equipa', titulo: 'Equipa' },
   { prefixo: '/a-minha-area', titulo: 'A Minha Área' },
   { prefixo: '/admin-dept/expedicoes', titulo: 'Expedições' },
