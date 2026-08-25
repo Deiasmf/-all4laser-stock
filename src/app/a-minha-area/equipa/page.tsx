@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import ComentariosTarefa from '@/components/ComentariosTarefa'
 import HistoricoTarefa from '@/components/HistoricoTarefa'
+import AnexosTarefa from '@/components/AnexosTarefa'
 import {
   listarColaboradores, listarTodasTarefas, resumoPorPessoa,
   prioridadeInfo, listarEstados, estadoInfo, SLUG_AGUARDA,
@@ -29,6 +30,7 @@ export default function EquipaPage() {
   const [verConcluidas, setVerConcluidas] = useState(false)
   const [comentariosAberto, setComentariosAberto] = useState<string | null>(null)
   const [historicoAberto, setHistoricoAberto] = useState<string | null>(null)
+  const [anexosAberto, setAnexosAberto] = useState<string | null>(null)
 
   const nomeDe = useCallback(
     (id: string) => colaboradores.find((c) => c.id === id)?.nome ?? colaboradores.find((c) => c.id === id)?.email ?? '—',
@@ -123,6 +125,7 @@ export default function EquipaPage() {
                         {t.data_limite && <span style={{ ...c.prazo, ...(atrasada ? c.prazoAtraso : {}) }}>{atrasada ? '⚠ ' : ''}{formatarData(t.data_limite)}</span>}
                         <button style={c.btnSecMini} onClick={() => setComentariosAberto((v) => (v === t.id ? null : t.id))} title="Ver respostas">💬</button>
                         <button style={c.btnSecMini} onClick={() => setHistoricoAberto((v) => (v === t.id ? null : t.id))} title="Ver histórico">🕘</button>
+                        <button style={c.btnSecMini} onClick={() => setAnexosAberto((v) => (v === t.id ? null : t.id))} title="Ver anexos">📎</button>
                       </div>
                       {t.descricao && <div style={c.desc}>{t.descricao}</div>}
                       <div style={c.assignees}>
@@ -140,6 +143,7 @@ export default function EquipaPage() {
                       <div style={c.criador}>Criada por {t.created_by ? nomeDe(t.created_by) : '—'}</div>
                       {comentariosAberto === t.id && <ComentariosTarefa taskId={t.id} autor={autor} soLeitura />}
                       {historicoAberto === t.id && <HistoricoTarefa taskId={t.id} />}
+                      {anexosAberto === t.id && <AnexosTarefa taskId={t.id} autorId={autor.id} soLeitura />}
                     </div>
                   )
                 })}
