@@ -19,7 +19,8 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     pathname === '/redefinir-password' ||
     pathname.startsWith('/assinar') ||
     pathname.startsWith('/reservas') ||
-    pathname.startsWith('/registo-cliente')
+    pathname.startsWith('/registo-cliente') ||
+    pathname.startsWith('/p/')
 
   // Rota interna: exige sessão E perfil de staff.
   const ehInterna = !ehPublico
