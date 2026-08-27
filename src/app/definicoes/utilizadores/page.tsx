@@ -7,10 +7,9 @@ import { useAuth, type Role } from '@/lib/auth'
 type Utilizador = { id: string; nome: string | null; email: string | null; role: string }
 
 const ROLES: { valor: Role; label: string; cor: string; bg: string; ajuda: string }[] = [
-  { valor: 'admin', label: 'Administrador', cor: '#7C2D12', bg: '#FEF3C7', ajuda: 'Acesso total, incluindo gestão de utilizadores.' },
-  { valor: 'financeiro', label: 'Financeiro', cor: '#065F46', bg: '#D1FAE5', ajuda: 'Acesso ao módulo Financeiro (+ resto da app).' },
-  { valor: 'administrativo', label: 'Administrativo', cor: '#1E3A8A', bg: '#DBEAFE', ajuda: 'Acesso ao separador Tracking da Área Administrativa (+ resto da app).' },
-  { valor: 'standard', label: 'Standard', cor: '#374151', bg: '#E5E7EB', ajuda: 'Utilizador normal, sem acesso ao Financeiro.' },
+  { valor: 'admin', label: 'Administrador', cor: '#7C2D12', bg: '#FEF3C7', ajuda: 'Acesso total, incluindo Financeiro e gestão de utilizadores.' },
+  { valor: 'financeiro', label: 'Financeiro', cor: '#065F46', bg: '#D1FAE5', ajuda: 'Acesso ao módulo Financeiro + resto da app (sem gestão de utilizadores).' },
+  { valor: 'standard', label: 'Standard', cor: '#374151', bg: '#E5E7EB', ajuda: 'Acesso a tudo menos o Financeiro e a gestão de utilizadores.' },
 ]
 
 function roleInfo(role: string) {
@@ -18,7 +17,7 @@ function roleInfo(role: string) {
 }
 
 export default function GestaoUtilizadoresPage() {
-  const { isAdmin, perfilCarregado, perfil } = useAuth()
+  const { isGestorUtilizadores, perfilCarregado, perfil } = useAuth()
   const [lista, setLista] = useState<Utilizador[]>([])
   const [carregando, setCarregando] = useState(true)
   const [aGuardar, setAGuardar] = useState<string | null>(null)
@@ -32,7 +31,7 @@ export default function GestaoUtilizadoresPage() {
 
   // setState corre só após o await dentro de carregar()
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { if (isAdmin) carregar() }, [isAdmin, carregar])
+  useEffect(() => { if (isGestorUtilizadores) carregar() }, [isGestorUtilizadores, carregar])
 
   async function mudarRole(u: Utilizador, novo: string) {
     if (novo === u.role) return
@@ -47,7 +46,7 @@ export default function GestaoUtilizadoresPage() {
     setAGuardar(null)
   }
 
-  if (perfilCarregado && !isAdmin) {
+  if (perfilCarregado && !isGestorUtilizadores) {
     return <main style={c.page}><p style={c.muted}>Sem permissão. Só administradores podem gerir utilizadores.</p></main>
   }
 

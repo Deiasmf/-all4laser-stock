@@ -12,7 +12,7 @@ import { contarMinhaArea } from '@/lib/minhaArea'
 // recolhíveis (clicar no cabeçalho abre/fecha).
 // `requer` esconde o item para quem não tem o acesso (o bloqueio real é a RLS
 // + as guardas de rota; isto só limpa o menu).
-type Requer = 'admin' | 'financeiro' | 'administrativo'
+type Requer = 'admin' | 'financeiro'
 type SubItem = { href: string; label: string; icon: string; requer?: Requer; badge?: 'leads' | 'minhaArea' }
 type Item = { href?: string; label: string; icon?: string; badge?: 'leads' | 'minhaArea'; filhos?: SubItem[]; requer?: Requer; exato?: boolean }
 type Seccao = { titulo: string; itens: Item[] }
@@ -33,10 +33,10 @@ const NAV: Seccao[] = [
         href: '/admin-dept', label: 'Administrativo', icon: '🗂️',
         filhos: [
           { href: '/admin-dept/expedicao', label: 'Prontos a enviar', icon: '✈️' },
-          { href: '/admin-dept/expedicoes', label: 'Expedições', icon: '🚚', requer: 'administrativo' },
+          { href: '/admin-dept/expedicoes', label: 'Expedições', icon: '🚚' },
           { href: '/admin-dept/envios-pecas', label: 'Envios de Encomendas', icon: '📬' },
-          { href: '/admin-dept/tracking', label: 'Tracking', icon: '🚚', requer: 'administrativo' },
-          { href: '/admin-dept/cotacoes-transporte', label: 'Cotações de Transporte', icon: '📦', requer: 'administrativo' },
+          { href: '/admin-dept/tracking', label: 'Tracking', icon: '🚚' },
+          { href: '/admin-dept/cotacoes-transporte', label: 'Cotações de Transporte', icon: '📦' },
         ],
       },
       { href: '/financeiro', label: 'Financeiro', icon: '💶', requer: 'financeiro' },
@@ -89,7 +89,7 @@ const NAV: Seccao[] = [
     titulo: 'Sistema',
     itens: [
       { href: '/processos', label: 'Processos', icon: '📋' },
-      { href: '/definicoes/utilizadores', label: 'Utilizadores', icon: '👤', requer: 'admin' },
+      { href: '/definicoes/utilizadores', label: 'Utilizadores', icon: '👤', requer: 'admin' }, // requer: gestão de utilizadores (role 'admin')
     ],
   },
 ]
@@ -151,7 +151,7 @@ function tituloDaRota(path: string): string {
 }
 
 export default function Shell({ children }: { children: React.ReactNode }) {
-  const { session, perfil, sair, isAdmin, isFinanceiro, isAdministrativo } = useAuth()
+  const { session, perfil, sair, isFinanceiro, isGestorUtilizadores } = useAuth()
   const pathname = usePathname()
   const [leadsNovas, setLeadsNovas] = useState(0)
   const [minhaArea, setMinhaArea] = useState(0)
@@ -222,9 +222,8 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   // Mostra o item conforme o role (o bloqueio real é a RLS + guardas de rota).
   function podeVer(requer?: Requer) {
     if (!requer) return true
-    if (requer === 'admin') return isAdmin
+    if (requer === 'admin') return isGestorUtilizadores
     if (requer === 'financeiro') return isFinanceiro
-    if (requer === 'administrativo') return isAdministrativo
     return true
   }
   // Aplica o filtro e descarta secções que ficam sem itens.

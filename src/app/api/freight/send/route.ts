@@ -52,10 +52,10 @@ export async function POST(req: Request) {
 
   const db = createClient(url, serviceKey, { auth: { persistSession: false } })
 
-  // 2) Autorização: só admin / administrativo.
+  // 2) Autorização: qualquer staff interno.
   const { data: perfil } = await db.from('profiles').select('role').eq('id', userData.user.id).single()
   const role = (perfil as { role?: string } | null)?.role
-  if (role !== 'admin' && role !== 'administrativo') {
+  if (!['admin', 'financeiro', 'standard'].includes(role ?? '')) {
     return Response.json({ ok: false, erro: 'Sem permissão.' }, { status: 403 })
   }
 

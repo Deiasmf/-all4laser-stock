@@ -25,7 +25,7 @@ export async function POST(req: Request) {
   const db = createClient(url, serviceKey, { auth: { persistSession: false } })
   const { data: perfil } = await db.from('profiles').select('role').eq('id', userData.user.id).single()
   const role = (perfil as { role?: string } | null)?.role
-  if (role !== 'admin' && role !== 'administrativo') return Response.json({ ok: false, erro: 'Sem permissão.' }, { status: 403 })
+  if (!['admin', 'financeiro', 'standard'].includes(role ?? '')) return Response.json({ ok: false, erro: 'Sem permissão.' }, { status: 403 })
 
   let corpo: { packingListId?: string; para?: string[]; assunto?: string; corpo?: string; remetente?: string }
   try { corpo = await req.json() } catch { return Response.json({ ok: false, erro: 'JSON inválido.' }, { status: 400 }) }
