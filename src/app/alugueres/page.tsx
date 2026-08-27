@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
 import AlugueresNav from '@/components/AlugueresNav'
+import AvisoDuplicadosCliente from '@/components/AvisoDuplicadosCliente'
+import { mensagemErro } from '@/lib/erros'
 import { parseNumeroPt } from '@/lib/alugueres'
 import {
   TIPOS_ALUGUER,
@@ -223,7 +225,7 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
         .single()
       if (e1) {
         setAGuardar(false)
-        return setErro('Erro a criar o cliente: ' + e1.message)
+        return setErro(mensagemErro(e1, { entidade: 'cliente' }))
       }
       clienteId = (novo as Cliente).id
       nacional = (novo as Cliente).nacional
@@ -257,7 +259,7 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
     const { error: e2 } = await supabase.from('alugueres').insert(linhas)
 
     setAGuardar(false)
-    if (e2) return setErro('Erro a registar o aluguer: ' + e2.message)
+    if (e2) return setErro(mensagemErro(e2, { entidade: 'aluguer' }))
 
     setOkMsg(
       nMeses > 1
@@ -307,6 +309,11 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
         </div>
       ) : cliente.trim() ? (
         <>
+          <AvisoDuplicadosCliente
+            nome={cliente}
+            email={clienteEmail}
+            onUsar={(c) => setCliente(c.nome)}
+          />
           <label style={s.label}>País (cliente novo)</label>
           <input
             style={s.input}

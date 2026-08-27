@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import FornecedorForm from '@/components/FornecedorForm'
 import { criarFornecedor } from '@/lib/fornecedores'
 import { limparRascunho } from '@/lib/useFormDraft'
+import { mensagemErro } from '@/lib/erros'
 import type { FornecedorInput } from '@/types/compras'
 
 const RASCUNHO = 'fornecedor:novo'
@@ -21,7 +22,7 @@ export default function NovoFornecedorPage() {
     const { data, error } = await criarFornecedor(input)
     if (error || !data) {
       setAGuardar(false)
-      setErro('Não foi possível criar o fornecedor: ' + (error?.message ?? 'erro desconhecido'))
+      setErro(mensagemErro(error, { entidade: 'fornecedor' }))
       return
     }
     limparRascunho(RASCUNHO)
