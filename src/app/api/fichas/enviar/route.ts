@@ -46,7 +46,7 @@ export async function POST(req: Request) {
   const db = createClient(url, serviceKey, { auth: { persistSession: false } })
   const { data: perfil } = await db.from('profiles').select('role, nome, email').eq('id', userData.user.id).single()
   const p = perfil as { role?: string; nome?: string; email?: string } | null
-  if (p?.role !== 'admin' && p?.role !== 'administrativo') return Response.json({ ok: false, erro: 'Sem permissão.' }, { status: 403 })
+  if (!['admin', 'financeiro', 'standard'].includes(p?.role ?? '')) return Response.json({ ok: false, erro: 'Sem permissão.' }, { status: 403 })
   const remetenteNome = p?.nome ?? p?.email ?? 'All4laser'
 
   // 2. Corpo do pedido
