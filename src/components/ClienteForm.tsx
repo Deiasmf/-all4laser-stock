@@ -3,6 +3,8 @@
 import { useRef, useState } from 'react'
 import { TIPO_CLIENTE_OPCOES, type Cliente, type ClienteInput, type TipoCliente } from '@/types/cliente'
 import { useFormDraft, RascunhoAviso } from '@/lib/useFormDraft'
+import AvisoDuplicadosCliente from '@/components/AvisoDuplicadosCliente'
+import type { ClienteSemelhante } from '@/lib/clientes'
 
 type Props = {
   inicial?: Cliente
@@ -13,6 +15,9 @@ type Props = {
   // Quando definido, ativa o rascunho automático sob a chave draft:<rascunhoKey>.
   // (Usar só em modo "novo"; em edição não convém restaurar por cima da BD.)
   rascunhoKey?: string
+  // Quando definido, mostra o aviso de duplicados (nome/NIF/email) com a ação
+  // "Usar este cliente". Passar só em modo "novo".
+  onUsarExistente?: (c: ClienteSemelhante) => void
 }
 
 type FormState = {
@@ -45,7 +50,7 @@ function estadoInicial(inicial?: Cliente): FormState {
   }
 }
 
-export default function ClienteForm({ inicial, aGuardar, erro, submitLabel, onSubmit, rascunhoKey }: Props) {
+export default function ClienteForm({ inicial, aGuardar, erro, submitLabel, onSubmit, rascunhoKey, onUsarExistente }: Props) {
   const [form, setForm] = useState<FormState>(() => estadoInicial(inicial))
   const [avisoNome, setAvisoNome] = useState(false)
   const [avisoEmail, setAvisoEmail] = useState(false)
@@ -86,6 +91,15 @@ export default function ClienteForm({ inicial, aGuardar, erro, submitLabel, onSu
           />
           {avisoNome && <span style={s.aviso}>O nome é obrigatório.</span>}
         </Campo>
+        {onUsarExistente && (
+          <AvisoDuplicadosCliente
+            nome={form.nome}
+            nif={form.nif}
+            email={form.email}
+            excluirId={inicial?.id}
+            onUsar={onUsarExistente}
+          />
+        )}
         <Linha>
           <Campo label="Tipo">
             <select value={form.tipo} onChange={(e) => set('tipo', e.target.value as TipoCliente | '')} style={s.input}>

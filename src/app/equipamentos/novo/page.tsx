@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
 import EquipamentoForm, { formVazio } from '@/components/EquipamentoForm'
 import { limparRascunho } from '@/lib/useFormDraft'
+import { mensagemErro } from '@/lib/erros'
 import styles from '@/components/equipamentoForm.module.css'
 
 const RASCUNHO = 'equipamento:novo'
@@ -26,7 +27,7 @@ export default function NovoEquipamento() {
       .insert(comAutor)
       .select('id')
       .single()
-    if (error) return error.message
+    if (error) return mensagemErro(error, { entidade: 'equipamento' })
     limparRascunho(RASCUNHO)
     // Vai para o detalhe do equipamento recém-criado
     router.push(`/equipamentos/${data!.id}`)

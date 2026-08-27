@@ -1,6 +1,39 @@
 import { supabase } from './supabase'
 import type { Cliente, ClienteInput, HistoricoItem } from '@/types/cliente'
 
+// ─── Deteção de duplicados ───────────────────────────────────────────────────
+// Candidato semelhante devolvido pela RPC clientes_semelhantes (normaliza nome,
+// NIF e email na BD). Serve para avisar à entrada, antes de criar um duplicado.
+export type ClienteSemelhante = {
+  id: string
+  nome: string
+  nif: string | null
+  email: string | null
+  cidade: string | null
+  pais: string | null
+  por_nif: boolean
+  por_nome: boolean
+  por_email: boolean
+}
+
+export async function clientesSemelhantes(p: {
+  nome?: string
+  nif?: string
+  email?: string
+}): Promise<ClienteSemelhante[]> {
+  const nome = (p.nome ?? '').trim()
+  const nif = (p.nif ?? '').trim()
+  const email = (p.email ?? '').trim()
+  // Só vale a pena procurar com algum critério minimamente específico.
+  if (nome.length < 2 && !nif && !email) return []
+  const { data } = await supabase.rpc('clientes_semelhantes', {
+    p_nome: nome || null,
+    p_nif: nif || null,
+    p_email: email || null,
+  })
+  return (data as ClienteSemelhante[]) ?? []
+}
+
 // ─── Fichas de cliente (CRM) ─────────────────────────────────────────────────
 
 export async function listarClientesCompleto(): Promise<Cliente[]> {
