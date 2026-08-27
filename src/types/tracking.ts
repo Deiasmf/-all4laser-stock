@@ -87,6 +87,10 @@ export type ShipmentTracking = {
   auto_tracking_enabled: boolean
   created_at: string
   updated_at: string
+  // Soft delete: quando eliminado, deixa de aparecer na lista/dashboard.
+  deleted_at: string | null
+  deleted_by: string | null
+  deleted_by_nome: string | null
 }
 
 // ─── Validação de AWB (Air Waybill) ──────────────────────────────────────────

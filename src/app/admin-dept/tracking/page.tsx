@@ -5,7 +5,8 @@ import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 import {
-  listarCarriers, listarEnvios, criarEnvioManual, atualizarEnvio, apagarEnvioManual,
+  listarCarriers, listarEnvios, criarEnvioManual, atualizarEnvio,
+  eliminarEnvio, restaurarEnvio, numeroDaOrigem,
   carregarCartaPorte, urlCartaPorte, diasEmTransito,
   type FiltroEnvios, type EnvioInput,
 } from '@/lib/tracking'
@@ -32,6 +33,18 @@ function linkOrigem(e: ShipmentTracking): string | null {
   return null
 }
 
+// Verdadeiro em ecrãs estreitos (telemóvel/tablet) — a lista vira cartões.
+function useEcraEstreito(limite = 860) {
+  const [estreito, setEstreito] = useState(false)
+  useEffect(() => {
+    const verificar = () => setEstreito(window.innerWidth < limite)
+    verificar()
+    window.addEventListener('resize', verificar)
+    return () => window.removeEventListener('resize', verificar)
+  }, [limite])
+  return estreito
+}
+
 export default function TrackingPage() {
   return (
     <Suspense fallback={<p style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>A carregar…</p>}>
@@ -50,6 +63,8 @@ function TrackingConteudo() {
 
   const [filtro, setFiltro] = useState<FiltroEnvios>({})
   const [procura, setProcura] = useState(searchParams.get('q') ?? '')
+  const [mostrarEliminados, setMostrarEliminados] = useState(false)
+  const estreito = useEcraEstreito()
 
   const [formAberto, setFormAberto] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
@@ -63,12 +78,12 @@ function TrackingConteudo() {
 
   const carregar = useCallback(async () => {
     setACarregar(true)
-    const f: FiltroEnvios = { ...filtro, procura: procura.trim() || undefined }
+    const f: FiltroEnvios = { ...filtro, procura: procura.trim() || undefined, eliminados: mostrarEliminados }
     const [cs, ls] = await Promise.all([listarCarriers(true), listarEnvios(f)])
     setCarriers(cs)
     setLista(ls)
     setACarregar(false)
-  }, [filtro, procura])
+  }, [filtro, procura, mostrarEliminados])
 
   useEffect(() => { carregar() }, [carregar])
 
@@ -135,11 +150,25 @@ function TrackingConteudo() {
   }
 
   async function apagar(e: ShipmentTracking) {
-    if (e.origem !== 'manual') { setToast('Só entradas manuais podem ser apagadas.'); return }
-    if (!window.confirm('Apagar esta entrada manual?')) return
-    const { error } = await apagarEnvioManual(e.id)
-    if (error) { setToast('Erro ao apagar: ' + error.message); return }
-    carregar()
+    const ref = e.tracking_number || e.awb || '(sem nº)'
+    const entidade = e.entidade_nome || 'entidade desconhecida'
+    let msg = `Eliminar o tracking ${ref} de ${entidade}?\nEsta ação não pode ser desfeita.`
+    // Se veio de um documento de origem (sincronizado), avisa da associação.
+    if (e.origem !== 'manual' && e.source_id) {
+      const num = await numeroDaOrigem(e.source_type, e.source_id)
+      const doc = num ?? origemLabel(e.origem)
+      msg = `Este tracking está associado a ${doc}.\n\n${msg}\n\nO documento de origem fica intacto (só sem tracking). Podes restaurar depois no filtro "Eliminados".`
+    }
+    if (!window.confirm(msg)) return
+    const { error } = await eliminarEnvio(e.id, { id: perfil?.id ?? null, nome: perfil?.nome ?? null })
+    if (error) { setToast('Erro ao eliminar: ' + error); return }
+    setToast('Tracking eliminado.'); carregar()
+  }
+
+  async function restaurar(e: ShipmentTracking) {
+    const { error } = await restaurarEnvio(e.id)
+    if (error) { setToast('Erro ao restaurar: ' + error); return }
+    setToast('Tracking restaurado.'); carregar()
   }
 
   async function verTracking(e: ShipmentTracking) {
@@ -184,6 +213,31 @@ function TrackingConteudo() {
   const carriersExpresso = carriers.filter((c) => c.tipo === 'expresso')
   const carriersAereas = carriers.filter((c) => c.tipo === 'companhia_aerea')
 
+  // Botões de ação por linha/cartão (reutilizado na tabela e nos cartões mobile).
+  const acoes = (e: ShipmentTracking) => (
+    mostrarEliminados ? (
+      <>
+        <button style={c.btnMini} title="Restaurar" onClick={() => restaurar(e)}>♻️</button>
+        {e.deleted_by_nome && (
+          <span style={c.eliminadoInfo} title={e.deleted_at ? new Date(e.deleted_at).toLocaleString('pt-PT') : ''}>
+            por {e.deleted_by_nome}
+          </span>
+        )}
+      </>
+    ) : (
+      <>
+        <button style={c.btnMini} title="Ver tracking" onClick={() => verTracking(e)}>🔎</button>
+        <button style={c.btnMini} title="Editar" onClick={() => abrirEdicao(e)}>✏️</button>
+        <button style={c.btnMini} title="Abrir carta de porte" onClick={() => abrirCarta(e)}>📄</button>
+        <label style={c.btnMini} title="Anexar carta de porte">📎
+          <input type="file" accept="application/pdf,image/*" style={{ display: 'none' }}
+            onChange={(ev) => { const f = ev.target.files?.[0]; if (f) anexarCarta(e, f) }} />
+        </label>
+        <button style={c.btnMini} title="Eliminar" onClick={() => apagar(e)}>🗑️</button>
+      </>
+    )
+  )
+
   return (
     <main style={c.page}>
       <div style={c.topo}>
@@ -223,23 +277,64 @@ function TrackingConteudo() {
         {(filtro.estado || filtro.tipo || filtro.direcao || filtro.carrierId || filtro.de || filtro.ate || procura) && (
           <button style={c.btnLimpar} onClick={() => { setFiltro({}); setProcura('') }}>Limpar</button>
         )}
+        <button
+          style={mostrarEliminados ? c.btnToggleOn : c.btnLimpar}
+          onClick={() => setMostrarEliminados((v) => !v)}
+          title="Ver os trackings eliminados"
+        >
+          {mostrarEliminados ? '↩ Voltar aos ativos' : '🗑️ Eliminados'}
+        </button>
       </section>
 
-      {/* Tabela */}
+      {mostrarEliminados && !aCarregar && lista.length > 0 && (
+        <p style={c.avisoEliminados}>A mostrar trackings eliminados. Os documentos de origem ficaram intactos. Podes restaurar (♻️).</p>
+      )}
+
+      {/* Lista: tabela (desktop) ou cartões (mobile) */}
       {aCarregar ? (
         <p style={c.muted}>A carregar…</p>
       ) : lista.length === 0 ? (
-        <p style={c.muted}>Sem envios para os filtros escolhidos.</p>
+        <p style={c.muted}>{mostrarEliminados ? 'Sem trackings eliminados.' : 'Sem envios para os filtros escolhidos.'}</p>
+      ) : estreito ? (
+        <div style={c.cards}>
+          {lista.map((e) => {
+            const est = estadoEnvioInfo(e.estado)
+            const dias = diasEmTransito(e.data_expedicao)
+            const org = linkOrigem(e)
+            return (
+              <div key={e.id} style={{ ...c.card, ...(destaque(e) ? c.cardDestaque : {}), ...(e.origem_anulada ? c.trAnulada : {}) }}>
+                <div style={c.cardTitulo}>
+                  <span>{e.entidade_nome ?? '—'}</span>
+                  <span style={{ ...c.badge, color: est.cor, background: est.bg }}>{est.label}</span>
+                </div>
+                <div style={c.cardLinha}><span style={c.cardRot}>Transportadora</span><span>{e.carrier_nome ?? '—'}</span></div>
+                <div style={c.cardLinha}><span style={c.cardRot}>AWB / Tracking</span><span style={c.mono}>{e.tracking_number || e.awb || '—'}</span></div>
+                {e.awb && e.awb_check_valido === false && <div style={c.avisoMini}>⚠ AWB inválida</div>}
+                <div style={c.cardMeta}>
+                  {tipoTransporteLabel(e.tipo_transporte)} · {e.direcao === 'envio' ? 'Envio ↑' : 'Receção ↓'}
+                  {e.descricao_conteudo ? ` · ${e.descricao_conteudo}` : ''}
+                  {dias !== null && ['registado', 'em_transito'].includes(e.estado) ? ` · ${dias}d` : ''}
+                </div>
+                <div style={c.cardMeta}>
+                  {org ? <Link href={org} style={c.link}>{origemLabel(e.origem)} ↗</Link> : origemLabel(e.origem)}
+                  {e.data_expedicao ? ` · exp. ${e.data_expedicao}` : ''}
+                  {e.origem_anulada ? ' · origem anulada' : ''}
+                </div>
+                <div style={c.cardAcoes}>{acoes(e)}</div>
+              </div>
+            )
+          })}
+        </div>
       ) : (
         <div style={c.tabelaWrap}>
           <table style={c.tabela}>
             <thead>
               <tr>
-                <th style={c.th}>Tracking / AWB</th>
+                <th style={c.th}>Entidade</th>
                 <th style={c.th}>Transportadora</th>
+                <th style={c.th}>AWB / Tracking</th>
                 <th style={c.th}>Tipo</th>
                 <th style={c.th}>Dir.</th>
-                <th style={c.th}>Entidade</th>
                 <th style={c.th}>Conteúdo</th>
                 <th style={c.th}>Origem</th>
                 <th style={c.th}>Estado</th>
@@ -254,14 +349,14 @@ function TrackingConteudo() {
                 const org = linkOrigem(e)
                 return (
                   <tr key={e.id} style={{ ...c.tr, ...(destaque(e) ? c.trDestaque : {}), ...(e.origem_anulada ? c.trAnulada : {}) }}>
+                    <td style={c.td}>{e.entidade_nome ?? '—'}</td>
+                    <td style={c.td}>{e.carrier_nome ?? '—'}</td>
                     <td style={c.td}>
                       <div style={c.mono}>{e.tracking_number || e.awb || '—'}</div>
                       {e.awb && e.awb_check_valido === false && <div style={c.avisoMini} title="Dígito de controlo da AWB inválido">⚠ AWB inválida</div>}
                     </td>
-                    <td style={c.td}>{e.carrier_nome ?? '—'}</td>
                     <td style={c.td}>{tipoTransporteLabel(e.tipo_transporte)}</td>
                     <td style={c.td}>{e.direcao === 'envio' ? '↑' : '↓'}</td>
-                    <td style={c.td}>{e.entidade_nome ?? '—'}</td>
                     <td style={c.td}>{e.descricao_conteudo ?? '—'}</td>
                     <td style={c.td}>
                       {org ? <Link href={org} style={c.link}>{origemLabel(e.origem)} ↗</Link> : origemLabel(e.origem)}
@@ -271,16 +366,7 @@ function TrackingConteudo() {
                       {dias !== null && ['registado', 'em_transito'].includes(e.estado) && <div style={c.diasMini}>{dias}d</div>}
                     </td>
                     <td style={c.td}>{e.data_expedicao ?? '—'}</td>
-                    <td style={c.tdAcoes}>
-                      <button style={c.btnMini} title="Ver tracking" onClick={() => verTracking(e)}>🔎</button>
-                      <button style={c.btnMini} title="Editar" onClick={() => abrirEdicao(e)}>✏️</button>
-                      <button style={c.btnMini} title="Abrir carta de porte" onClick={() => abrirCarta(e)}>📄</button>
-                      <label style={c.btnMini} title="Anexar carta de porte">📎
-                        <input type="file" accept="application/pdf,image/*" style={{ display: 'none' }}
-                          onChange={(ev) => { const f = ev.target.files?.[0]; if (f) anexarCarta(e, f) }} />
-                      </label>
-                      {e.origem === 'manual' && <button style={c.btnMini} title="Apagar" onClick={() => apagar(e)}>🗑️</button>}
-                    </td>
+                    <td style={c.tdAcoes}>{acoes(e)}</td>
                   </tr>
                 )
               })}
@@ -418,6 +504,18 @@ const c: Record<string, React.CSSProperties> = {
   select: { padding: '8px 10px', border: '1px solid var(--borda, #d1d5db)', borderRadius: 8, font: 'inherit', background: '#fff' },
   data: { padding: '8px 10px', border: '1px solid var(--borda, #d1d5db)', borderRadius: 8, font: 'inherit' },
   btnLimpar: { padding: '8px 12px', border: '1px solid var(--borda, #d1d5db)', borderRadius: 8, background: '#fff', cursor: 'pointer', font: 'inherit' },
+  btnToggleOn: { padding: '8px 12px', border: '1px solid #111827', borderRadius: 8, background: '#111827', color: '#fff', cursor: 'pointer', font: 'inherit', fontWeight: 700 },
+  avisoEliminados: { background: '#FEF3C7', border: '1px solid #F59E0B', color: '#92400E', borderRadius: 8, padding: '8px 12px', fontSize: 13, marginBottom: 10 },
+  eliminadoInfo: { fontSize: 12, color: 'var(--muted)', marginLeft: 6 },
+  cards: { display: 'flex', flexDirection: 'column', gap: 10 },
+  card: { border: '1px solid #eee', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 6, background: '#fff' },
+  cardDestaque: { background: '#FEF3C7', borderColor: '#F59E0B' },
+  cardAnulada: { opacity: 0.55 },
+  cardTitulo: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 15 },
+  cardLinha: { display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13 },
+  cardRot: { color: 'var(--muted)', fontWeight: 600 },
+  cardMeta: { fontSize: 12, color: 'var(--muted)' },
+  cardAcoes: { display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4, alignItems: 'center' },
   muted: { color: 'var(--muted)', padding: 24, textAlign: 'center' },
   tabelaWrap: { overflowX: 'auto', border: '1px solid #eee', borderRadius: 10 },
   tabela: { width: '100%', borderCollapse: 'collapse', fontSize: 13 },

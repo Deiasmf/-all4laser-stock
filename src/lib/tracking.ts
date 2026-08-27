@@ -2,8 +2,8 @@ import { supabase } from './supabase'
 import type { Carrier, ShipmentTracking, TipoTransporte, Direcao, EstadoEnvio } from '@/types/tracking'
 import { DIAS_DESTAQUE } from '@/types/tracking'
 
-// Camada de dados do módulo Tracking. RLS: só admin + administrativo
-// (has_administrativo_access()); a leitura de carriers está aberta a staff.
+// Camada de dados do módulo Tracking. RLS: has_administrativo_access() (= is_staff,
+// qualquer utilizador interno); a leitura de carriers está aberta a staff.
 
 export const BUCKET_TRACKING = 'tracking-docs'
 
@@ -25,10 +25,13 @@ export type FiltroEnvios = {
   procura?: string            // pesquisa por tracking / awb / entidade
   de?: string
   ate?: string
+  eliminados?: boolean        // true = mostrar SÓ os eliminados (soft delete)
 }
 
 export async function listarEnvios(f: FiltroEnvios = {}): Promise<ShipmentTracking[]> {
   let q = supabase.from('shipments_tracking').select('*').order('data_expedicao', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })
+  // Por defeito só ativos; o filtro "eliminados" mostra só os soft-deleted.
+  q = f.eliminados ? q.not('deleted_at', 'is', null) : q.is('deleted_at', null)
   if (f.estado) q = q.eq('estado', f.estado)
   if (f.tipo) q = q.eq('tipo_transporte', f.tipo)
   if (f.direcao) q = q.eq('direcao', f.direcao)
@@ -104,9 +107,51 @@ export async function atualizarEnvio(id: string, patch: Partial<ShipmentTracking
   return supabase.from('shipments_tracking').update(patch).eq('id', id).select().single()
 }
 
-// Só entradas manuais podem ser apagadas; as sincronizadas mantêm-se (histórico).
-export async function apagarEnvioManual(id: string) {
-  return supabase.from('shipments_tracking').delete().eq('id', id).eq('origem', 'manual')
+// Eliminação (soft delete): marca deleted_at/by, remove a carta de porte do bucket
+// (se for nossa) e NÃO toca no documento de origem. A sincronização automática
+// passa a respeitar a eliminação (não ressuscita). Aplica-se a qualquer origem.
+export async function eliminarEnvio(id: string, autor: Autor): Promise<{ error: string | null }> {
+  const { data } = await supabase
+    .from('shipments_tracking')
+    .select('carta_porte_caminho')
+    .eq('id', id)
+    .single()
+  const caminho = (data as { carta_porte_caminho: string | null } | null)?.carta_porte_caminho ?? null
+  // Remove o ficheiro do nosso bucket (a carta_porte_url herdada da EP não é nossa).
+  if (caminho) await supabase.storage.from(BUCKET_TRACKING).remove([caminho])
+  const patch: Partial<ShipmentTracking> = {
+    deleted_at: new Date().toISOString(),
+    deleted_by: autor.id,
+    deleted_by_nome: autor.nome,
+  }
+  if (caminho) patch.carta_porte_caminho = null
+  const { error } = await supabase.from('shipments_tracking').update(patch).eq('id', id)
+  return { error: error ? error.message : null }
+}
+
+// Restaura uma entrada eliminada (volta a aparecer na lista). A carta de porte
+// não é recuperada (o ficheiro foi removido); pode ser re-anexada.
+export async function restaurarEnvio(id: string): Promise<{ error: string | null }> {
+  const { error } = await supabase.from('shipments_tracking').update({
+    deleted_at: null, deleted_by: null, deleted_by_nome: null,
+  }).eq('id', id)
+  return { error: error ? error.message : null }
+}
+
+// Nº/identificação do documento de origem (para o aviso "associado a EP-…").
+export async function numeroDaOrigem(sourceType: string | null, sourceId: string | null): Promise<string | null> {
+  if (!sourceType || !sourceId) return null
+  const mapa: Record<string, { tabela: string; coluna: string }> = {
+    envios_pecas: { tabela: 'envios_pecas', coluna: 'numero' },
+    expeditions: { tabela: 'expeditions', coluna: 'numero' },
+    recepcao_movimentos: { tabela: 'recepcao_movimentos', coluna: 'referencia_numero' },
+    equipamentos: { tabela: 'equipamentos', coluna: 'serial_number' },
+  }
+  const m = mapa[sourceType]
+  if (!m) return null
+  const { data } = await supabase.from(m.tabela).select(m.coluna).eq('id', sourceId).single()
+  const val = (data as Record<string, unknown> | null)?.[m.coluna]
+  return typeof val === 'string' && val.trim() ? val : null
 }
 
 // Origens (referências ao documento de origem) de um envio.
@@ -183,6 +228,7 @@ export async function resumoTracking(): Promise<ResumoTracking> {
     .select('tipo_transporte, estado, data_expedicao, origem_anulada')
     .in('estado', ['registado', 'em_transito', 'problema'])
     .eq('origem_anulada', false)
+    .is('deleted_at', null)
   const linhas = (data as Pick<ShipmentTracking, 'tipo_transporte' | 'estado' | 'data_expedicao' | 'origem_anulada'>[]) ?? []
   const hoje = Date.now()
   const r: ResumoTracking = { emTransitoExpresso: 0, emTransitoAerea: 0, atrasadosExpresso: 0, atrasadosAerea: 0, problema: 0 }
