@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { obterProduto, listarHandpieces, listarAcessorios, obterConfigFicha } from './fichaProduto'
+import { obterProduto, listarHandpieces, listarAcessorios, obterConfigFicha, obterDescricaoModelo } from './fichaProduto'
 import { gerarPdfFichaProduto, type IdiomaFicha } from './fichaProdutoPdf'
 
 // Reúne os dados atuais do equipamento e gera o PDF da ficha de produto.
@@ -19,15 +19,19 @@ export async function gerarFichaBlob(params: {
   shippingTraining?: boolean
 }): Promise<{ blob: Blob; nomeFicheiro: string }> {
   const { equipamentoId, idioma, marca, modelo, ano, serialNumber, precoVenda, incluirPreco, incluirSnCompleto } = params
-  const [produto, handpieces, acess, mediaR, cfg] = await Promise.all([
+  const [produto, handpieces, acess, mediaR, cfg, descModelo] = await Promise.all([
     obterProduto(equipamentoId),
     listarHandpieces(equipamentoId),
     listarAcessorios(equipamentoId),
     supabase.from('media').select('url, capa, ordem, tipo, created_at')
       .eq('equipamento_id', equipamentoId).or('tipo.is.null,tipo.eq.foto'),
     obterConfigFicha(),
+    obterDescricaoModelo(marca, modelo),
   ])
   const aboutTexto = (idioma === 'pt' ? cfg.about_pt : cfg.about_en) ?? cfg.about_pt ?? null
+  const descricaoModelo = descModelo
+    ? ((idioma === 'pt' ? descModelo.descricao_pt : descModelo.descricao_en) ?? descModelo.descricao_pt ?? null)
+    : null
   const fotos = ((mediaR.data as { url: string; capa: boolean | null; ordem: number | null; created_at: string }[]) ?? [])
     .sort((a, b) => (Number(b.capa) - Number(a.capa)) || ((a.ordem ?? 0) - (b.ordem ?? 0)) || a.created_at.localeCompare(b.created_at))
     .map((m) => m.url)
@@ -48,6 +52,7 @@ export async function gerarFichaBlob(params: {
     moeda: params.moeda || 'EUR',
     garantia: params.garantia?.trim() ? params.garantia.trim() : null,
     shippingTraining: !!params.shippingTraining,
+    descricaoModelo,
     aboutTexto,
     fotos,
   })

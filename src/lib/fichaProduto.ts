@@ -119,6 +119,67 @@ export async function guardarAboutFicha(about_pt: string, about_en: string) {
     .eq('id', true)
 }
 
+// ─── Descrições standard por modelo ───────────────────────────────────────────
+export type DescricaoModelo = {
+  id: string
+  marca: string | null
+  modelo: string
+  descricao_pt: string | null
+  descricao_en: string | null
+}
+
+const normMod = (s: string | null | undefined) => (s ?? '').trim().toLowerCase()
+
+export async function listarDescricoesModelo(): Promise<DescricaoModelo[]> {
+  const { data } = await supabase.from('equipment_model_descriptions')
+    .select('id, marca, modelo, descricao_pt, descricao_en').order('marca').order('modelo')
+  return (data as DescricaoModelo[]) ?? []
+}
+
+// Descrição standard para um (marca, modelo) — comparação normalizada.
+export async function obterDescricaoModelo(marca: string | null, modelo: string | null): Promise<DescricaoModelo | null> {
+  if (!modelo || !modelo.trim()) return null
+  const lista = await listarDescricoesModelo()
+  return lista.find((d) => normMod(d.marca) === normMod(marca) && normMod(d.modelo) === normMod(modelo)) ?? null
+}
+
+// Cria ou atualiza a descrição de um modelo (único por marca+modelo normalizado).
+export async function guardarDescricaoModelo(input: {
+  id?: string | null
+  marca: string | null
+  modelo: string
+  descricao_pt: string | null
+  descricao_en: string | null
+  autor?: { id: string | null; nome: string | null }
+}): Promise<{ error: string | null }> {
+  const patch = {
+    marca: input.marca?.trim() || null,
+    modelo: input.modelo.trim(),
+    descricao_pt: input.descricao_pt?.trim() || null,
+    descricao_en: input.descricao_en?.trim() || null,
+    updated_at: new Date().toISOString(),
+  }
+  // Resolve o registo existente (por id ou por marca+modelo normalizado).
+  let id = input.id ?? null
+  if (!id) {
+    const existente = await obterDescricaoModelo(patch.marca, patch.modelo)
+    id = existente?.id ?? null
+  }
+  if (id) {
+    const { error } = await supabase.from('equipment_model_descriptions').update(patch).eq('id', id)
+    return { error: error ? error.message : null }
+  }
+  const { error } = await supabase.from('equipment_model_descriptions').insert({
+    ...patch, criado_por: input.autor?.id ?? null, criado_por_nome: input.autor?.nome ?? null,
+  })
+  return { error: error ? error.message : null }
+}
+
+export async function eliminarDescricaoModelo(id: string): Promise<{ error: string | null }> {
+  const { error } = await supabase.from('equipment_model_descriptions').delete().eq('id', id)
+  return { error: error ? error.message : null }
+}
+
 export type Completude = {
   feitos: number
   total: number
