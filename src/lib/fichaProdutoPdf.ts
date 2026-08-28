@@ -4,6 +4,7 @@
 // Multi-idioma: PT / EN / ES / FR.
 
 import { carregarLogo, aplicarCabecalhoRodape, MARGEM, TOPO_CONTEUDO, RODAPE_ALTURA } from './docTemplate'
+import { EMPRESA } from './empresa'
 
 export type IdiomaFicha = 'pt' | 'en' | 'es' | 'fr'
 
@@ -23,18 +24,22 @@ export type FichaProdutoDados = {
   softwareVersao: string | null
   handpieces: { nome: string; contador_pulsos: number | null; data_leitura: string | null }[]
   acessorios: string[]
-  preco: number | null            // só preenchido se o utilizador escolher incluir
+  // Secção "Condições" (todos opcionais; se nenhum, a secção não aparece).
+  preco: number | null            // valor, só se o utilizador escolher incluir
+  moeda: string                   // moeda do valor (EUR por defeito)
+  garantia: string | null         // texto curto (ex.: "6 meses"), só se incluído
+  shippingTraining: boolean       // linha "Envio e formação incluídos"
   fotos: string[]                 // URLs (capa primeiro)
 }
 
-// Contactos client-facing da ficha (pedidos pela Andreia).
-const CONTACTOS = 'comercial@all4laser.com  ·  +351 210 963 500  ·  www.all4laser.com'
+// Contactos client-facing da ficha (fonte única em src/lib/empresa.ts).
+const CONTACTOS = `${EMPRESA.email}  ·  ${EMPRESA.telefoneComercial}  ·  ${EMPRESA.website}`
 
 const T: Record<IdiomaFicha, Record<string, string>> = {
-  pt: { titulo: 'Ficha de Produto', identificacao: 'Identificação', marca: 'Marca', modelo: 'Modelo', ano: 'Ano', serial: 'Nº de série', estado: 'Estado', condicao: 'Condição', descricao: 'Descrição do estado', handpieces: 'Peças de mão / contadores', hpNome: 'Peça de mão', hpContador: 'Contador (pulsos)', hpLeitura: 'Data da leitura', acessorios: 'Acessórios incluídos', especificacoes: 'Especificações', voltagem: 'Voltagem', frequencia: 'Frequência', dimensoes: 'Dimensões', peso: 'Peso', software: 'Software / versão', preco: 'Preço', contactos: 'Contactos', nota: 'Informação sujeita a confirmação. Fotografias do equipamento real.', sem: '—' },
-  en: { titulo: 'Product Sheet', identificacao: 'Identification', marca: 'Brand', modelo: 'Model', ano: 'Year', serial: 'Serial number', estado: 'Condition', condicao: 'Condition', descricao: 'Condition notes', handpieces: 'Handpieces / counters', hpNome: 'Handpiece', hpContador: 'Counter (pulses)', hpLeitura: 'Reading date', acessorios: 'Included accessories', especificacoes: 'Specifications', voltagem: 'Voltage', frequencia: 'Frequency', dimensoes: 'Dimensions', peso: 'Weight', software: 'Software / version', preco: 'Price', contactos: 'Contact', nota: 'Information subject to confirmation. Photographs of the actual equipment.', sem: '—' },
-  es: { titulo: 'Ficha de Producto', identificacao: 'Identificación', marca: 'Marca', modelo: 'Modelo', ano: 'Año', serial: 'Nº de serie', estado: 'Estado', condicao: 'Condición', descricao: 'Descripción del estado', handpieces: 'Piezas de mano / contadores', hpNome: 'Pieza de mano', hpContador: 'Contador (pulsos)', hpLeitura: 'Fecha de lectura', acessorios: 'Accesorios incluidos', especificacoes: 'Especificaciones', voltagem: 'Voltaje', frequencia: 'Frecuencia', dimensoes: 'Dimensiones', peso: 'Peso', software: 'Software / versión', preco: 'Precio', contactos: 'Contacto', nota: 'Información sujeta a confirmación. Fotografías del equipo real.', sem: '—' },
-  fr: { titulo: 'Fiche Produit', identificacao: 'Identification', marca: 'Marque', modelo: 'Modèle', ano: 'Année', serial: 'Nº de série', estado: 'État', condicao: 'État', descricao: "Description de l'état", handpieces: 'Pièces à main / compteurs', hpNome: 'Pièce à main', hpContador: 'Compteur (impulsions)', hpLeitura: 'Date de lecture', acessorios: 'Accessoires inclus', especificacoes: 'Spécifications', voltagem: 'Tension', frequencia: 'Fréquence', dimensoes: 'Dimensions', peso: 'Poids', software: 'Logiciel / version', preco: 'Prix', contactos: 'Contact', nota: "Informations sous réserve de confirmation. Photographies de l'équipement réel.", sem: '—' },
+  pt: { titulo: 'Ficha de Produto', identificacao: 'Identificação', marca: 'Marca', modelo: 'Modelo', ano: 'Ano', serial: 'Nº de série', estado: 'Estado', condicao: 'Condição', descricao: 'Descrição do estado', handpieces: 'Peças de mão / contadores', hpNome: 'Peça de mão', hpContador: 'Contador (pulsos)', hpLeitura: 'Data da leitura', acessorios: 'Acessórios incluídos', especificacoes: 'Especificações', voltagem: 'Voltagem', frequencia: 'Frequência', dimensoes: 'Dimensões', peso: 'Peso', software: 'Software / versão', preco: 'Valor', condicoes: 'Condições', garantia: 'Garantia', shippingIncluido: 'Envio e formação incluídos', contactos: 'Contactos', nota: 'Informação sujeita a confirmação. Fotografias do equipamento real.', sem: '—' },
+  en: { titulo: 'Product Sheet', identificacao: 'Identification', marca: 'Brand', modelo: 'Model', ano: 'Year', serial: 'Serial number', estado: 'Condition', condicao: 'Condition', descricao: 'Condition notes', handpieces: 'Handpieces / counters', hpNome: 'Handpiece', hpContador: 'Counter (pulses)', hpLeitura: 'Reading date', acessorios: 'Included accessories', especificacoes: 'Specifications', voltagem: 'Voltage', frequencia: 'Frequency', dimensoes: 'Dimensions', peso: 'Weight', software: 'Software / version', preco: 'Price', condicoes: 'Conditions', garantia: 'Warranty', shippingIncluido: 'Shipping and training included', contactos: 'Contact', nota: 'Information subject to confirmation. Photographs of the actual equipment.', sem: '—' },
+  es: { titulo: 'Ficha de Producto', identificacao: 'Identificación', marca: 'Marca', modelo: 'Modelo', ano: 'Año', serial: 'Nº de serie', estado: 'Estado', condicao: 'Condición', descricao: 'Descripción del estado', handpieces: 'Piezas de mano / contadores', hpNome: 'Pieza de mano', hpContador: 'Contador (pulsos)', hpLeitura: 'Fecha de lectura', acessorios: 'Accesorios incluidos', especificacoes: 'Especificaciones', voltagem: 'Voltaje', frequencia: 'Frecuencia', dimensoes: 'Dimensiones', peso: 'Peso', software: 'Software / versión', preco: 'Valor', condicoes: 'Condiciones', garantia: 'Garantía', shippingIncluido: 'Envío y formación incluidos', contactos: 'Contacto', nota: 'Información sujeta a confirmación. Fotografías del equipo real.', sem: '—' },
+  fr: { titulo: 'Fiche Produit', identificacao: 'Identification', marca: 'Marque', modelo: 'Modèle', ano: 'Année', serial: 'Nº de série', estado: 'État', condicao: 'État', descricao: "Description de l'état", handpieces: 'Pièces à main / compteurs', hpNome: 'Pièce à main', hpContador: 'Compteur (impulsions)', hpLeitura: 'Date de lecture', acessorios: 'Accessoires inclus', especificacoes: 'Spécifications', voltagem: 'Tension', frequencia: 'Fréquence', dimensoes: 'Dimensions', peso: 'Poids', software: 'Logiciel / version', preco: 'Valeur', condicoes: 'Conditions', garantia: 'Garantie', shippingIncluido: 'Expédition et formation incluses', contactos: 'Contact', nota: "Informations sous réserve de confirmation. Photographies de l'équipement réel.", sem: '—' },
 }
 
 const NAVY: [number, number, number] = [13, 11, 43]
@@ -204,10 +209,23 @@ export async function gerarPdfFichaProduto(d: FichaProdutoDados): Promise<Blob> 
     if (d.softwareVersao) linha(t.software, d.softwareVersao)
   }
 
-  // ── Preço (opcional) ──
-  if (d.preco != null) {
-    tituloSeccao(t.preco)
-    linha(t.preco, d.preco.toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' }))
+  // ── Condições (valor / garantia / envio+formação — só o que estiver ativo) ──
+  const temCondicoes = d.preco != null || (d.garantia && d.garantia.trim()) || d.shippingTraining
+  if (temCondicoes) {
+    tituloSeccao(t.condicoes)
+    if (d.preco != null) {
+      const moeda = (d.moeda || 'EUR').toUpperCase()
+      let valorTxt: string
+      try { valorTxt = d.preco.toLocaleString('pt-PT', { style: 'currency', currency: moeda }) }
+      catch { valorTxt = `${d.preco.toLocaleString('pt-PT')} ${moeda}` }
+      linha(t.preco, valorTxt)
+    }
+    if (d.garantia && d.garantia.trim()) linha(t.garantia, d.garantia.trim())
+    if (d.shippingTraining) {
+      garantirEspaco(16)
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...NAVY)
+      doc.text(`✓  ${t.shippingIncluido}`, MARGEM, y); y += 16
+    }
   }
 
   // ── Contactos + nota legal ──

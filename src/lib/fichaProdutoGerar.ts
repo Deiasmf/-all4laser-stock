@@ -14,6 +14,9 @@ export async function gerarFichaBlob(params: {
   precoVenda: number | null
   incluirPreco: boolean
   incluirSnCompleto: boolean
+  moeda?: string
+  garantia?: string | null       // texto (null/vazio = não incluir)
+  shippingTraining?: boolean
 }): Promise<{ blob: Blob; nomeFicheiro: string }> {
   const { equipamentoId, idioma, marca, modelo, ano, serialNumber, precoVenda, incluirPreco, incluirSnCompleto } = params
   const [produto, handpieces, acess, mediaR] = await Promise.all([
@@ -40,6 +43,9 @@ export async function gerarFichaBlob(params: {
     handpieces: handpieces.map((h) => ({ nome: h.nome, contador_pulsos: h.contador_pulsos, data_leitura: h.data_leitura })),
     acessorios: acess.map((a) => a.descricao),
     preco: incluirPreco ? precoVenda : null,
+    moeda: params.moeda || 'EUR',
+    garantia: params.garantia?.trim() ? params.garantia.trim() : null,
+    shippingTraining: !!params.shippingTraining,
     fotos,
   })
   const nomeFicheiro = `All4laser - ${[marca, modelo, ano].filter(Boolean).join(' ')} - Ref ${equipamentoId.slice(0, 8)}`

@@ -38,6 +38,10 @@ export default function EnviarFichaLead({ lead, onEnviado }: {
   const [cc, setCc] = useState('')
   const [idioma, setIdioma] = useState<IdiomaFicha>('pt')
   const [incluirPreco, setIncluirPreco] = useState(false)
+  const [moeda, setMoeda] = useState('EUR')
+  const [incluirGarantia, setIncluirGarantia] = useState(false)
+  const [garantia, setGarantia] = useState('')
+  const [incluirShipping, setIncluirShipping] = useState(false)
   const [incluirSn, setIncluirSn] = useState(false)
   const [incluirLink, setIncluirLink] = useState(true)
   const [assunto, setAssunto] = useState('')
@@ -97,13 +101,14 @@ export default function EnviarFichaLead({ lead, onEnviado }: {
         for (const r of (data as { id: string; preco_venda: number | null }[] | null) ?? []) precoMap.set(r.id, r.preco_venda)
       }
 
-      const itens: { equipamentoId: string; pdfBase64: string; filename: string; incluiuPreco: boolean; incluiuSnCompleto: boolean; linkId: string | null }[] = []
+      const itens: { equipamentoId: string; pdfBase64: string; filename: string; incluiuPreco: boolean; incluiuSnCompleto: boolean; linkId: string | null; moeda: string | null; incluiuGarantia: boolean; garantiaTexto: string | null; incluiuShipping: boolean }[] = []
       const linksTxt: string[] = []
       for (const e of sel) {
         const { blob, nomeFicheiro } = await gerarFichaBlob({
           equipamentoId: e.id, idioma, marca: e.marca, modelo: e.modelo, ano: e.ano,
           serialNumber: e.serial_number, precoVenda: precoMap.get(e.id) ?? null,
           incluirPreco, incluirSnCompleto: incluirSn,
+          moeda, garantia: incluirGarantia ? garantia : null, shippingTraining: incluirShipping,
         })
         const pdfBase64 = await blobParaBase64(blob)
         let linkId: string | null = null
@@ -112,7 +117,13 @@ export default function EnviarFichaLead({ lead, onEnviado }: {
           const l = link as { id: string; token: string } | null
           if (l) { linkId = l.id; linksTxt.push(`${[e.marca, e.modelo].filter(Boolean).join(' ')}: ${urlLinkPublico(l.token)}`) }
         }
-        itens.push({ equipamentoId: e.id, pdfBase64, filename: `${nomeFicheiro}.pdf`, incluiuPreco: incluirPreco, incluiuSnCompleto: incluirSn, linkId })
+        itens.push({
+          equipamentoId: e.id, pdfBase64, filename: `${nomeFicheiro}.pdf`,
+          incluiuPreco: incluirPreco, incluiuSnCompleto: incluirSn, linkId,
+          moeda: incluirPreco ? moeda : null,
+          incluiuGarantia: incluirGarantia, garantiaTexto: incluirGarantia ? garantia.trim() || null : null,
+          incluiuShipping: incluirShipping,
+        })
       }
       const corpoFinal = linksTxt.length ? `${corpo}\n\n${labelFichaOnline(idioma)}:\n${linksTxt.join('\n')}` : corpo
 
@@ -185,8 +196,28 @@ export default function EnviarFichaLead({ lead, onEnviado }: {
 
             <div style={s.checks}>
               <label style={s.check}><input type="checkbox" checked={incluirLink} onChange={(e) => setIncluirLink(e.target.checked)} /> Incluir link online</label>
-              <label style={s.check}><input type="checkbox" checked={incluirPreco} onChange={(e) => setIncluirPreco(e.target.checked)} /> Incluir preço</label>
               <label style={s.check}><input type="checkbox" checked={incluirSn} onChange={(e) => setIncluirSn(e.target.checked)} /> S/N completo</label>
+            </div>
+
+            <div style={s.condicoes}>
+              <div style={s.condTitulo}>Condições (aplicam-se a todas as fichas deste envio)</div>
+              <div style={s.checks}>
+                <label style={s.check}><input type="checkbox" checked={incluirPreco} onChange={(e) => setIncluirPreco(e.target.checked)} /> Incluir valor</label>
+                {incluirPreco && (
+                  <select style={s.moeda} value={moeda} onChange={(e) => setMoeda(e.target.value)}>
+                    <option value="EUR">EUR (€)</option>
+                    <option value="USD">USD ($)</option>
+                    <option value="GBP">GBP (£)</option>
+                  </select>
+                )}
+              </div>
+              <div style={s.checks}>
+                <label style={s.check}><input type="checkbox" checked={incluirGarantia} onChange={(e) => setIncluirGarantia(e.target.checked)} /> Incluir garantia</label>
+                {incluirGarantia && (
+                  <input style={{ ...s.input, maxWidth: 200 }} value={garantia} placeholder="Ex.: 6 meses" onChange={(e) => setGarantia(e.target.value)} />
+                )}
+              </div>
+              <label style={s.check}><input type="checkbox" checked={incluirShipping} onChange={(e) => setIncluirShipping(e.target.checked)} /> Incluir &ldquo;Envio e formação incluídos&rdquo;</label>
             </div>
 
             <label style={s.campo}><span style={s.rot}>Assunto</span>
@@ -225,8 +256,11 @@ const s: Record<string, React.CSSProperties> = {
   chipX: { background: 'none', border: 'none', color: '#1E40AF', cursor: 'pointer', fontSize: 12, padding: 0, lineHeight: 1 },
   grelha: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginTop: 4 },
   campo: { display: 'flex', flexDirection: 'column', gap: 4 },
-  checks: { display: 'flex', gap: 16, flexWrap: 'wrap', margin: '4px 0' },
+  checks: { display: 'flex', gap: 16, flexWrap: 'wrap', margin: '4px 0', alignItems: 'center' },
   check: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 13.5 },
+  condicoes: { border: '1px solid var(--border)', borderRadius: 10, padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 2 },
+  condTitulo: { fontSize: 12, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 2 },
+  moeda: { padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 8, font: 'inherit' },
   dica: { fontSize: 12, color: 'var(--muted)', margin: '2px 0 0' },
   acoes: { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 },
   btnSec: { background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 14px', fontWeight: 600, cursor: 'pointer' },
