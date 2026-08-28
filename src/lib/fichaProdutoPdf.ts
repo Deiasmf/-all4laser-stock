@@ -44,6 +44,7 @@ const T: Record<IdiomaFicha, Record<string, string>> = {
 
 const NAVY: [number, number, number] = [13, 11, 43]
 const CINZA: [number, number, number] = [110, 116, 128]
+const ACCENT: [number, number, number] = [124, 58, 237] // violeta da marca (detalhes)
 
 function serialParcial(sn: string | null, completo: boolean, semTxt: string): string {
   if (!sn) return semTxt
@@ -97,29 +98,37 @@ export async function gerarPdfFichaProduto(d: FichaProdutoDados): Promise<Blob> 
   // separação por espaço em branco.
   function tituloSeccao(txt: string) {
     garantirEspaco(36)
-    y += 10 // respiro antes da secção
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...NAVY)
-    doc.setCharSpace(1.2)
-    doc.text(txt.toUpperCase(), MARGEM, y)
+    y += 12 // respiro antes da secção
+    // barra de acento à esquerda do rótulo (detalhe de cor)
+    doc.setFillColor(...ACCENT)
+    doc.rect(MARGEM, y - 7, 3, 9, 'F')
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...ACCENT)
+    doc.setCharSpace(0.5)
+    doc.text(txt.toUpperCase(), MARGEM + 10, y)
     doc.setCharSpace(0)
-    y += 17
+    y += 18
   }
   function linha(rot: string, val: string) {
     garantirEspaco(18)
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...CINZA)
     doc.text(rot, MARGEM, y)
     doc.setTextColor(...NAVY)
-    doc.text(val || t.sem, MARGEM + 150, y)
+    doc.text(val || t.sem, MARGEM + 116, y)
     y += 17
   }
 
   // ── Título (editorial: kicker + nome grande + subtítulo discreto) ──
   const nome = [d.marca, d.modelo].filter(Boolean).join(' ') || t.sem
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...CINZA)
-  doc.setCharSpace(1.5); doc.text(t.titulo.toUpperCase(), MARGEM, y); doc.setCharSpace(0)
-  y += 16
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(22); doc.setTextColor(...NAVY)
-  doc.text(nome, MARGEM, y); y += 18
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...ACCENT)
+  doc.setCharSpace(0.8); doc.text(t.titulo.toUpperCase(), MARGEM, y); doc.setCharSpace(0)
+  y += 26 // mais espaço entre o kicker e o nome
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(23); doc.setTextColor(...NAVY)
+  doc.text(nome, MARGEM, y)
+  // sublinhado de acento sob o título (detalhe futurista)
+  y += 7
+  doc.setFillColor(...ACCENT)
+  doc.rect(MARGEM, y, Math.min(doc.getTextWidth(nome), 130), 2.5, 'F')
+  y += 15
   const subtitulo = [d.ano, serialParcial(d.serialCompleto, d.incluirSnCompleto, '')].filter(Boolean).join('   ·   ')
   if (subtitulo) {
     doc.setFontSize(10.5); doc.setTextColor(...CINZA)
@@ -234,8 +243,11 @@ export async function gerarPdfFichaProduto(d: FichaProdutoDados): Promise<Blob> 
     if (d.garantia && d.garantia.trim()) linha(t.garantia, d.garantia.trim())
     if (d.shippingTraining) {
       garantirEspaco(16)
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...NAVY)
-      doc.text(`✓  ${t.shippingIncluido}`, MARGEM, y); y += 16
+      doc.setCharSpace(0)
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10)
+      doc.setTextColor(...ACCENT); doc.text('✓', MARGEM, y)
+      doc.setTextColor(...NAVY); doc.text(t.shippingIncluido, MARGEM + 13, y)
+      y += 16
     }
   }
 
