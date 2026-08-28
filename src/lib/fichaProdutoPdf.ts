@@ -118,17 +118,14 @@ export async function gerarPdfFichaProduto(d: FichaProdutoDados): Promise<Blob> 
   }
 
   // ── Título (editorial: kicker + nome grande + subtítulo discreto) ──
+  // Título = só o modelo (grande), com sublinhado de acento.
   const nome = [d.marca, d.modelo].filter(Boolean).join(' ') || t.sem
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...ACCENT)
-  doc.setCharSpace(0.8); doc.text(t.titulo.toUpperCase(), MARGEM, y); doc.setCharSpace(0)
-  y += 26 // mais espaço entre o kicker e o nome
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(23); doc.setTextColor(...NAVY)
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(26); doc.setTextColor(...NAVY)
   doc.text(nome, MARGEM, y)
-  // sublinhado de acento sob o título (detalhe futurista)
-  y += 7
+  y += 9
   doc.setFillColor(...ACCENT)
-  doc.rect(MARGEM, y, Math.min(doc.getTextWidth(nome), 130), 2.5, 'F')
-  y += 15
+  doc.rect(MARGEM, y, Math.min(doc.getTextWidth(nome), 150), 3, 'F')
+  y += 16
   const subtitulo = [d.ano, serialParcial(d.serialCompleto, d.incluirSnCompleto, '')].filter(Boolean).join('   ·   ')
   if (subtitulo) {
     doc.setFontSize(10.5); doc.setTextColor(...CINZA)
@@ -262,7 +259,7 @@ export async function gerarPdfFichaProduto(d: FichaProdutoDados): Promise<Blob> 
 
   // Cabeçalho/rodapé em todas as páginas
   const logo = await carregarLogo()
-  aplicarCabecalhoRodape(doc, logo)
+  aplicarCabecalhoRodape(doc, logo, undefined, { acento: ACCENT })
 
   return doc.output('blob')
 }
