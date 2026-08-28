@@ -93,27 +93,39 @@ export async function gerarPdfFichaProduto(d: FichaProdutoDados): Promise<Blob> 
   function garantirEspaco(h: number) {
     if (y + h > fundo) { doc.addPage(); y = TOPO_CONTEUDO }
   }
+  // Layout editorial: rótulo em maiúsculas espaçadas a navy, SEM linha/borda;
+  // separação por espaço em branco.
   function tituloSeccao(txt: string) {
-    garantirEspaco(28)
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...NAVY)
-    doc.text(txt, MARGEM, y); y += 6
-    doc.setDrawColor(220, 222, 226); doc.line(MARGEM, y, larguraPagina - MARGEM, y); y += 14
+    garantirEspaco(36)
+    y += 10 // respiro antes da secção
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...NAVY)
+    doc.setCharSpace(1.2)
+    doc.text(txt.toUpperCase(), MARGEM, y)
+    doc.setCharSpace(0)
+    y += 17
   }
   function linha(rot: string, val: string) {
     garantirEspaco(18)
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...CINZA)
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...CINZA)
     doc.text(rot, MARGEM, y)
-    doc.setFont('helvetica', 'normal'); doc.setTextColor(...NAVY)
+    doc.setTextColor(...NAVY)
     doc.text(val || t.sem, MARGEM + 150, y)
-    y += 16
+    y += 17
   }
 
-  // ── Título ──
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(18); doc.setTextColor(...NAVY)
-  doc.text(t.titulo, MARGEM, y); y += 22
-  doc.setFontSize(13); doc.setTextColor(...NAVY)
+  // ── Título (editorial: kicker + nome grande + subtítulo discreto) ──
   const nome = [d.marca, d.modelo].filter(Boolean).join(' ') || t.sem
-  doc.text(nome, MARGEM, y); y += 20
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...CINZA)
+  doc.setCharSpace(1.5); doc.text(t.titulo.toUpperCase(), MARGEM, y); doc.setCharSpace(0)
+  y += 16
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(22); doc.setTextColor(...NAVY)
+  doc.text(nome, MARGEM, y); y += 18
+  const subtitulo = [d.ano, serialParcial(d.serialCompleto, d.incluirSnCompleto, '')].filter(Boolean).join('   ·   ')
+  if (subtitulo) {
+    doc.setFontSize(10.5); doc.setTextColor(...CINZA)
+    doc.text(subtitulo, MARGEM, y); y += 16
+  }
+  y += 8
 
   // ── Fotos: capa grande + galeria em grelha ──
   const imgs = (await Promise.all(d.fotos.slice(0, 9).map(carregarImagem))).filter(Boolean) as { dataUrl: string; fmt: string; w: number; h: number }[]
@@ -129,11 +141,11 @@ export async function gerarPdfFichaProduto(d: FichaProdutoDados): Promise<Blob> 
     const capaMaxH = 210
     garantirEspaco(capaMaxH + 10)
     const hCapa = desenharImagem(capa, MARGEM, y, larguraUtil, capaMaxH)
-    y += hCapa + 10
+    y += hCapa + 16
     const resto = imgs.slice(1)
     if (resto.length > 0) {
       const cols = 4
-      const gap = 8
+      const gap = 10
       const cellW = (larguraUtil - gap * (cols - 1)) / cols
       const cellH = cellW * 0.75
       for (let i = 0; i < resto.length; i++) {
@@ -145,7 +157,7 @@ export async function gerarPdfFichaProduto(d: FichaProdutoDados): Promise<Blob> 
       }
       if (resto.length % cols !== 0) y += cellH + gap
     }
-    y += 6
+    y += 10
   }
 
   // ── Identificação ──
@@ -171,10 +183,9 @@ export async function gerarPdfFichaProduto(d: FichaProdutoDados): Promise<Blob> 
   if (d.handpieces.length > 0) {
     tituloSeccao(t.handpieces)
     const c1 = MARGEM, c2 = MARGEM + larguraUtil * 0.5, c3 = MARGEM + larguraUtil * 0.78
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...CINZA)
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...CINZA)
     garantirEspaco(16)
-    doc.text(t.hpNome, c1, y); doc.text(t.hpContador, c2, y); doc.text(t.hpLeitura, c3, y); y += 6
-    doc.setDrawColor(230, 232, 236); doc.line(MARGEM, y, larguraPagina - MARGEM, y); y += 12
+    doc.text(t.hpNome, c1, y); doc.text(t.hpContador, c2, y); doc.text(t.hpLeitura, c3, y); y += 15
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...NAVY)
     for (const h of d.handpieces) {
       garantirEspaco(16)
