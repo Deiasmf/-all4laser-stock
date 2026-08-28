@@ -58,7 +58,8 @@ export async function carregarLogo(): Promise<string | null> {
 export function aplicarCabecalhoRodape(
   doc: jsPDF,
   logo: string | null,
-  dados: DadosEmpresa = DADOS_EMPRESA
+  dados: DadosEmpresa = DADOS_EMPRESA,
+  opts: { acento?: [number, number, number] } = {}
 ) {
   const larguraPagina = doc.internal.pageSize.getWidth()
   const alturaPagina = doc.internal.pageSize.getHeight()
@@ -84,8 +85,25 @@ export function aplicarCabecalhoRodape(
         // logótipo inválido — segue sem imagem
       }
     }
-    doc.setDrawColor(220, 222, 226)
-    doc.line(MARGEM, logoTopo + logoAlt + 8, larguraPagina - MARGEM, logoTopo + logoAlt + 8)
+    const hy = logoTopo + logoAlt + 8
+    if (opts.acento) {
+      // Cabeçalho com identidade mais forte: barra de topo + motivo de linhas
+      // diagonais (futurista) + separador a 2 tons.
+      const [ar, ag, ab] = opts.acento
+      doc.setFillColor(ar, ag, ab)
+      doc.rect(0, 0, larguraPagina, 5, 'F')
+      doc.setDrawColor(ar, ag, ab); doc.setLineWidth(0.9)
+      for (let k = 0; k < 5; k++) {
+        const x0 = larguraPagina - MARGEM - 66 + k * 15
+        doc.line(x0, logoTopo + 2, x0 + 20, logoTopo + logoAlt - 2)
+      }
+      doc.setLineWidth(0.2)
+      doc.setDrawColor(228, 230, 235); doc.line(MARGEM, hy, larguraPagina - MARGEM, hy)
+      doc.setFillColor(ar, ag, ab); doc.rect(MARGEM, hy - 1.5, 150, 3, 'F')
+    } else {
+      doc.setDrawColor(220, 222, 226)
+      doc.line(MARGEM, hy, larguraPagina - MARGEM, hy)
+    }
 
     // ── Rodapé: linha separadora + info da empresa + nº de página ──
     const baseRodape = alturaPagina - RODAPE_ALTURA + 12
