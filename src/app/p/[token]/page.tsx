@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { EMPRESA } from '@/lib/empresa'
 
 // Página pública da ficha de produto (sem login), aberta via link partilhável.
 // Mobile-first: pensada para abrir no telemóvel a partir do WhatsApp.
@@ -28,9 +29,9 @@ type Ficha = {
   fotos?: string[]
 }
 
-const EMAIL = 'comercial@all4laser.com'
-const TEL = '+351210963500'
-const TEL_TXT = '+351 210 963 500'
+const EMAIL = EMPRESA.email
+const TEL = EMPRESA.telefoneComercial.replace(/\s/g, '')
+const TEL_TXT = EMPRESA.telefoneComercial
 
 type Idioma = 'pt' | 'en' | 'es' | 'fr'
 const L: Record<Idioma, Record<string, string>> = {

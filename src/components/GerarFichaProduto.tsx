@@ -22,6 +22,10 @@ export default function GerarFichaProduto({ equipamentoId, marca, modelo, ano, s
   const [aberto, setAberto] = useState(false)
   const [idioma, setIdioma] = useState<IdiomaFicha>('pt')
   const [incluirPreco, setIncluirPreco] = useState(false)
+  const [moeda, setMoeda] = useState('EUR')
+  const [incluirGarantia, setIncluirGarantia] = useState(false)
+  const [garantia, setGarantia] = useState('')
+  const [incluirShipping, setIncluirShipping] = useState(false)
   const [incluirSn, setIncluirSn] = useState(false)
   const [aGerar, setAGerar] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
@@ -32,6 +36,7 @@ export default function GerarFichaProduto({ equipamentoId, marca, modelo, ano, s
       const { blob, nomeFicheiro } = await gerarFichaBlob({
         equipamentoId, idioma, marca, modelo, ano, serialNumber, precoVenda,
         incluirPreco, incluirSnCompleto: incluirSn,
+        moeda, garantia: incluirGarantia ? garantia : null, shippingTraining: incluirShipping,
       })
       await descarregarPdf(blob, nomeFicheiro)
       setAberto(false)
@@ -60,10 +65,33 @@ export default function GerarFichaProduto({ equipamentoId, marca, modelo, ano, s
               {IDIOMAS.map((i) => <option key={i.v} value={i.v}>{i.label}</option>)}
             </select>
 
-            <label style={s.check}>
-              <input type="checkbox" checked={incluirPreco} onChange={(e) => setIncluirPreco(e.target.checked)} />
-              Incluir preço {precoVenda == null && <span style={s.muted}>(sem preço de venda definido)</span>}
-            </label>
+            <div style={s.condicoes}>
+              <div style={s.condTitulo}>Condições (opcional)</div>
+              <label style={s.check}>
+                <input type="checkbox" checked={incluirPreco} onChange={(e) => setIncluirPreco(e.target.checked)} />
+                Incluir valor {precoVenda == null && <span style={s.muted}>(sem preço de venda definido)</span>}
+              </label>
+              {incluirPreco && (
+                <select style={{ ...s.input, marginTop: 6 }} value={moeda} onChange={(e) => setMoeda(e.target.value)}>
+                  <option value="EUR">EUR (€)</option>
+                  <option value="USD">USD ($)</option>
+                  <option value="GBP">GBP (£)</option>
+                </select>
+              )}
+              <label style={s.check}>
+                <input type="checkbox" checked={incluirGarantia} onChange={(e) => setIncluirGarantia(e.target.checked)} />
+                Incluir garantia
+              </label>
+              {incluirGarantia && (
+                <input style={{ ...s.input, marginTop: 6 }} value={garantia} placeholder="Ex.: 6 meses"
+                  onChange={(e) => setGarantia(e.target.value)} />
+              )}
+              <label style={s.check}>
+                <input type="checkbox" checked={incluirShipping} onChange={(e) => setIncluirShipping(e.target.checked)} />
+                Incluir &ldquo;Envio e formação incluídos&rdquo;
+              </label>
+            </div>
+
             <label style={s.check}>
               <input type="checkbox" checked={incluirSn} onChange={(e) => setIncluirSn(e.target.checked)} />
               Incluir S/N completo <span style={s.muted}>(por defeito só os últimos 4)</span>
@@ -91,6 +119,8 @@ const s: Record<string, React.CSSProperties> = {
   label: { fontWeight: 600, fontSize: 13.5, marginTop: 10, marginBottom: 4, display: 'block' },
   input: { width: '100%', padding: '9px 11px', border: '1px solid var(--border)', borderRadius: 8, font: 'inherit', boxSizing: 'border-box' },
   check: { display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, fontSize: 14 },
+  condicoes: { border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', marginTop: 14 },
+  condTitulo: { fontSize: 12.5, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.3 },
   muted: { color: 'var(--muted)', fontSize: 12.5 },
   acoes: { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 },
   btnSec: { background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 14px', fontWeight: 600, cursor: 'pointer' },

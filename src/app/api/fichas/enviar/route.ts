@@ -16,6 +16,10 @@ type ItemEnvio = {
   incluiuPreco?: boolean
   incluiuSnCompleto?: boolean
   linkId?: string | null
+  moeda?: string | null
+  incluiuGarantia?: boolean
+  garantiaTexto?: string | null
+  incluiuShipping?: boolean
 }
 type Body = {
   para?: string
@@ -84,6 +88,9 @@ export async function POST(req: Request) {
       await db.from('ficha_envio_itens').insert(itens.map((i) => ({
         envio_id: envioId, equipamento_id: i.equipamentoId, link_id: i.linkId ?? null,
         incluiu_preco: !!i.incluiuPreco, incluiu_sn_completo: !!i.incluiuSnCompleto,
+        moeda: i.moeda ?? null,
+        incluiu_garantia: !!i.incluiuGarantia, garantia_texto: i.garantiaTexto ?? null,
+        incluiu_shipping: !!i.incluiuShipping,
       })))
     }
   } catch {

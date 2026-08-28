@@ -3,6 +3,7 @@
 // aplicados a todas as páginas. Reutilizável por qualquer documento.
 
 import type { jsPDF } from 'jspdf'
+import { EMPRESA } from './empresa'
 
 export type DadosEmpresa = {
   nome: string
@@ -13,16 +14,15 @@ export type DadosEmpresa = {
   website?: string
 }
 
-// ── Informações da empresa (editar aqui para atualizar todos os documentos) ──
-// Preenche os campos em falta (morada, NIF, telefone, etc.) e aparecem
-// automaticamente no rodapé de todos os PDF.
+// Informações da empresa no rodapé dos documentos gerais (packing lists, etc.).
+// Fonte única em src/lib/empresa.ts — usa a linha fixa do escritório.
 export const DADOS_EMPRESA: DadosEmpresa = {
-  nome: 'All4laser International Group',
-  morada: 'Parque Industrial Via Nova, Rua dos Caniços 31/33, 2625-253 Vialonga, Portugal',
-  nif: 'PT508 562 287',
-  telefone: '+351 21 757 69 15',
-  email: 'comercial@all4laser.com',
-  website: 'www.all4laser.com',
+  nome: EMPRESA.nome,
+  morada: EMPRESA.morada,
+  nif: EMPRESA.nif,
+  telefone: EMPRESA.telefoneGeral,
+  email: EMPRESA.email,
+  website: EMPRESA.website,
 }
 
 // Caminho do logótipo na pasta /public
