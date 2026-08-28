@@ -9,6 +9,7 @@ import { pecasComPedidoPendente } from '@/lib/compras'
 import { LOCALIZACOES_PECA } from '@/types/compras'
 import QrPeca from '@/components/QrPeca'
 import SelectMarca from '@/components/SelectMarca'
+import SelectGrupo from '@/components/SelectGrupo'
 import { imprimirEtiquetas } from '@/lib/etiquetas'
 import BotaoExportar from '@/components/BotaoExportar'
 import BotaoPdf from '@/components/BotaoPdf'
@@ -419,7 +420,7 @@ function ModalPeca({
           </div>
           <div>
             <label style={c.label}>Grupo</label>
-            <input style={c.inputModal} value={grupo} onChange={(e) => setGrupo(e.target.value)} placeholder="Ex: Peças PRO" disabled={soLeitura} />
+            <SelectGrupo valor={grupo} onChange={setGrupo} disabled={soLeitura} style={c.inputModal} />
           </div>
         </div>
 
