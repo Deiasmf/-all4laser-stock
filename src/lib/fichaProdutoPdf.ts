@@ -29,6 +29,7 @@ export type FichaProdutoDados = {
   moeda: string                   // moeda do valor (EUR por defeito)
   garantia: string | null         // texto curto (ex.: "6 meses"), só se incluído
   shippingTraining: boolean       // linha "Envio e formação incluídos"
+  aboutTexto: string | null       // bloco "About All4laser" (no idioma da ficha)
   fotos: string[]                 // URLs (capa primeiro)
 }
 
@@ -36,10 +37,10 @@ export type FichaProdutoDados = {
 const CONTACTOS = `${EMPRESA.email}  ·  ${EMPRESA.telefoneComercial}  ·  ${EMPRESA.website}`
 
 const T: Record<IdiomaFicha, Record<string, string>> = {
-  pt: { titulo: 'Ficha de Produto', identificacao: 'Identificação', marca: 'Marca', modelo: 'Modelo', ano: 'Ano', serial: 'Nº de série', estado: 'Estado', condicao: 'Condição', descricao: 'Descrição do estado', handpieces: 'Peças de mão / contadores', hpNome: 'Peça de mão', hpContador: 'Contador (pulsos)', hpLeitura: 'Data da leitura', acessorios: 'Acessórios incluídos', especificacoes: 'Especificações', voltagem: 'Voltagem', frequencia: 'Frequência', dimensoes: 'Dimensões', peso: 'Peso', software: 'Software / versão', preco: 'Valor', condicoes: 'Condições', garantia: 'Garantia', shippingIncluido: 'Envio e formação incluídos', contactos: 'Contactos', nota: 'Informação sujeita a confirmação. Fotografias do equipamento real.', sem: '—' },
-  en: { titulo: 'Product Sheet', identificacao: 'Identification', marca: 'Brand', modelo: 'Model', ano: 'Year', serial: 'Serial number', estado: 'Condition', condicao: 'Condition', descricao: 'Condition notes', handpieces: 'Handpieces / counters', hpNome: 'Handpiece', hpContador: 'Counter (pulses)', hpLeitura: 'Reading date', acessorios: 'Included accessories', especificacoes: 'Specifications', voltagem: 'Voltage', frequencia: 'Frequency', dimensoes: 'Dimensions', peso: 'Weight', software: 'Software / version', preco: 'Price', condicoes: 'Conditions', garantia: 'Warranty', shippingIncluido: 'Shipping and training included', contactos: 'Contact', nota: 'Information subject to confirmation. Photographs of the actual equipment.', sem: '—' },
-  es: { titulo: 'Ficha de Producto', identificacao: 'Identificación', marca: 'Marca', modelo: 'Modelo', ano: 'Año', serial: 'Nº de serie', estado: 'Estado', condicao: 'Condición', descricao: 'Descripción del estado', handpieces: 'Piezas de mano / contadores', hpNome: 'Pieza de mano', hpContador: 'Contador (pulsos)', hpLeitura: 'Fecha de lectura', acessorios: 'Accesorios incluidos', especificacoes: 'Especificaciones', voltagem: 'Voltaje', frequencia: 'Frecuencia', dimensoes: 'Dimensiones', peso: 'Peso', software: 'Software / versión', preco: 'Valor', condicoes: 'Condiciones', garantia: 'Garantía', shippingIncluido: 'Envío y formación incluidos', contactos: 'Contacto', nota: 'Información sujeta a confirmación. Fotografías del equipo real.', sem: '—' },
-  fr: { titulo: 'Fiche Produit', identificacao: 'Identification', marca: 'Marque', modelo: 'Modèle', ano: 'Année', serial: 'Nº de série', estado: 'État', condicao: 'État', descricao: "Description de l'état", handpieces: 'Pièces à main / compteurs', hpNome: 'Pièce à main', hpContador: 'Compteur (impulsions)', hpLeitura: 'Date de lecture', acessorios: 'Accessoires inclus', especificacoes: 'Spécifications', voltagem: 'Tension', frequencia: 'Fréquence', dimensoes: 'Dimensions', peso: 'Poids', software: 'Logiciel / version', preco: 'Valeur', condicoes: 'Conditions', garantia: 'Garantie', shippingIncluido: 'Expédition et formation incluses', contactos: 'Contact', nota: "Informations sous réserve de confirmation. Photographies de l'équipement réel.", sem: '—' },
+  pt: { titulo: 'Ficha de Produto', identificacao: 'Identificação', marca: 'Marca', modelo: 'Modelo', ano: 'Ano', serial: 'Nº de série', estado: 'Estado', condicao: 'Condição', descricao: 'Descrição do estado', handpieces: 'Peças de mão / contadores', hpNome: 'Peça de mão', hpContador: 'Contador (pulsos)', hpLeitura: 'Data da leitura', acessorios: 'Acessórios incluídos', especificacoes: 'Especificações', voltagem: 'Voltagem', frequencia: 'Frequência', dimensoes: 'Dimensões', peso: 'Peso', software: 'Software / versão', preco: 'Valor', condicoes: 'Condições', garantia: 'Garantia', shippingIncluido: 'Envio e formação incluídos', sobre: 'Sobre a All4laser', contactos: 'Contactos', nota: 'Informação sujeita a confirmação. Fotografias do equipamento real.', sem: '—' },
+  en: { titulo: 'Product Sheet', identificacao: 'Identification', marca: 'Brand', modelo: 'Model', ano: 'Year', serial: 'Serial number', estado: 'Condition', condicao: 'Condition', descricao: 'Condition notes', handpieces: 'Handpieces / counters', hpNome: 'Handpiece', hpContador: 'Counter (pulses)', hpLeitura: 'Reading date', acessorios: 'Included accessories', especificacoes: 'Specifications', voltagem: 'Voltage', frequencia: 'Frequency', dimensoes: 'Dimensions', peso: 'Weight', software: 'Software / version', preco: 'Price', condicoes: 'Conditions', garantia: 'Warranty', shippingIncluido: 'Shipping and training included', sobre: 'About All4laser', contactos: 'Contact', nota: 'Information subject to confirmation. Photographs of the actual equipment.', sem: '—' },
+  es: { titulo: 'Ficha de Producto', identificacao: 'Identificación', marca: 'Marca', modelo: 'Modelo', ano: 'Año', serial: 'Nº de serie', estado: 'Estado', condicao: 'Condición', descricao: 'Descripción del estado', handpieces: 'Piezas de mano / contadores', hpNome: 'Pieza de mano', hpContador: 'Contador (pulsos)', hpLeitura: 'Fecha de lectura', acessorios: 'Accesorios incluidos', especificacoes: 'Especificaciones', voltagem: 'Voltaje', frequencia: 'Frecuencia', dimensoes: 'Dimensiones', peso: 'Peso', software: 'Software / versión', preco: 'Valor', condicoes: 'Condiciones', garantia: 'Garantía', shippingIncluido: 'Envío y formación incluidos', sobre: 'Sobre All4laser', contactos: 'Contacto', nota: 'Información sujeta a confirmación. Fotografías del equipo real.', sem: '—' },
+  fr: { titulo: 'Fiche Produit', identificacao: 'Identification', marca: 'Marque', modelo: 'Modèle', ano: 'Année', serial: 'Nº de série', estado: 'État', condicao: 'État', descricao: "Description de l'état", handpieces: 'Pièces à main / compteurs', hpNome: 'Pièce à main', hpContador: 'Compteur (impulsions)', hpLeitura: 'Date de lecture', acessorios: 'Accessoires inclus', especificacoes: 'Spécifications', voltagem: 'Tension', frequencia: 'Fréquence', dimensoes: 'Dimensions', peso: 'Poids', software: 'Logiciel / version', preco: 'Valeur', condicoes: 'Conditions', garantia: 'Garantie', shippingIncluido: 'Expédition et formation incluses', sobre: 'À propos de All4laser', contactos: 'Contact', nota: "Informations sous réserve de confirmation. Photographies de l'équipement réel.", sem: '—' },
 }
 
 const NAVY: [number, number, number] = [13, 11, 43]
@@ -243,6 +244,15 @@ export async function gerarPdfFichaProduto(d: FichaProdutoDados): Promise<Blob> 
       doc.setTextColor(...NAVY); doc.text(t.shippingIncluido, MARGEM + 13, y)
       y += 16
     }
+  }
+
+  // ── Sobre a All4laser (bloco fixo, editável na administração) ──
+  if (d.aboutTexto && d.aboutTexto.trim()) {
+    tituloSeccao(t.sobre)
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...NAVY)
+    const linhas = doc.splitTextToSize(d.aboutTexto.trim(), larguraUtil)
+    garantirEspaco(linhas.length * 13 + 4)
+    doc.text(linhas, MARGEM, y); y += linhas.length * 13 + 6
   }
 
   // ── Contactos + nota legal ──

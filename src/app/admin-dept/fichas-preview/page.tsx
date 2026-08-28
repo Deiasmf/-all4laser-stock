@@ -27,6 +27,9 @@ function exemplo(idioma: IdiomaFicha): FichaProdutoDados {
     ],
     acessorios: ['Óculos de proteção', 'Pedal', 'Manual do utilizador', 'Cabo de alimentação'],
     preco: 42000, moeda: 'EUR', garantia: '6 meses', shippingTraining: true,
+    aboutTexto: idioma === 'pt'
+      ? 'A All4laser é uma empresa portuguesa especializada na venda, aluguer e reacondicionamento de equipamentos de laser e luz para medicina estética das principais marcas — Candela, Cynosure, Alma e Lumenis, entre outras. Com serviço técnico próprio e uma equipa dedicada, entregamos equipamentos testados e prontos a operar, com apoio a clientes em Portugal e no mercado internacional.'
+      : 'All4laser is a Portuguese company specialised in the sale, rental and refurbishment of aesthetic laser and light-based equipment from the leading brands — Candela, Cynosure, Alma and Lumenis, among others. With our own in-house technical service and a dedicated team, we deliver fully tested, ready-to-use systems, supporting clients across Portugal and international markets.',
     fotos: FOTOS,
   }
 }

@@ -89,6 +89,7 @@ const NAV: Seccao[] = [
     titulo: 'Sistema',
     itens: [
       { href: '/processos', label: 'Processos', icon: '📋' },
+      { href: '/definicoes/fichas', label: 'Fichas de Produto', icon: '📄' },
       { href: '/definicoes/utilizadores', label: 'Utilizadores', icon: '👤', requer: 'admin' }, // requer: gestão de utilizadores (role 'admin')
     ],
   },

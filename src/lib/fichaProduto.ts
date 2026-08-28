@@ -99,10 +99,24 @@ export async function apagarAcessorio(id: string) {
 
 // ─── Configuração + completude da ficha ───────────────────────────────────────
 
-export async function obterConfigFicha(): Promise<{ min_fotos: number; meses_leitura_valida: number }> {
+export type ConfigFicha = { min_fotos: number; meses_leitura_valida: number; about_pt: string | null; about_en: string | null }
+
+export async function obterConfigFicha(): Promise<ConfigFicha> {
   const { data } = await supabase.from('ficha_config')
-    .select('min_fotos, meses_leitura_valida').eq('id', true).maybeSingle()
-  return { min_fotos: data?.min_fotos ?? 5, meses_leitura_valida: data?.meses_leitura_valida ?? 6 }
+    .select('min_fotos, meses_leitura_valida, about_pt, about_en').eq('id', true).maybeSingle()
+  return {
+    min_fotos: data?.min_fotos ?? 5,
+    meses_leitura_valida: data?.meses_leitura_valida ?? 6,
+    about_pt: data?.about_pt ?? null,
+    about_en: data?.about_en ?? null,
+  }
+}
+
+// Guarda o bloco "About All4laser" (PT/EN). RLS: qualquer staff (is_staff).
+export async function guardarAboutFicha(about_pt: string, about_en: string) {
+  return supabase.from('ficha_config')
+    .update({ about_pt: about_pt.trim() || null, about_en: about_en.trim() || null })
+    .eq('id', true)
 }
 
 export type Completude = {
