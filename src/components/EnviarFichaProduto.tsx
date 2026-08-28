@@ -8,6 +8,7 @@ import {
 } from '@/lib/fichaProduto'
 import { gerarFichaBlob, blobParaBase64 } from '@/lib/fichaProdutoGerar'
 import type { IdiomaFicha } from '@/lib/fichaProdutoPdf'
+import AvisoDescricaoModelo from '@/components/AvisoDescricaoModelo'
 
 // Enviar a ficha de produto por email (Gmail comercial@) a partir do
 // equipamento. Gera o PDF no cliente, cria (opcional) o link partilhável e
@@ -144,6 +145,8 @@ export default function EnviarFichaProduto({
                 </select>
               </label>
             </div>
+
+            <AvisoDescricaoModelo marca={marca} modelo={modelo} />
 
             <div style={s.checks}>
               <label style={s.check}><input type="checkbox" checked={incluirLink} onChange={(e) => setIncluirLink(e.target.checked)} /> Incluir link online</label>

@@ -26,6 +26,9 @@ function exemplo(idioma: IdiomaFicha): FichaProdutoDados {
       { nome: 'DCD (arrefecimento)', contador_pulsos: 980000, data_leitura: '2026-08-01' },
     ],
     acessorios: ['Óculos de proteção', 'Pedal', 'Manual do utilizador', 'Cabo de alimentação'],
+    descricaoModelo: idioma === 'pt'
+      ? 'Sistema de laser de alexandrite (755 nm) e Nd:YAG (1064 nm) para depilação, lesões vasculares e tratamentos de pele. Referência de mercado pela eficácia e conforto, com sistema de arrefecimento por criogénio integrado.'
+      : 'Alexandrite (755 nm) and Nd:YAG (1064 nm) laser system for hair removal, vascular lesions and skin treatments. A market benchmark for efficacy and comfort, with an integrated cryogen cooling system.',
     preco: 42000, moeda: 'EUR', garantia: '6 meses', shippingTraining: true,
     aboutTexto: idioma === 'pt'
       ? 'A All4laser é uma empresa portuguesa especializada na venda, aluguer e reacondicionamento de equipamentos de laser e luz para medicina estética das principais marcas — Candela, Cynosure, Alma e Lumenis, entre outras. Com serviço técnico próprio e uma equipa dedicada, entregamos equipamentos testados e prontos a operar, com apoio a clientes em Portugal e no mercado internacional.'

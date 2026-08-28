@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { descarregarPdf } from '@/lib/fichaPdf'
 import { gerarFichaBlob } from '@/lib/fichaProdutoGerar'
 import { type IdiomaFicha } from '@/lib/fichaProdutoPdf'
+import AvisoDescricaoModelo from '@/components/AvisoDescricaoModelo'
 
 // Botão + opções para gerar a ficha de produto em PDF (on-demand, dados atuais).
 const IDIOMAS: { v: IdiomaFicha; label: string }[] = [
@@ -64,6 +65,8 @@ export default function GerarFichaProduto({ equipamentoId, marca, modelo, ano, s
             <select style={s.input} value={idioma} onChange={(e) => setIdioma(e.target.value as IdiomaFicha)}>
               {IDIOMAS.map((i) => <option key={i.v} value={i.v}>{i.label}</option>)}
             </select>
+
+            <AvisoDescricaoModelo marca={marca} modelo={modelo} />
 
             <div style={s.condicoes}>
               <div style={s.condTitulo}>Condições (opcional)</div>

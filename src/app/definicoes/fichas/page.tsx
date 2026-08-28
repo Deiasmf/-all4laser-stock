@@ -39,6 +39,7 @@ export default function ConfigFichasPage() {
           Texto &ldquo;Sobre a All4laser&rdquo; que aparece em todas as fichas geradas (PT usa a versão portuguesa; EN/ES/FR usam a inglesa).{' '}
           <Link href="/admin-dept/fichas-preview" style={c.link}>Ver pré-visualização ↗</Link>
         </p>
+        <p style={c.sub}><Link href="/definicoes/fichas/modelos" style={c.link}>📄 Descrições por modelo →</Link></p>
       </div>
 
       {carregando ? (
