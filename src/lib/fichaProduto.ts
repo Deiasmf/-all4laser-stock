@@ -180,6 +180,23 @@ export async function eliminarDescricaoModelo(id: string): Promise<{ error: stri
   return { error: error ? error.message : null }
 }
 
+// ─── Catálogo gerível de acessórios (para o dropdown) ─────────────────────────
+export type CatalogoAcessorio = { id: string; nome: string }
+
+export async function listarCatalogoAcessorios(): Promise<CatalogoAcessorio[]> {
+  const { data } = await supabase.from('acessorio_catalogo').select('id, nome').order('nome')
+  return (data as CatalogoAcessorio[]) ?? []
+}
+
+// Acrescenta um acessório ao catálogo (ignora se já existir — 23505).
+export async function criarAcessorioCatalogo(nome: string): Promise<{ error: string | null }> {
+  const n = nome.trim()
+  if (!n) return { error: 'Nome vazio.' }
+  const { error } = await supabase.from('acessorio_catalogo').insert({ nome: n })
+  if (error && error.code !== '23505') return { error: error.message }
+  return { error: null }
+}
+
 export type Completude = {
   feitos: number
   total: number
