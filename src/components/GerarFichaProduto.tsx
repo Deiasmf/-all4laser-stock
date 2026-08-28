@@ -2,9 +2,11 @@
 
 import { useState } from 'react'
 import { descarregarPdf } from '@/lib/fichaPdf'
-import { gerarFichaBlob } from '@/lib/fichaProdutoGerar'
+import { gerarFichaBlob, prepararTraducaoFicha } from '@/lib/fichaProdutoGerar'
 import { type IdiomaFicha } from '@/lib/fichaProdutoPdf'
 import AvisoDescricaoModelo from '@/components/AvisoDescricaoModelo'
+
+type Revisao = Awaited<ReturnType<typeof prepararTraducaoFicha>>
 
 // Botão + opções para gerar a ficha de produto em PDF (on-demand, dados atuais).
 const IDIOMAS: { v: IdiomaFicha; label: string }[] = [
@@ -28,16 +30,31 @@ export default function GerarFichaProduto({ equipamentoId, marca, modelo, ano, s
   const [garantia, setGarantia] = useState('')
   const [incluirShipping, setIncluirShipping] = useState(false)
   const [incluirSn, setIncluirSn] = useState(false)
+  const [revisao, setRevisao] = useState<Revisao | null>(null)
+  const [aRevendo, setARevendo] = useState(false)
   const [aGerar, setAGerar] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+
+  async function traduzirRever() {
+    setARevendo(true); setErro(null)
+    try { setRevisao(await prepararTraducaoFicha(equipamentoId, idioma)) }
+    catch { setErro('Não foi possível traduzir agora. Podes gerar mesmo assim (tradução automática).') }
+    finally { setARevendo(false) }
+  }
 
   async function gerar() {
     setAGerar(true); setErro(null)
     try {
+      const traducao = revisao ? {
+        condicao: revisao.condicao.trad,
+        condicaoDescricao: revisao.condicaoDescricao.trad,
+        acessorios: revisao.acessorios.map((a) => a.trad),
+      } : undefined
       const { blob, nomeFicheiro } = await gerarFichaBlob({
         equipamentoId, idioma, marca, modelo, ano, serialNumber, precoVenda,
         incluirPreco, incluirSnCompleto: incluirSn,
         moeda, garantia: incluirGarantia ? garantia : null, shippingTraining: incluirShipping,
+        traducao,
       })
       await descarregarPdf(blob, nomeFicheiro)
       setAberto(false)
@@ -62,11 +79,40 @@ export default function GerarFichaProduto({ equipamentoId, marca, modelo, ano, s
             {erro && <div style={s.erro}>{erro}</div>}
 
             <label style={s.label}>Idioma</label>
-            <select style={s.input} value={idioma} onChange={(e) => setIdioma(e.target.value as IdiomaFicha)}>
+            <select style={s.input} value={idioma} onChange={(e) => { setIdioma(e.target.value as IdiomaFicha); setRevisao(null) }}>
               {IDIOMAS.map((i) => <option key={i.v} value={i.v}>{i.label}</option>)}
             </select>
 
             <AvisoDescricaoModelo marca={marca} modelo={modelo} />
+
+            {idioma !== 'pt' && (
+              <div style={s.condicoes}>
+                <div style={s.condTitulo}>Tradução dos textos livres ({idioma.toUpperCase()})</div>
+                {!revisao ? (
+                  <>
+                    <button type="button" style={s.btnSec} disabled={aRevendo} onClick={traduzirRever}>
+                      {aRevendo ? 'A traduzir…' : '🌐 Traduzir e rever'}
+                    </button>
+                    <span style={s.muted}> Se não revires, a ficha traduz automaticamente ao gerar.</span>
+                  </>
+                ) : (
+                  <>
+                    <label style={s.label}>Condição</label>
+                    <input style={s.input} value={revisao.condicao.trad}
+                      onChange={(e) => setRevisao((r) => r && ({ ...r, condicao: { ...r.condicao, trad: e.target.value } }))} />
+                    <label style={s.label}>Descrição do estado</label>
+                    <textarea style={{ ...s.input, minHeight: 70 }} value={revisao.condicaoDescricao.trad}
+                      onChange={(e) => setRevisao((r) => r && ({ ...r, condicaoDescricao: { ...r.condicaoDescricao, trad: e.target.value } }))} />
+                    {revisao.acessorios.length > 0 && <label style={s.label}>Acessórios</label>}
+                    {revisao.acessorios.map((a, i) => (
+                      <input key={i} style={{ ...s.input, marginTop: 4 }} value={a.trad}
+                        onChange={(e) => setRevisao((r) => { if (!r) return r; const ac = [...r.acessorios]; ac[i] = { ...ac[i], trad: e.target.value }; return { ...r, acessorios: ac } })} />
+                    ))}
+                    <span style={s.muted}>Revê e ajusta antes de gerar.</span>
+                  </>
+                )}
+              </div>
+            )}
 
             <div style={s.condicoes}>
               <div style={s.condTitulo}>Condições (opcional)</div>
