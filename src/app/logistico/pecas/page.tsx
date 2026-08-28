@@ -8,6 +8,7 @@ import { reparacoesAtivasPorPeca, type ReparacaoInfo } from '@/lib/enviosPecas'
 import { pecasComPedidoPendente } from '@/lib/compras'
 import { LOCALIZACOES_PECA } from '@/types/compras'
 import QrPeca from '@/components/QrPeca'
+import SelectMarca from '@/components/SelectMarca'
 import { imprimirEtiquetas } from '@/lib/etiquetas'
 import BotaoExportar from '@/components/BotaoExportar'
 import BotaoPdf from '@/components/BotaoPdf'
@@ -414,7 +415,7 @@ function ModalPeca({
         <div style={c.linha2}>
           <div>
             <label style={c.label}>Marca</label>
-            <input style={c.inputModal} value={marca} onChange={(e) => setMarca(e.target.value)} placeholder="Candela, AlmaLaser..." disabled={soLeitura} />
+            <SelectMarca valor={marca} onChange={setMarca} disabled={soLeitura} style={c.inputModal} />
           </div>
           <div>
             <label style={c.label}>Grupo</label>
