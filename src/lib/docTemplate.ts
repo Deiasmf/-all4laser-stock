@@ -30,7 +30,7 @@ const LOGO_PATH = '/All4Laser-LOGO.jpg'
 
 // Geometria partilhada (em pontos, formato A4)
 export const MARGEM = 40
-export const TOPO_CONTEUDO = 96 // y onde o conteúdo começa (abaixo do logótipo)
+export const TOPO_CONTEUDO = 100 // y onde o conteúdo começa (abaixo do logótipo)
 export const RODAPE_ALTURA = 50 // espaço reservado em baixo para o rodapé
 
 const NAVY: [number, number, number] = [13, 11, 43]
@@ -65,9 +65,9 @@ export function aplicarCabecalhoRodape(
   const total = doc.getNumberOfPages()
 
   // Logótipo ~2:1 (mantém proporção do ficheiro original)
-  const logoLarg = 110
-  const logoAlt = 55
-  const logoTopo = 26
+  const logoLarg = 124
+  const logoAlt = 62
+  const logoTopo = 24
 
   const geradoEm = new Date().toLocaleString('pt-PT')
   const linhaContacto1 = [dados.morada, dados.nif && `NIF ${dados.nif}`].filter(Boolean).join('  ·  ')
