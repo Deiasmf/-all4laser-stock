@@ -45,6 +45,8 @@ const T: Record<IdiomaFicha, Record<string, string>> = {
 const NAVY: [number, number, number] = [13, 11, 43]
 const CINZA: [number, number, number] = [110, 116, 128]
 const ACCENT: [number, number, number] = [124, 58, 237] // violeta da marca (detalhes)
+// Degradê da marca (violeta → rosa) para as barras de topo e rodapé.
+const DEGRADE: [[number, number, number], [number, number, number]] = [[124, 58, 237], [236, 72, 153]]
 
 function serialParcial(sn: string | null, completo: boolean, semTxt: string): string {
   if (!sn) return semTxt
@@ -97,16 +99,13 @@ export async function gerarPdfFichaProduto(d: FichaProdutoDados): Promise<Blob> 
   // Layout editorial: rótulo em maiúsculas espaçadas a navy, SEM linha/borda;
   // separação por espaço em branco.
   function tituloSeccao(txt: string) {
-    garantirEspaco(36)
+    garantirEspaco(34)
     y += 12 // respiro antes da secção
-    // barra de acento à esquerda do rótulo (detalhe de cor)
-    doc.setFillColor(...ACCENT)
-    doc.rect(MARGEM, y - 7, 3, 9, 'F')
     doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...ACCENT)
     doc.setCharSpace(0.5)
-    doc.text(txt.toUpperCase(), MARGEM + 10, y)
+    doc.text(txt.toUpperCase(), MARGEM, y)
     doc.setCharSpace(0)
-    y += 18
+    y += 17
   }
   function linha(rot: string, val: string) {
     garantirEspaco(18)
@@ -118,14 +117,12 @@ export async function gerarPdfFichaProduto(d: FichaProdutoDados): Promise<Blob> 
   }
 
   // ── Título (editorial: kicker + nome grande + subtítulo discreto) ──
-  // Título = só o modelo (grande), com sublinhado de acento.
+  // Título = só o modelo. Afastado do cabeçalho (sem sobrepor o logótipo).
   const nome = [d.marca, d.modelo].filter(Boolean).join(' ') || t.sem
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(26); doc.setTextColor(...NAVY)
+  y += 14
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(24); doc.setTextColor(...NAVY)
   doc.text(nome, MARGEM, y)
-  y += 9
-  doc.setFillColor(...ACCENT)
-  doc.rect(MARGEM, y, Math.min(doc.getTextWidth(nome), 150), 3, 'F')
-  y += 16
+  y += 20
   const subtitulo = [d.ano, serialParcial(d.serialCompleto, d.incluirSnCompleto, '')].filter(Boolean).join('   ·   ')
   if (subtitulo) {
     doc.setFontSize(10.5); doc.setTextColor(...CINZA)
@@ -259,7 +256,7 @@ export async function gerarPdfFichaProduto(d: FichaProdutoDados): Promise<Blob> 
 
   // Cabeçalho/rodapé em todas as páginas
   const logo = await carregarLogo()
-  aplicarCabecalhoRodape(doc, logo, undefined, { acento: ACCENT })
+  aplicarCabecalhoRodape(doc, logo, undefined, { degrade: DEGRADE })
 
   return doc.output('blob')
 }

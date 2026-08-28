@@ -53,13 +53,31 @@ export async function carregarLogo(): Promise<string | null> {
   }
 }
 
+type RGB = [number, number, number]
+
+// Desenha uma barra com degradê horizontal (aproximado por fatias verticais).
+function barraDegrade(doc: jsPDF, x: number, y: number, w: number, h: number, c1: RGB, c2: RGB) {
+  const n = 64
+  const sw = w / n
+  for (let i = 0; i < n; i++) {
+    const tt = n > 1 ? i / (n - 1) : 0
+    doc.setFillColor(
+      Math.round(c1[0] + (c2[0] - c1[0]) * tt),
+      Math.round(c1[1] + (c2[1] - c1[1]) * tt),
+      Math.round(c1[2] + (c2[2] - c1[2]) * tt),
+    )
+    doc.rect(x + i * sw, y, sw + 0.6, h, 'F') // +0.6 evita fendas entre fatias
+  }
+}
+
 // Carimba o logótipo (topo) e o rodapé (info da empresa + nº de página) em
 // TODAS as páginas. Chamar no fim, depois de todo o conteúdo estar desenhado.
+// opts.degrade [c1, c2]: barra de degradê no topo e no rodapé (identidade da marca).
 export function aplicarCabecalhoRodape(
   doc: jsPDF,
   logo: string | null,
   dados: DadosEmpresa = DADOS_EMPRESA,
-  opts: { acento?: [number, number, number] } = {}
+  opts: { degrade?: [RGB, RGB] } = {}
 ) {
   const larguraPagina = doc.internal.pageSize.getWidth()
   const alturaPagina = doc.internal.pageSize.getHeight()
@@ -86,24 +104,10 @@ export function aplicarCabecalhoRodape(
       }
     }
     const hy = logoTopo + logoAlt + 8
-    if (opts.acento) {
-      // Cabeçalho com identidade mais forte: barra de topo + motivo de linhas
-      // diagonais (futurista) + separador a 2 tons.
-      const [ar, ag, ab] = opts.acento
-      doc.setFillColor(ar, ag, ab)
-      doc.rect(0, 0, larguraPagina, 5, 'F')
-      doc.setDrawColor(ar, ag, ab); doc.setLineWidth(0.9)
-      for (let k = 0; k < 5; k++) {
-        const x0 = larguraPagina - MARGEM - 66 + k * 15
-        doc.line(x0, logoTopo + 2, x0 + 20, logoTopo + logoAlt - 2)
-      }
-      doc.setLineWidth(0.2)
-      doc.setDrawColor(228, 230, 235); doc.line(MARGEM, hy, larguraPagina - MARGEM, hy)
-      doc.setFillColor(ar, ag, ab); doc.rect(MARGEM, hy - 1.5, 150, 3, 'F')
-    } else {
-      doc.setDrawColor(220, 222, 226)
-      doc.line(MARGEM, hy, larguraPagina - MARGEM, hy)
-    }
+    doc.setDrawColor(220, 222, 226)
+    doc.line(MARGEM, hy, larguraPagina - MARGEM, hy)
+    // Barra de degradê no topo (identidade da marca).
+    if (opts.degrade) barraDegrade(doc, 0, 0, larguraPagina, 7, opts.degrade[0], opts.degrade[1])
 
     // ── Rodapé: linha separadora + info da empresa + nº de página ──
     const baseRodape = alturaPagina - RODAPE_ALTURA + 12
@@ -125,5 +129,8 @@ export function aplicarCabecalhoRodape(
     doc.setTextColor(...CINZA)
     doc.text(`Gerado em ${geradoEm}`, larguraPagina - MARGEM, baseRodape, { align: 'right' })
     doc.text(`Página ${p} de ${total}`, larguraPagina - MARGEM, baseRodape + 10, { align: 'right' })
+
+    // Barra de degradê no rodapé (igual ao topo).
+    if (opts.degrade) barraDegrade(doc, 0, alturaPagina - 7, larguraPagina, 7, opts.degrade[0], opts.degrade[1])
   }
 }
