@@ -235,6 +235,9 @@ export default function EquipamentoForm({
       const { data: eqs } = await supabase
         .from('equipamentos')
         .select('marca, modelo, origem, destino, ano, status')
+        // .limit explícito: sem ele o Supabase devolve só 1000 linhas (há >2500
+        // equipamentos) → as sugestões de origem/destino/ano saíam incompletas.
+        .limit(5000)
       const { data: marcasTab } = await supabase.from('marcas').select('nome')
       const { data: modelosTab } = await supabase
         .from('modelos')
