@@ -40,6 +40,7 @@ const NAV: Seccao[] = [
         ],
       },
       { href: '/financeiro', label: 'Financeiro', icon: '💶', requer: 'financeiro' },
+      { href: '/pedidos-fatura', label: 'Pedidos de Fatura', icon: '🧾' },
       {
         href: '/comercial', label: 'Comercial', icon: '🤝',
         filhos: [
@@ -113,6 +114,7 @@ const TITULOS: { prefixo: string; titulo: string }[] = [
   { prefixo: '/financeiro/alertas', titulo: 'Alertas' },
   { prefixo: '/financeiro/recolhas', titulo: 'Recolhas' },
   { prefixo: '/financeiro', titulo: 'Financeiro' },
+  { prefixo: '/pedidos-fatura', titulo: 'Pedidos de Fatura' },
   { prefixo: '/definicoes/utilizadores', titulo: 'Utilizadores' },
   { prefixo: '/comercial/notas-encomenda', titulo: 'Notas de Encomenda' },
   { prefixo: '/comercial/clientes', titulo: 'Clientes' },

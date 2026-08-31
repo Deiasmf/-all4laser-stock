@@ -11,6 +11,7 @@ import { resumoRecolhas, type ResumoRecolhas } from '@/lib/recolhas'
 type Cartao = { href: string; titulo: string; icon: string; descricao: string }
 
 const CARTOES: Cartao[] = [
+  { href: '/pedidos-fatura', titulo: 'Pedidos de Fatura', icon: '🧾', descricao: 'Emitir faturas e pró-formas pedidas pela equipa e enviar ao cliente.' },
   { href: '/financeiro/contas-correntes', titulo: 'Contas Correntes', icon: '📊', descricao: 'Saldos por cliente e fornecedor.' },
   { href: '/financeiro/keyinvoice', titulo: 'Keyinvoice', icon: '🔗', descricao: 'Importação e sincronização de faturação.' },
   { href: '/financeiro/documentos', titulo: 'Documentos', icon: '🧾', descricao: 'Faturas, recibos e notas de crédito.' },
