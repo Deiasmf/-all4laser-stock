@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
 import AlugueresNav from '@/components/AlugueresNav'
+import AvisoDuplicadosCliente from '@/components/AvisoDuplicadosCliente'
+import { mensagemErro } from '@/lib/erros'
 import { parseNumeroPt } from '@/lib/alugueres'
 import {
   TIPOS_ALUGUER,
@@ -95,6 +97,9 @@ export default function AlugueresPage() {
 function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null }) {
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [cliente, setCliente] = useState('')
+  // Cliente escolhido no aviso "Usar este cliente" (por id) — não depende do
+  // array `clientes` (que pode não conter todos por causa do limite de linhas).
+  const [clienteSel, setClienteSel] = useState<{ id: string; nome: string; pais: string | null; nacional: boolean } | null>(null)
   const [pais, setPais] = useState('Portugal')
   const [clienteEmail, setClienteEmail] = useState('')
   const [clienteTelefone, setClienteTelefone] = useState('')
@@ -124,6 +129,7 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
       .from('clientes')
       .select('*')
       .order('nome')
+      .limit(5000)
       .then(({ data }) => setClientes((data as Cliente[]) ?? []))
     supabase
       .from('precos_aluguer')
@@ -137,10 +143,12 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
       })
   }, [])
 
-  // Cliente existente correspondente ao texto escrito
-  const clienteExistente = clientes.find(
-    (c) => c.nome.trim().toLowerCase() === cliente.trim().toLowerCase()
-  )
+  // Cliente existente correspondente ao texto escrito: primeiro no array
+  // carregado; se não estiver lá (ex.: além do limite), usa o escolhido no aviso.
+  const norm = (v: string) => v.trim().toLowerCase()
+  const clienteSelMatch = clienteSel && norm(clienteSel.nome) === norm(cliente) ? clienteSel : null
+  const clienteExistente =
+    clientes.find((c) => norm(c.nome) === norm(cliente)) ?? clienteSelMatch
 
   // Mercado do aluguer = pelo país do cliente (Portugal = nacional)
   const nacionalAtual = clienteExistente ? clienteExistente.nacional : ehNacional(pais)
@@ -223,7 +231,7 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
         .single()
       if (e1) {
         setAGuardar(false)
-        return setErro('Erro a criar o cliente: ' + e1.message)
+        return setErro(mensagemErro(e1, { entidade: 'cliente' }))
       }
       clienteId = (novo as Cliente).id
       nacional = (novo as Cliente).nacional
@@ -257,7 +265,7 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
     const { error: e2 } = await supabase.from('alugueres').insert(linhas)
 
     setAGuardar(false)
-    if (e2) return setErro('Erro a registar o aluguer: ' + e2.message)
+    if (e2) return setErro(mensagemErro(e2, { entidade: 'aluguer' }))
 
     setOkMsg(
       nMeses > 1
@@ -266,6 +274,7 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
     )
     // limpar para o próximo registo
     setCliente('')
+    setClienteSel(null)
     setPais('Portugal')
     setClienteEmail('')
     setClienteTelefone('')
@@ -280,7 +289,7 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
     setDataEntrega(hoje())
     setMeses('1')
     // recarregar clientes (pode ter sido criado um novo)
-    supabase.from('clientes').select('*').order('nome').then(({ data }) => setClientes((data as Cliente[]) ?? []))
+    supabase.from('clientes').select('*').order('nome').limit(5000).then(({ data }) => setClientes((data as Cliente[]) ?? []))
   }
 
   return (
@@ -294,7 +303,11 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
         list="lista-clientes"
         placeholder="Nome do cliente"
         value={cliente}
-        onChange={(e) => setCliente(e.target.value)}
+        onChange={(e) => {
+          const v = e.target.value
+          setCliente(v)
+          if (clienteSel && norm(v) !== norm(clienteSel.nome)) setClienteSel(null)
+        }}
       />
       <datalist id="lista-clientes">
         {clientes.map((c) => (
@@ -307,6 +320,14 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
         </div>
       ) : cliente.trim() ? (
         <>
+          <AvisoDuplicadosCliente
+            nome={cliente}
+            email={clienteEmail}
+            onUsar={(c) => {
+              setCliente(c.nome)
+              setClienteSel({ id: c.id, nome: c.nome, pais: c.pais, nacional: ehNacional(c.pais ?? '') })
+            }}
+          />
           <label style={s.label}>País (cliente novo)</label>
           <input
             style={s.input}

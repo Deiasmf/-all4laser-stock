@@ -9,7 +9,9 @@ import { supabase } from './supabase'
 // ─── Prioridades e estados ───────────────────────────────────────────────────
 
 export type Prioridade = 'baixa' | 'normal' | 'alta'
-export type EstadoTarefa = 'pendente' | 'em_curso' | 'concluida'
+// O estado deixou de ser um conjunto fixo: vive na tabela task_estados (editável
+// pelo admin). Aqui é apenas um slug (texto).
+export type EstadoTarefa = string
 
 export const PRIORIDADES: { valor: Prioridade; label: string; cor: string; bg: string; ordem: number }[] = [
   { valor: 'alta', label: 'Alta', cor: '#B91C1C', bg: '#FEF2F2', ordem: 0 },
@@ -20,13 +22,63 @@ export function prioridadeInfo(v: string) {
   return PRIORIDADES.find((p) => p.valor === v) ?? PRIORIDADES[1]
 }
 
-export const ESTADOS_TAREFA: { valor: EstadoTarefa; label: string }[] = [
-  { valor: 'pendente', label: 'Pendente' },
-  { valor: 'em_curso', label: 'Em curso' },
-  { valor: 'concluida', label: 'Concluída' },
+// ─── Estados (editáveis pelo admin em task_estados) ───────────────────────────
+
+export type EstadoInfo = {
+  slug: string
+  label: string
+  cor: string
+  bg: string
+  ordem: number
+  is_concluido: boolean
+  ativo: boolean
+}
+
+// Slug do estado "Aguarda informação" — o único que usa o campo "aguarda_o_que".
+export const SLUG_AGUARDA = 'aguarda_info'
+
+// Fallback = seed da BD. Usado antes de carregar ou se a leitura falhar.
+export const DEFAULT_ESTADOS: EstadoInfo[] = [
+  { slug: 'pendente', label: 'Pendente', cor: '#374151', bg: '#E5E7EB', ordem: 0, is_concluido: false, ativo: true },
+  { slug: 'em_curso', label: 'Em andamento', cor: '#92400E', bg: '#FEF3C7', ordem: 1, is_concluido: false, ativo: true },
+  { slug: SLUG_AGUARDA, label: 'Aguarda informação', cor: '#3730A3', bg: '#E0E7FF', ordem: 2, is_concluido: false, ativo: true },
+  { slug: 'concluida', label: 'Concluída', cor: '#065F46', bg: '#D1FAE5', ordem: 3, is_concluido: true, ativo: true },
 ]
-export function estadoTarefaLabel(v: string) {
-  return ESTADOS_TAREFA.find((e) => e.valor === v)?.label ?? v
+
+export function estadoInfo(slug: string, estados: EstadoInfo[] = DEFAULT_ESTADOS): EstadoInfo {
+  return estados.find((e) => e.slug === slug)
+    ?? DEFAULT_ESTADOS.find((e) => e.slug === slug)
+    ?? { slug, label: slug, cor: '#374151', bg: '#E5E7EB', ordem: 99, is_concluido: false, ativo: true }
+}
+// Compat: label a partir do slug (usa o fallback quando não há lista carregada).
+export function estadoTarefaLabel(slug: string, estados: EstadoInfo[] = DEFAULT_ESTADOS) {
+  return estadoInfo(slug, estados).label
+}
+
+// Primeiro estado de conclusão / de "em aberto" (para os botões rápidos).
+export function slugConcluido(estados: EstadoInfo[]): string {
+  return estados.find((e) => e.is_concluido)?.slug ?? 'concluida'
+}
+export function slugAberto(estados: EstadoInfo[]): string {
+  return estados.find((e) => !e.is_concluido)?.slug ?? 'pendente'
+}
+
+export async function listarEstados(incluirInativos = false): Promise<EstadoInfo[]> {
+  let q = supabase.from('task_estados')
+    .select('slug, label, cor, bg, ordem, is_concluido, ativo')
+    .order('ordem', { ascending: true })
+  if (!incluirInativos) q = q.eq('ativo', true)
+  const { data } = await q
+  const linhas = (data as EstadoInfo[] | null) ?? []
+  return linhas.length ? linhas : DEFAULT_ESTADOS.filter((e) => incluirInativos || e.ativo)
+}
+
+// CRUD de estados (só admin, garantido pela RLS de task_estados).
+export async function criarEstado(input: EstadoInfo) {
+  return supabase.from('task_estados').insert(input)
+}
+export async function atualizarEstado(slug: string, patch: Partial<EstadoInfo>) {
+  return supabase.from('task_estados').update(patch).eq('slug', slug)
 }
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
@@ -48,6 +100,7 @@ export type Assignee = {
   user_id: string
   estado: EstadoTarefa
   concluida_em: string | null
+  aguarda_o_que: string | null
 }
 
 // Uma tarefa como o próprio utilizador a vê (com o SEU estado).
@@ -55,6 +108,7 @@ export type MinhaTarefa = Tarefa & {
   assigneeId: string
   meuEstado: EstadoTarefa
   meuConcluidaEm: string | null
+  meuAguardaOQue: string | null
 }
 
 // Uma tarefa com todos os destinatários (para o acompanhamento do admin).
@@ -115,19 +169,19 @@ export function ordenarTarefas<T extends { prioridade: string; data_limite: stri
 export async function listarMinhasTarefas(userId: string): Promise<MinhaTarefa[]> {
   const { data } = await supabase
     .from('user_task_assignees')
-    .select('id, estado, concluida_em, user_tasks(*)')
+    .select('id, estado, concluida_em, aguarda_o_que, user_tasks(*)')
     .eq('user_id', userId)
-  const linhas = (data as unknown as { id: string; estado: EstadoTarefa; concluida_em: string | null; user_tasks: Tarefa | null }[]) ?? []
+  const linhas = (data as unknown as { id: string; estado: EstadoTarefa; concluida_em: string | null; aguarda_o_que: string | null; user_tasks: Tarefa | null }[]) ?? []
   return linhas
     .filter((l) => l.user_tasks)
-    .map((l) => ({ ...(l.user_tasks as Tarefa), assigneeId: l.id, meuEstado: l.estado, meuConcluidaEm: l.concluida_em }))
+    .map((l) => ({ ...(l.user_tasks as Tarefa), assigneeId: l.id, meuEstado: l.estado, meuConcluidaEm: l.concluida_em, meuAguardaOQue: l.aguarda_o_que }))
 }
 
 // Acompanhamento (admin): todas as tarefas com todos os destinatários.
 export async function listarTodasTarefas(): Promise<TarefaComAssignees[]> {
   const { data } = await supabase
     .from('user_tasks')
-    .select('*, user_task_assignees(id, user_id, estado, concluida_em)')
+    .select('*, user_task_assignees(id, user_id, estado, concluida_em, aguarda_o_que)')
     .order('created_at', { ascending: false })
   const linhas = (data as unknown as (Tarefa & { user_task_assignees: Assignee[] | null })[]) ?? []
   return linhas.map((t) => ({ ...t, assignees: t.user_task_assignees ?? [] }))
@@ -148,10 +202,31 @@ export async function atualizarTarefa(id: string, patch: Partial<Tarefa>) {
 }
 
 // Muda o estado do MEU registo de destinatário (não afeta os outros).
-export async function mudarMeuEstado(assigneeId: string, estado: EstadoTarefa) {
+// concluida_em é preenchido quando o estado é de conclusão; aguarda_o_que só faz
+// sentido no estado "Aguarda informação" (limpo nos restantes).
+export async function mudarMeuEstado(
+  assigneeId: string,
+  estado: EstadoTarefa,
+  isConcluido: boolean,
+  aguardaOQue: string | null = null,
+) {
   return supabase.from('user_task_assignees')
-    .update({ estado, concluida_em: estado === 'concluida' ? new Date().toISOString() : null })
+    .update({
+      estado,
+      concluida_em: isConcluido ? new Date().toISOString() : null,
+      aguarda_o_que: estado === SLUG_AGUARDA ? aguardaOQue : null,
+    })
     .eq('id', assigneeId).select().single()
+}
+
+// Ao concluir, avisa por recado quem criou a tarefa (exceto se for a própria
+// pessoa a concluir). A função na BD (SECURITY DEFINER) decide e cria o recado.
+export async function notificarConclusaoTarefa(taskId: string): Promise<void> {
+  try {
+    await supabase.rpc('notificar_conclusao_tarefa', { p_task: taskId })
+  } catch {
+    /* o aviso é best-effort; nunca bloqueia a conclusão da tarefa */
+  }
 }
 
 export async function apagarTarefa(id: string) {
@@ -170,6 +245,111 @@ export async function adicionarComentario(taskId: string, autor: Autor, mensagem
   return supabase.from('user_task_comments').insert({
     task_id: taskId, autor_id: autor.id, autor_nome: autor.nome, mensagem: mensagem.trim(),
   }).select().single()
+}
+
+// ─── Histórico (linha do tempo automática, gravada por triggers na BD) ────────
+
+export type HistoricoItem = {
+  id: string
+  task_id: string
+  ator_id: string | null
+  ator_nome: string | null
+  tipo: string            // 'criacao' | 'campo' | 'estado' | 'reatribuicao'
+  descricao: string
+  created_at: string
+}
+
+export async function listarHistorico(taskId: string): Promise<HistoricoItem[]> {
+  const { data } = await supabase.from('user_task_history')
+    .select('*').eq('task_id', taskId).order('created_at', { ascending: true })
+  return (data as HistoricoItem[]) ?? []
+}
+
+// ─── Anexos (ficheiros/fotos na tarefa e nos comentários) ─────────────────────
+// Bucket privado: os URLs são sempre assinados (expiram). A RLS do Storage
+// (1ª pasta do caminho = task_id) impede o acesso a quem não participa na tarefa.
+
+export type Anexo = {
+  id: string
+  task_id: string
+  comment_id: string | null
+  caminho: string
+  nome: string
+  mime: string | null
+  tamanho: number | null
+  created_by: string | null
+  created_at: string
+}
+export type AnexoComUrl = Anexo & { url: string | null }
+
+const BUCKET_ANEXOS = 'tarefas-anexos'
+
+// Todos os anexos de uma tarefa (da tarefa e dos comentários), com URL assinado.
+export async function listarAnexos(taskId: string): Promise<AnexoComUrl[]> {
+  const { data } = await supabase.from('user_task_attachments')
+    .select('*').eq('task_id', taskId).order('created_at', { ascending: true })
+  const linhas = (data as Anexo[]) ?? []
+  if (linhas.length === 0) return []
+  const { data: urls } = await supabase.storage.from(BUCKET_ANEXOS)
+    .createSignedUrls(linhas.map((l) => l.caminho), 3600)   // 1h
+  const porCaminho = new Map<string, string>()
+  for (const u of urls ?? []) if (u.path && u.signedUrl) porCaminho.set(u.path, u.signedUrl)
+  return linhas.map((l) => ({ ...l, url: porCaminho.get(l.caminho) ?? null }))
+}
+
+// Upload de um ficheiro + registo na tabela. A 1ª pasta do caminho é o task_id
+// (exigido pela RLS do Storage). commentId liga o anexo a um comentário.
+export async function carregarAnexo(
+  taskId: string, file: File, createdBy: string | null, commentId: string | null = null,
+): Promise<{ error: { message: string } | null }> {
+  const seguro = file.name.replace(/[^\w.\-]+/g, '_')
+  const caminho = `${taskId}/${Date.now()}-${Math.round(Math.random() * 1e6)}-${seguro}`
+  const { error: erroUp } = await supabase.storage.from(BUCKET_ANEXOS)
+    .upload(caminho, file, { contentType: file.type || undefined })
+  if (erroUp) return { error: erroUp }
+  const { error } = await supabase.from('user_task_attachments').insert({
+    task_id: taskId, comment_id: commentId, caminho, nome: file.name,
+    mime: file.type || null, tamanho: file.size, created_by: createdBy,
+  })
+  return { error: error ?? null }
+}
+
+// Apaga o registo (a RLS decide quem pode) e remove o ficheiro do bucket.
+export async function apagarAnexo(a: Anexo): Promise<{ error: { message: string } | null }> {
+  const { error } = await supabase.from('user_task_attachments').delete().eq('id', a.id)
+  if (error) return { error }
+  await supabase.storage.from(BUCKET_ANEXOS).remove([a.caminho])   // best-effort
+  return { error: null }
+}
+
+// ─── Respostas novas (badge de "comentário novo") ────────────────────────────
+// Uma tarefa tem "resposta nova" para mim quando alguém (não eu) comentou depois
+// da última vez que abri o fio dessa tarefa. A marca de leitura vive em
+// user_task_comment_reads (uma linha por tarefa/pessoa).
+
+// Marca o fio de uma tarefa como lido até agora (upsert da minha marca).
+export async function marcarTarefaLida(taskId: string, userId: string) {
+  return supabase.from('user_task_comment_reads')
+    .upsert({ task_id: taskId, user_id: userId, last_read_at: new Date().toISOString() }, { onConflict: 'task_id,user_id' })
+}
+
+// Conjunto de tarefas (entre as indicadas) com respostas novas para o utilizador.
+export async function tarefasComNovidades(userId: string, taskIds: string[]): Promise<Set<string>> {
+  const res = new Set<string>()
+  if (taskIds.length === 0) return res
+  const [comentariosR, leiturasR] = await Promise.all([
+    supabase.from('user_task_comments').select('task_id, autor_id, created_at').in('task_id', taskIds),
+    supabase.from('user_task_comment_reads').select('task_id, last_read_at').eq('user_id', userId),
+  ])
+  const lidoEm = new Map<string, number>()
+  for (const l of (leiturasR.data as { task_id: string; last_read_at: string }[]) ?? []) {
+    lidoEm.set(l.task_id, new Date(l.last_read_at).getTime())
+  }
+  for (const co of (comentariosR.data as { task_id: string; autor_id: string | null; created_at: string }[]) ?? []) {
+    if (co.autor_id === userId) continue                       // as minhas respostas não contam
+    if (new Date(co.created_at).getTime() > (lidoEm.get(co.task_id) ?? 0)) res.add(co.task_id)
+  }
+  return res
 }
 
 // ─── Recados ─────────────────────────────────────────────────────────────────
@@ -248,20 +428,22 @@ export async function listarColaboradores(): Promise<Colaborador[]> {
 export type ResumoPessoa = {
   userId: string
   nome: string
-  pendentes: number
-  emCurso: number
+  emAberto: number
   concluidas: number
   atrasadas: number
 }
 
 // Agrega o estado de cada destinatário em todas as tarefas, por pessoa.
-// "atrasada" = tarefa com data limite no passado e ainda não concluída por essa
-// pessoa. Ordena por carga em aberto (pendentes + em curso), do maior ao menor.
+// Com estados editáveis, "concluída" = estado com is_concluido; tudo o resto
+// conta como "em aberto". "atrasada" = data limite no passado e ainda não
+// concluída por essa pessoa. Ordena por carga em aberto, do maior ao menor.
 export function resumoPorPessoa(
   tarefas: TarefaComAssignees[],
   colaboradores: Colaborador[],
+  estados: EstadoInfo[],
 ): ResumoPessoa[] {
   const hoje = new Date().toISOString().slice(0, 10)
+  const concluido = (slug: string) => estadoInfo(slug, estados).is_concluido
   const nomeDe = (id: string) => {
     const c = colaboradores.find((x) => x.id === id)
     return c?.nome ?? c?.email ?? '—'
@@ -272,29 +454,36 @@ export function resumoPorPessoa(
     for (const a of t.assignees) {
       let r = mapa.get(a.user_id)
       if (!r) {
-        r = { userId: a.user_id, nome: nomeDe(a.user_id), pendentes: 0, emCurso: 0, concluidas: 0, atrasadas: 0 }
+        r = { userId: a.user_id, nome: nomeDe(a.user_id), emAberto: 0, concluidas: 0, atrasadas: 0 }
         mapa.set(a.user_id, r)
       }
-      if (a.estado === 'concluida') r.concluidas++
-      else if (a.estado === 'em_curso') r.emCurso++
-      else r.pendentes++
-      if (a.estado !== 'concluida' && atrasada) r.atrasadas++
+      if (concluido(a.estado)) r.concluidas++
+      else { r.emAberto++; if (atrasada) r.atrasadas++ }
     }
   }
-  return [...mapa.values()].sort((a, b) => (b.pendentes + b.emCurso) - (a.pendentes + a.emCurso))
+  return [...mapa.values()].sort((a, b) => b.emAberto - a.emAberto)
 }
 
 // ─── Contadores para o badge do header ───────────────────────────────────────
 
-export type ContadorMinhaArea = { pendentes: number; naoLidos: number }
+export type ContadorMinhaArea = { pendentes: number; naoLidos: number; novidades: number }
 
 export async function contarMinhaArea(userId: string): Promise<ContadorMinhaArea> {
-  const pendentesQ = supabase.from('user_task_assignees')
+  // "Pendentes" = tarefas minhas em qualquer estado que não seja de conclusão.
+  const estados = await listarEstados(true)
+  const concluidos = estados.filter((e) => e.is_concluido).map((e) => e.slug)
+  let pendentesQ = supabase.from('user_task_assignees')
     .select('id', { count: 'exact', head: true })
-    .eq('user_id', userId).in('estado', ['pendente', 'em_curso'])
+    .eq('user_id', userId)
+  if (concluidos.length) pendentesQ = pendentesQ.not('estado', 'in', `(${concluidos.join(',')})`)
   const naoLidosQ = supabase.from('user_notes')
     .select('id', { count: 'exact', head: true })
     .eq('to_user', userId).eq('lida', false)
-  const [pendentes, naoLidos] = await Promise.all([pendentesQ, naoLidosQ])
-  return { pendentes: pendentes.count ?? 0, naoLidos: naoLidos.count ?? 0 }
+  const novidadesQ = supabase.rpc('contar_tarefas_novidades')   // respostas novas nas minhas tarefas
+  const [pendentes, naoLidos, novidades] = await Promise.all([pendentesQ, naoLidosQ, novidadesQ])
+  return {
+    pendentes: pendentes.count ?? 0,
+    naoLidos: naoLidos.count ?? 0,
+    novidades: (novidades.data as number | null) ?? 0,
+  }
 }

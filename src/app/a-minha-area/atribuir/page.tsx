@@ -5,11 +5,14 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 import ComentariosTarefa from '@/components/ComentariosTarefa'
+import HistoricoTarefa from '@/components/HistoricoTarefa'
+import AnexosTarefa from '@/components/AnexosTarefa'
 import EditarTarefaModal from '@/components/EditarTarefaModal'
 import {
   criarTarefa, criarRecado, notificarRecadoUrgente,
-  listarColaboradores, listarTodasTarefas, prioridadeInfo, estadoTarefaLabel,
-  PRIORIDADES, type Prioridade, type Colaborador, type TarefaComAssignees,
+  listarColaboradores, listarTodasTarefas, prioridadeInfo,
+  listarEstados, estadoInfo, SLUG_AGUARDA,
+  PRIORIDADES, type Prioridade, type Colaborador, type TarefaComAssignees, type EstadoInfo,
 } from '@/lib/minhaArea'
 
 function formatarData(d: string | null): string {
@@ -30,8 +33,11 @@ export default function AtribuirPage() {
   const [tab, setTab] = useState<'tarefa' | 'recado'>('tarefa')
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
   const [todas, setTodas] = useState<TarefaComAssignees[]>([])
+  const [estados, setEstados] = useState<EstadoInfo[]>([])
   const [msg, setMsg] = useState<string | null>(null)
   const [comentariosAberto, setComentariosAberto] = useState<string | null>(null)
+  const [historicoAberto, setHistoricoAberto] = useState<string | null>(null)
+  const [anexosAberto, setAnexosAberto] = useState<string | null>(null)
   const [editarT, setEditarT] = useState<TarefaComAssignees | null>(null)
 
   // Tarefa (vários destinatários)
@@ -49,8 +55,8 @@ export default function AtribuirPage() {
   function togglePara(id: string) { setTParas((v) => (v.includes(id) ? v.filter((x) => x !== id) : [...v, id])) }
 
   const carregar = useCallback(async () => {
-    const [cs, ts] = await Promise.all([listarColaboradores(), listarTodasTarefas()])
-    setColaboradores(cs); setTodas(ts)
+    const [cs, ts, es] = await Promise.all([listarColaboradores(), listarTodasTarefas(), listarEstados()])
+    setColaboradores(cs); setTodas(ts); setEstados(es)
   }, [])
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { if (isAdmin) carregar() }, [isAdmin, carregar])
@@ -80,7 +86,7 @@ export default function AtribuirPage() {
   if (!perfilCarregado) return <main style={c.page}><p style={c.muted}>A carregar…</p></main>
   if (!isAdmin) return <main style={c.page}><p style={c.muted}>Sem acesso.</p></main>
 
-  const emAberto = todas.filter((t) => t.assignees.some((a) => a.estado !== 'concluida'))
+  const emAberto = todas.filter((t) => t.assignees.some((a) => !estadoInfo(a.estado, estados).is_concluido))
 
   return (
     <main style={c.page}>
@@ -90,6 +96,7 @@ export default function AtribuirPage() {
           <h1 style={c.titulo}>Atribuir tarefa / recado</h1>
           <p style={c.sub}>Escolhe o(s) colaborador(es) e cria a tarefa ou o recado.</p>
         </div>
+        <Link href="/a-minha-area/estados" style={c.gerirEstados}>⚙️ Gerir estados</Link>
       </div>
 
       <div style={c.tabs}>
@@ -168,17 +175,25 @@ export default function AtribuirPage() {
                     <span style={{ flex: 1, fontWeight: 600 }}>{t.titulo}</span>
                     <span style={c.muted}>{formatarData(t.data_limite)}</span>
                     <button style={c.btnSecMini} onClick={() => setEditarT(t)} title="Editar tarefa">✏️</button>
-                    <button style={c.btnSecMini} onClick={() => setComentariosAberto((v) => (v === t.id ? null : t.id))}>💬</button>
+                    <button style={c.btnSecMini} onClick={() => setComentariosAberto((v) => (v === t.id ? null : t.id))} title="Ver respostas">💬</button>
+                    <button style={c.btnSecMini} onClick={() => setHistoricoAberto((v) => (v === t.id ? null : t.id))} title="Ver histórico">🕘</button>
+                    <button style={c.btnSecMini} onClick={() => setAnexosAberto((v) => (v === t.id ? null : t.id))} title="Ver anexos">📎</button>
                   </div>
                   <div style={c.assignees}>
-                    {t.assignees.map((a) => (
-                      <span key={a.id} style={{ ...c.assignee, ...(a.estado === 'concluida' ? c.assigneeFeito : {}) }}>
-                        {a.estado === 'concluida' ? '✓ ' : a.estado === 'em_curso' ? '◐ ' : '○ '}
-                        {nomePorId(a.user_id)} <span style={c.assigneeEstado}>· {estadoTarefaLabel(a.estado)}</span>
-                      </span>
-                    ))}
+                    {t.assignees.map((a) => {
+                      const ei = estadoInfo(a.estado, estados)
+                      return (
+                        <span key={a.id} style={{ ...c.assignee, color: ei.cor, background: ei.bg }}>
+                          {ei.is_concluido ? '✓ ' : '○ '}
+                          {nomePorId(a.user_id)} <span style={c.assigneeEstado}>· {ei.label}</span>
+                          {a.estado === SLUG_AGUARDA && a.aguarda_o_que ? <span style={c.assigneeEstado}> (⏳ {a.aguarda_o_que})</span> : null}
+                        </span>
+                      )
+                    })}
                   </div>
                   {comentariosAberto === t.id && <ComentariosTarefa taskId={t.id} autor={autor} />}
+                  {historicoAberto === t.id && <HistoricoTarefa taskId={t.id} />}
+                  {anexosAberto === t.id && <AnexosTarefa taskId={t.id} autorId={autor.id} />}
                 </div>
               )
             })}
@@ -199,8 +214,9 @@ export default function AtribuirPage() {
 
 const c: Record<string, React.CSSProperties> = {
   page: { maxWidth: 760, margin: '0 auto', padding: 20 },
-  topo: { marginBottom: 12 },
+  topo: { marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' },
   voltar: { color: 'var(--muted)', textDecoration: 'none', fontSize: 13 },
+  gerirEstados: { background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 14px', fontWeight: 600, textDecoration: 'none', color: 'var(--foreground)', fontSize: 13.5, whiteSpace: 'nowrap' },
   titulo: { fontSize: 22, fontWeight: 700, color: 'var(--primary)', margin: '6px 0 4px' },
   sub: { color: 'var(--muted)', fontSize: 14, margin: 0 },
   tabs: { display: 'flex', gap: 6, marginBottom: 14 },

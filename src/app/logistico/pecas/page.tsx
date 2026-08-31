@@ -8,6 +8,10 @@ import { reparacoesAtivasPorPeca, type ReparacaoInfo } from '@/lib/enviosPecas'
 import { pecasComPedidoPendente } from '@/lib/compras'
 import { LOCALIZACOES_PECA } from '@/types/compras'
 import QrPeca from '@/components/QrPeca'
+import SelectMarca from '@/components/SelectMarca'
+import SelectGrupo from '@/components/SelectGrupo'
+import MediaGaleriaPecas from '@/components/MediaGaleriaPecas'
+import { capasDePecas } from '@/lib/pecasMedia'
 import { imprimirEtiquetas } from '@/lib/etiquetas'
 import BotaoExportar from '@/components/BotaoExportar'
 import BotaoPdf from '@/components/BotaoPdf'
@@ -94,9 +98,17 @@ function StockBadge({ q, temSerial }: { q: number; temSerial: boolean }) {
   )
 }
 
+// Miniatura da capa da peça (ou placeholder discreto).
+function Thumb({ url }: { url?: string }) {
+  if (!url) return <span style={c.thumbVazio}>📦</span>
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={url} alt="" style={c.thumbLista} />
+}
+
 export default function StockPecasPage() {
   const { isAdmin } = useAuth()
   const [pecas, setPecas] = useState<Peca[]>([])
+  const [capas, setCapas] = useState<Map<string, string>>(new Map())
   const [carregando, setCarregando] = useState(true)
   const [pesquisa, setPesquisa] = useState('')
   const [fMarca, setFMarca] = useState('')
@@ -116,6 +128,7 @@ export default function StockPecasPage() {
     const lista = await listarPecas()
     setPecas(lista)
     setCarregando(false)
+    capasDePecas(lista.map((p) => p.id)).then(setCapas)
     // Abrir automaticamente a peça vinda de um QR Code, já depois do await
     if (qrPecaId.current) {
       const f = lista.find((p) => p.id === qrPecaId.current)
@@ -183,14 +196,17 @@ export default function StockPecasPage() {
 
       linhas.push(
         <div key={p.id} style={{ ...c.linha2col, ...c.clicavel }} onClick={() => setAberta(p)}>
-          {/* Nome */}
-          <span style={{ fontWeight: 600 }}>
-            {p.nome}
-            {pendentes.has(p.id) && <span title="Pedido de compra pendente" style={{ marginLeft: 6 }}>🛒</span>}
-            <StatusPecaBadge status={p.status} />
-            <ReparacaoBadge valor={p.status_reparacao} />
-            <EmReparacaoBadge q={p.quantidade_reparacao} info={reparacoes.get(p.id)} />
-            {p.serial_number && <span style={c.serialTag}>S/N: {p.serial_number}</span>}
+          {/* Nome (com miniatura) */}
+          <span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            <Thumb url={capas.get(p.id)} />
+            <span style={{ minWidth: 0 }}>
+              {p.nome}
+              {pendentes.has(p.id) && <span title="Pedido de compra pendente" style={{ marginLeft: 6 }}>🛒</span>}
+              <StatusPecaBadge status={p.status} />
+              <ReparacaoBadge valor={p.status_reparacao} />
+              <EmReparacaoBadge q={p.quantidade_reparacao} info={reparacoes.get(p.id)} />
+              {p.serial_number && <span style={c.serialTag}>S/N: {p.serial_number}</span>}
+            </span>
           </span>
           {/* Stock (quantidade) */}
           <span style={{ textAlign: 'right', fontWeight: 700, color: p.quantidade <= 0 ? 'var(--danger, #c62828)' : 'inherit' }}>
@@ -414,11 +430,11 @@ function ModalPeca({
         <div style={c.linha2}>
           <div>
             <label style={c.label}>Marca</label>
-            <input style={c.inputModal} value={marca} onChange={(e) => setMarca(e.target.value)} placeholder="Candela, AlmaLaser..." disabled={soLeitura} />
+            <SelectMarca valor={marca} onChange={setMarca} disabled={soLeitura} style={c.inputModal} />
           </div>
           <div>
             <label style={c.label}>Grupo</label>
-            <input style={c.inputModal} value={grupo} onChange={(e) => setGrupo(e.target.value)} placeholder="Ex: Peças PRO" disabled={soLeitura} />
+            <SelectGrupo valor={grupo} onChange={setGrupo} disabled={soLeitura} style={c.inputModal} />
           </div>
         </div>
 
@@ -471,6 +487,8 @@ function ModalPeca({
 
         <label style={c.label}>Notas</label>
         <textarea style={c.textarea} value={notas} onChange={(e) => setNotas(e.target.value)} disabled={soLeitura} />
+
+        {peca && <MediaGaleriaPecas pecaId={peca.id} />}
 
         <div style={c.modalAcoes}>
           {peca && (
@@ -546,6 +564,8 @@ const c: Record<string, React.CSSProperties> = {
   grupoMarca: { fontWeight: 800, fontSize: 14, color: 'var(--primary)', background: 'var(--accent-bg, #eef1f6)', borderRadius: 6, padding: '8px', marginTop: 8 },
   grupoEquip: { fontWeight: 700, fontSize: 12.5, color: 'var(--muted)', padding: '8px 8px 2px 10px' },
   serialTag: { marginLeft: 6, fontSize: 11, fontWeight: 500, color: 'var(--muted)' },
+  thumbLista: { width: 36, height: 36, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)', flexShrink: 0 },
+  thumbVazio: { width: 36, height: 36, borderRadius: 6, border: '1px solid var(--border)', background: '#f4f5f7', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, flexShrink: 0 },
   dica: { color: 'var(--muted)', fontSize: 13, marginTop: 10, textAlign: 'center' },
 
   overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 16, overflowY: 'auto', zIndex: 100 },

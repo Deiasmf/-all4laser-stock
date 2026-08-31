@@ -1,93 +1,101 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+// Equipamentos Prontos a Enviar — agora com agrupamento em Expedições.
+// As NEs prontas (fase admin_expedicao/em_curso) aparecem agrupadas por cliente.
+// Selecionar 1+ NEs do mesmo cliente → criar uma Expedição (escolhendo a morada).
+// A expedição (documentos, tracking, confirmar expedida) faz-se no detalhe.
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
-import {
-  listarNotasNaFase, concluirFase, guardarExpedicao,
-  uploadFicheiro, BUCKET_EXPED,
-} from '@/lib/neFluxo'
-import { TRANSPORTADORES } from '@/lib/transportadores'
-import NotaDetalhe from '@/components/NotaDetalhe'
+import { notasProntas, moradasCliente, criarExpedicion } from '@/lib/expeditions'
+import { resumoEquipamentos, type MoradaEntrega } from '@/types/expedition'
 import type { NotaEncomenda } from '@/types/notaEncomenda'
 
-function formatarData(d: string | null) {
+function fdata(d: string | null) {
   if (!d) return '—'
   const dt = new Date(d)
   return isNaN(dt.getTime()) ? d : dt.toLocaleDateString('pt-PT')
 }
 
-type Anexo = { url: string; caminho: string } | null
+type Grupo = { clienteId: string | null; clienteNome: string; notas: NotaEncomenda[] }
 
-const DOCS = ['AWB', 'DAU', 'CMR']
-
-export default function ExpedicaoPage() {
+export default function ProntosAEnviarPage() {
   const { session, perfil } = useAuth()
+  const router = useRouter()
   const [notas, setNotas] = useState<NotaEncomenda[]>([])
   const [carregando, setCarregando] = useState(true)
-  const [aberta, setAberta] = useState<NotaEncomenda | null>(null)
+  const [sel, setSel] = useState<Set<string>>(new Set())
+  const [toast, setToast] = useState<string | null>(null)
 
-  const [transp, setTransp] = useState('')
-  const [transpOutro, setTranspOutro] = useState('')
-  const [valor, setValor] = useState('')
-  const [fatura, setFatura] = useState<Anexo>(null)
-  const [packing, setPacking] = useState<Anexo>(null)
-  const [docTipo, setDocTipo] = useState('')
-  const [doc, setDoc] = useState<Anexo>(null)
-  const [obs, setObs] = useState('')
-  const [aCarregar, setACarregar] = useState('')
-  const [aGuardar, setAGuardar] = useState(false)
+  // Modal de criação (escolher morada)
+  const [criarPara, setCriarPara] = useState<{ grupo: Grupo; moradas: MoradaEntrega[] } | null>(null)
+  const [moradaSel, setMoradaSel] = useState<string>('')
+  const [aCriar, setACriar] = useState(false)
 
-  async function carregar() {
-    setNotas(await listarNotasNaFase('admin_expedicao'))
+  const carregar = useCallback(async () => {
+    setCarregando(true)
+    setNotas(await notasProntas())
+    setSel(new Set())
     setCarregando(false)
-  }
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    carregar()
   }, [])
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { carregar() }, [carregar])
+  useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 3500); return () => clearTimeout(t) }, [toast])
 
-  function abrir(n: NotaEncomenda) {
-    setAberta(n)
-    setTransp(''); setTranspOutro(''); setValor('')
-    setFatura(null); setPacking(null); setDocTipo(''); setDoc(null); setObs('')
+  // Agrupar por cliente.
+  const grupos = useMemo<Grupo[]>(() => {
+    const m = new Map<string, Grupo>()
+    for (const n of notas) {
+      const k = n.cliente_id ?? `sem:${n.cliente_nome ?? ''}`
+      if (!m.has(k)) m.set(k, { clienteId: n.cliente_id, clienteNome: n.cliente_nome ?? 'Sem cliente', notas: [] })
+      m.get(k)!.notas.push(n)
+    }
+    return [...m.values()].sort((a, b) => a.clienteNome.localeCompare(b.clienteNome))
+  }, [notas])
+
+  const notaPorId = useMemo(() => new Map(notas.map((n) => [n.id, n])), [notas])
+  // Cliente da seleção atual (null se vazia; false se mistura clientes).
+  const clienteSel = useMemo<string | null | false>(() => {
+    let c: string | null | undefined
+    for (const id of sel) {
+      const n = notaPorId.get(id); if (!n) continue
+      if (c === undefined) c = n.cliente_id
+      else if (c !== n.cliente_id) return false
+    }
+    return c ?? null
+  }, [sel, notaPorId])
+
+  function toggle(id: string) {
+    setSel((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
   }
 
-  async function aoCarregar(e: React.ChangeEvent<HTMLInputElement>, campo: string, set: (a: Anexo) => void) {
-    if (!aberta) return
-    const f = e.target.files?.[0]
-    if (!f) return
-    setACarregar(campo)
-    const r = await uploadFicheiro(BUCKET_EXPED, aberta.id, f)
-    setACarregar('')
-    e.target.value = ''
-    if (!r) { alert('Erro a carregar o ficheiro.'); return }
-    set(r)
+  async function iniciarCriacao(notaIds: string[]) {
+    const ns = notaIds.map((id) => notaPorId.get(id)).filter((n): n is NotaEncomenda => !!n)
+    if (ns.length === 0) return
+    const cliente = ns[0].cliente_id
+    if (ns.some((n) => n.cliente_id !== cliente)) { setToast('Só podes agrupar NEs do mesmo cliente.'); return }
+    const grupo: Grupo = { clienteId: cliente, clienteNome: ns[0].cliente_nome ?? 'Sem cliente', notas: ns }
+    const moradas = cliente ? await moradasCliente(cliente) : []
+    setMoradaSel(moradas.length === 1 ? moradas[0].id : '')
+    setCriarPara({ grupo, moradas })
   }
 
-  const transportadorFinal = (transp === '__outro__' ? transpOutro : transp).trim()
-  const podeConfirmar = !!transportadorFinal && !!fatura
-
-  async function confirmar() {
-    if (!aberta || !podeConfirmar) return
-    if (!window.confirm('Confirmar a expedição? O equipamento passa a "Enviado".')) return
-    setAGuardar(true)
-    await guardarExpedicao(aberta.id, {
-      transportador: transportadorFinal || null,
-      valor_transporte: valor.trim() === '' ? null : Number(valor),
-      fatura_url: fatura?.url ?? null, fatura_caminho: fatura?.caminho ?? null,
-      packing_list_url: packing?.url ?? null, packing_list_caminho: packing?.caminho ?? null,
-      doc_exportacao_url: doc?.url ?? null, doc_exportacao_caminho: doc?.caminho ?? null,
-      doc_exportacao_tipo: docTipo || null,
-      notas: obs.trim() || null,
-    })
-    const nome = perfil?.nome ?? perfil?.email ?? null
-    const { error } = await concluirFase(aberta, 'admin_expedicao', { id: session?.user.id ?? null, nome })
-    setAGuardar(false)
-    if (error) { alert('Erro: ' + error.message); return }
-    setAberta(null)
-    carregar()
+  async function confirmarCriacao() {
+    if (!criarPara) return
+    setACriar(true)
+    const { grupo, moradas } = criarPara
+    const morada = moradas.find((m) => m.id === moradaSel) ?? null
+    const { id, error } = await criarExpedicion(
+      { cliente_id: grupo.clienteId, cliente_nome: grupo.clienteNome, morada, notaIds: grupo.notas.map((n) => n.id) },
+      { id: session?.user.id ?? null, nome: perfil?.nome ?? perfil?.email ?? null },
+    )
+    setACriar(false)
+    if (error || !id) { setToast('Erro: ' + (error ?? 'desconhecido')); return }
+    router.push(`/admin-dept/expedicoes/${id}`)
   }
+
+  const selCount = sel.size
 
   return (
     <main style={c.page}>
@@ -95,120 +103,95 @@ export default function ExpedicaoPage() {
         <div>
           <h1 style={c.titulo}>Equipamentos Prontos a Enviar</h1>
           <Link href="/admin-dept" style={c.voltar}>← Administrativo</Link>
+          {' · '}
+          <Link href="/admin-dept/expedicoes" style={c.link}>Ver Expedições →</Link>
         </div>
-        <span style={c.contador}>{notas.length} em curso</span>
+        <span style={c.contador}>{notas.length} prontas</span>
       </div>
 
+      {selCount > 0 && (
+        <div style={c.barraSel}>
+          <span>{selCount} selecionada{selCount > 1 ? 's' : ''}{clienteSel === false ? ' — de clientes diferentes!' : ''}</span>
+          <button style={{ ...c.btnPrimario, opacity: clienteSel === false ? 0.5 : 1 }} disabled={clienteSel === false}
+            onClick={() => iniciarCriacao([...sel])}>Criar Expedição</button>
+          <button style={c.btnLimpar} onClick={() => setSel(new Set())}>Limpar seleção</button>
+        </div>
+      )}
+
       {carregando ? (
-        <p style={c.estado}>A carregar...</p>
+        <p style={c.estado}>A carregar…</p>
       ) : notas.length === 0 ? (
         <p style={c.estado}>Não há equipamentos prontos a enviar.</p>
       ) : (
-        <div style={c.tabelaWrap}>
-          <table style={c.tabela}>
-            <thead>
-              <tr>
-                <th style={c.th}>NE</th><th style={c.th}>Data</th><th style={c.th}>Cliente</th>
-                <th style={c.th}>País</th><th style={c.th}>Equipamento</th><th style={c.th}>SN</th>
-              </tr>
-            </thead>
-            <tbody>
-              {notas.map((n) => (
-                <tr key={n.id} onClick={() => abrir(n)} style={c.tr}>
-                  <td style={{ ...c.td, fontWeight: 700 }}>{n.numero ?? '—'}</td>
-                  <td style={c.td}>{formatarData(n.data_pedido)}</td>
-                  <td style={c.td}>{n.cliente_nome ?? '—'}</td>
-                  <td style={c.td}>{n.pais_destino ?? '—'}</td>
-                  <td style={c.td}>{n.equipamento_modelo ?? '—'}</td>
-                  <td style={c.td}>{n.equipamento_sn ?? '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        grupos.map((g) => (
+          <section key={g.clienteId ?? g.clienteNome} style={c.grupo}>
+            <div style={c.grupoTopo}>
+              <strong>{g.clienteNome}</strong>
+              <span style={c.grupoInfo}>{g.notas.length} pronta{g.notas.length > 1 ? 's' : ''} · {resumoEquipamentos(g.notas)}</span>
+              {g.notas.length > 1 && (
+                <button style={c.btnAgrupar} onClick={() => iniciarCriacao(g.notas.map((n) => n.id))}>
+                  Agrupar as {g.notas.length} numa expedição
+                </button>
+              )}
+            </div>
+            <div style={c.tabelaWrap}>
+              <table style={c.tabela}>
+                <tbody>
+                  {g.notas.map((n) => (
+                    <tr key={n.id} style={c.tr}>
+                      <td style={c.tdCheck}>
+                        <input type="checkbox" checked={sel.has(n.id)} onChange={() => toggle(n.id)} />
+                      </td>
+                      <td style={{ ...c.td, fontWeight: 700 }}>{n.numero ?? '—'}</td>
+                      <td style={c.td}>{fdata(n.data_pedido)}</td>
+                      <td style={c.td}>{n.pais_destino ?? '—'}</td>
+                      <td style={c.td}>{n.equipamento_modelo ?? '—'}</td>
+                      <td style={c.td}>SN {n.equipamento_sn ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        ))
       )}
 
-      {aberta && (
-        <div style={c.backdrop} onClick={() => setAberta(null)}>
+      {/* Modal: escolher morada e criar */}
+      {criarPara && (
+        <div style={c.backdrop} onClick={() => setCriarPara(null)}>
           <div style={c.painel} onClick={(e) => e.stopPropagation()}>
             <div style={c.painelTopo}>
-              <strong>{aberta.numero} · {aberta.equipamento_modelo ?? '—'} (SN {aberta.equipamento_sn ?? '—'})</strong>
-              <button onClick={() => setAberta(null)} style={c.fechar} aria-label="Fechar">×</button>
+              <strong>Criar Expedição — {criarPara.grupo.clienteNome}</strong>
+              <button onClick={() => setCriarPara(null)} style={c.fechar} aria-label="Fechar">×</button>
             </div>
+            <p style={c.ajuda}>{criarPara.grupo.notas.length} NE(s): {criarPara.grupo.notas.map((n) => n.numero).join(', ')}</p>
 
-            <NotaDetalhe nota={aberta} />
-
-            <label style={c.campo}>
-              <span style={c.rot}>Transportador *</span>
-              <select value={transp} onChange={(e) => setTransp(e.target.value)} style={c.input}>
-                <option value="">Escolher transportador...</option>
-                {TRANSPORTADORES.map((t) => <option key={t} value={t}>{t}</option>)}
-                <option value="__outro__">Outro...</option>
-              </select>
-            </label>
-            {transp === '__outro__' && (
-              <input placeholder="Nome do transportador" value={transpOutro} onChange={(e) => setTranspOutro(e.target.value)} style={c.input} />
+            <span style={c.rot}>Morada de entrega</span>
+            {criarPara.moradas.length === 0 ? (
+              <p style={c.ajuda}>Este cliente não tem moradas de entrega registadas — a expedição fica sem morada específica (podes editar depois).</p>
+            ) : (
+              <div style={c.moradas}>
+                {criarPara.moradas.map((m) => (
+                  <label key={m.id} style={c.moradaLinha}>
+                    <input type="radio" name="morada" checked={moradaSel === m.id} onChange={() => setMoradaSel(m.id)} />
+                    <span>{m.etiqueta ? <b>{m.etiqueta}: </b> : null}{[m.morada, m.cidade, m.codigo_postal, m.pais].filter(Boolean).join(', ')}</span>
+                  </label>
+                ))}
+              </div>
             )}
 
-            <label style={c.campo}><span style={c.rot}>Valor do transporte (€)</span>
-              <input value={valor} onChange={(e) => setValor(e.target.value)} style={c.input} inputMode="decimal" /></label>
-
-            <Upload label="Fatura do transportador *" anexo={fatura} aCarregar={aCarregar === 'fatura'}
-              onPick={(e) => aoCarregar(e, 'fatura', setFatura)} onClear={() => setFatura(null)} />
-            <Upload label="Packing list (opcional)" anexo={packing} aCarregar={aCarregar === 'packing'}
-              onPick={(e) => aoCarregar(e, 'packing', setPacking)} onClear={() => setPacking(null)} />
-
-            <div style={c.campo}>
-              <span style={c.rot}>Documento de exportação (opcional)</span>
-              <div style={c.docLinha}>
-                <select value={docTipo} onChange={(e) => setDocTipo(e.target.value)} style={{ ...c.input, maxWidth: 130 }}>
-                  <option value="">Tipo...</option>
-                  {DOCS.map((d) => <option key={d} value={d}>{d}</option>)}
-                </select>
-                <div style={{ flex: 1 }}>
-                  <Upload label="" anexo={doc} aCarregar={aCarregar === 'doc'}
-                    onPick={(e) => aoCarregar(e, 'doc', setDoc)} onClear={() => setDoc(null)} />
-                </div>
-              </div>
+            <div style={c.acoes}>
+              <button style={c.btnSec} onClick={() => setCriarPara(null)} disabled={aCriar}>Cancelar</button>
+              <button style={c.btnPrimario} onClick={confirmarCriacao} disabled={aCriar || (criarPara.moradas.length > 0 && !moradaSel)}>
+                {aCriar ? 'A criar…' : 'Criar Expedição'}
+              </button>
             </div>
-
-            <label style={c.campo}><span style={c.rot}>Notas</span>
-              <textarea value={obs} onChange={(e) => setObs(e.target.value)} style={c.textarea} /></label>
-
-            <button onClick={confirmar} disabled={aGuardar || !podeConfirmar} style={{ ...c.btnPrimario, opacity: podeConfirmar ? 1 : 0.5 }}>
-              {aGuardar ? 'A guardar...' : 'Confirmar Expedição'}
-            </button>
-            {!podeConfirmar && <span style={c.ajuda}>Indica o transportador e anexa a fatura para confirmar.</span>}
           </div>
         </div>
       )}
-    </main>
-  )
-}
 
-function Upload({ label, anexo, aCarregar, onPick, onClear }: {
-  label: string
-  anexo: Anexo
-  aCarregar: boolean
-  onPick: (e: React.ChangeEvent<HTMLInputElement>) => void
-  onClear: () => void
-}) {
-  return (
-    <div style={c.campo}>
-      {label && <span style={c.rot}>{label}</span>}
-      <div style={c.uploadLinha}>
-        <label style={c.btnUpload}>{anexo ? 'Substituir' : 'Carregar'}
-          <input type="file" disabled={aCarregar} onChange={onPick} style={{ display: 'none' }} />
-        </label>
-        {aCarregar && <span style={c.ajuda}>A carregar...</span>}
-        {anexo && !aCarregar && (
-          <>
-            <a href={anexo.url} target="_blank" rel="noopener noreferrer" style={c.link}>ver ficheiro</a>
-            <button onClick={onClear} style={c.removerLink} type="button">remover</button>
-          </>
-        )}
-      </div>
-    </div>
+      {toast && <div style={c.toast}>{toast}</div>}
+    </main>
   )
 }
 
@@ -217,26 +200,30 @@ const c: Record<string, React.CSSProperties> = {
   cabecalho: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, gap: 12 },
   titulo: { fontSize: 22, fontWeight: 700, color: 'var(--primary)' },
   voltar: { color: 'var(--muted)', textDecoration: 'none', fontSize: 14 },
+  link: { color: 'var(--primary)', textDecoration: 'none', fontSize: 14 },
   contador: { color: 'var(--muted)', fontSize: 14, alignSelf: 'center', whiteSpace: 'nowrap' },
   estado: { color: 'var(--muted)', padding: 24, textAlign: 'center' },
+  barraSel: { position: 'sticky', top: 0, zIndex: 10, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', marginBottom: 14 },
+  grupo: { marginBottom: 18 },
+  grupoTopo: { display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 },
+  grupoInfo: { color: 'var(--muted)', fontSize: 13 },
+  btnAgrupar: { marginLeft: 'auto', background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE', borderRadius: 8, padding: '6px 12px', fontWeight: 700, fontSize: 13, cursor: 'pointer' },
   tabelaWrap: { overflowX: 'auto', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12 },
   tabela: { width: '100%', borderCollapse: 'collapse', fontSize: 14 },
-  th: { textAlign: 'left', padding: '12px 14px', color: 'var(--muted)', fontWeight: 700, fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.4, borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' },
-  tr: { cursor: 'pointer', borderBottom: '1px solid var(--border)' },
+  tr: { borderBottom: '1px solid var(--border)' },
+  tdCheck: { padding: '10px 8px 10px 14px', width: 34 },
   td: { padding: '12px 14px', color: 'var(--foreground)', whiteSpace: 'nowrap' },
   backdrop: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, zIndex: 50 },
-  painel: { background: 'var(--surface)', borderRadius: 12, padding: 18, width: '100%', maxWidth: 520, display: 'flex', flexDirection: 'column', gap: 12, maxHeight: '92vh', overflowY: 'auto' },
-  painelTopo: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, fontSize: 14, color: 'var(--primary)' },
+  painel: { background: 'var(--surface)', borderRadius: 12, padding: 18, width: '100%', maxWidth: 520, display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '92vh', overflowY: 'auto' },
+  painelTopo: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, color: 'var(--primary)' },
   fechar: { background: 'transparent', border: 'none', fontSize: 24, lineHeight: 1, cursor: 'pointer', color: 'var(--muted)' },
-  campo: { display: 'flex', flexDirection: 'column', gap: 6 },
   rot: { color: 'var(--muted)', fontWeight: 600, fontSize: 13 },
-  input: { width: '100%', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--background)', color: 'var(--foreground)', font: 'inherit' },
-  textarea: { width: '100%', minHeight: 60, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--background)', color: 'var(--foreground)', font: 'inherit', resize: 'vertical' },
-  uploadLinha: { display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' },
-  docLinha: { display: 'flex', gap: 10, alignItems: 'flex-start' },
-  btnUpload: { background: 'var(--primary)', color: '#fff', borderRadius: 8, padding: '8px 14px', fontWeight: 700, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' },
-  link: { color: 'var(--primary)', fontSize: 13, textDecoration: 'underline' },
-  removerLink: { background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 13, textDecoration: 'underline' },
-  ajuda: { fontSize: 12, color: 'var(--muted)' },
-  btnPrimario: { background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '12px 18px', fontWeight: 700, cursor: 'pointer', fontSize: 15, marginTop: 4 },
+  ajuda: { fontSize: 13, color: 'var(--muted)' },
+  moradas: { display: 'flex', flexDirection: 'column', gap: 6 },
+  moradaLinha: { display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 14, cursor: 'pointer' },
+  acoes: { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 },
+  btnPrimario: { background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 16px', fontWeight: 700, cursor: 'pointer', fontSize: 14 },
+  btnSec: { background: 'var(--surface)', color: 'var(--foreground)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 16px', fontWeight: 600, cursor: 'pointer', fontSize: 14 },
+  btnLimpar: { background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 13, textDecoration: 'underline' },
+  toast: { position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', background: '#111827', color: '#fff', padding: '10px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, zIndex: 60 },
 }

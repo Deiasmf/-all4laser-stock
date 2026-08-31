@@ -9,6 +9,16 @@ import type { Equipamento } from '@/types/equipamento'
 import { camposEmFalta, ROTULO_OBRIGATORIO } from '@/types/equipamento'
 import type { FaturacaoEquip } from '@/types/aluguer'
 import MediaGaleria from '@/components/MediaGaleria'
+import DadosProdutoEquip from '@/components/DadosProdutoEquip'
+import HandpiecesEquip from '@/components/HandpiecesEquip'
+import AcessoriosEquip from '@/components/AcessoriosEquip'
+import CompletudeFicha from '@/components/CompletudeFicha'
+import PedirDadosFalta from '@/components/PedirDadosFalta'
+import GerarFichaProduto from '@/components/GerarFichaProduto'
+import EnviarFichaProduto from '@/components/EnviarFichaProduto'
+import LinksPartilha from '@/components/LinksPartilha'
+import HistoricoEnviosEquip from '@/components/HistoricoEnviosEquip'
+import { obterCompletude } from '@/lib/fichaProduto'
 import QrEquipamento from '@/components/QrEquipamento'
 import EquipamentoPecasFalta from '@/components/EquipamentoPecasFalta'
 import StatusEquipamento from '@/components/StatusEquipamento'
@@ -74,7 +84,7 @@ function Linha({ rotulo, valor }: { rotulo: string; valor: React.ReactNode }) {
 export default function DetalheEquipamento() {
   const params = useParams()
   const router = useRouter()
-  const { isAdmin } = useAuth()
+  const { isAdmin, isAdministrativo } = useAuth()
   const id = params.id as string
 
   const [eq, setEq] = useState<Equipamento | null>(null)
@@ -82,6 +92,17 @@ export default function DetalheEquipamento() {
   const [erro, setErro] = useState<string | null>(null)
   const [aApagar, setAApagar] = useState(false)
   const [fatur, setFatur] = useState<FaturacaoEquip | null>(null)
+  const [rk, setRk] = useState(0)   // refrescar o indicador de completude
+  const bump = () => setRk((v) => v + 1)
+  const [pctFicha, setPctFicha] = useState<number | null>(null)
+  const [rkEnvios, setRkEnvios] = useState(0)
+  const bumpEnvios = () => setRkEnvios((v) => v + 1)
+
+  useEffect(() => {
+    let ativo = true
+    obterCompletude(id).then((c) => { if (ativo) setPctFicha(c.pct) })
+    return () => { ativo = false }
+  }, [id, rk])
 
   useEffect(() => {
     supabase
@@ -187,6 +208,27 @@ export default function DetalheEquipamento() {
               ],
             })}
           />
+          {isAdministrativo && (
+            <>
+              <GerarFichaProduto
+                equipamentoId={eq.id}
+                marca={eq.marca}
+                modelo={eq.modelo}
+                ano={eq.ano}
+                serialNumber={eq.serial_number}
+                precoVenda={eq.preco_venda}
+              />
+              <EnviarFichaProduto
+                equipamentoId={eq.id}
+                marca={eq.marca}
+                modelo={eq.modelo}
+                ano={eq.ano}
+                serialNumber={eq.serial_number}
+                precoVenda={eq.preco_venda}
+                onEnviado={bumpEnvios}
+              />
+            </>
+          )}
           {isAdmin && (
             <>
               <Link href={`/equipamentos/${eq.id}/edit?saida=1`} className={styles.btnSaida}>
@@ -210,6 +252,26 @@ export default function DetalheEquipamento() {
         </div>
       )}
 
+      <CompletudeFicha equipamentoId={eq.id} refreshKey={rk} />
+
+      {eq.status === 'Em stock' && pctFicha !== null && pctFicha < 100 && (
+        <div style={{ marginTop: 12, border: '1px solid #FDE68A', background: '#FFFBEB', borderRadius: 12, padding: '12px 14px' }}>
+          <div style={{ fontSize: 14, marginBottom: 10 }}>
+            Este equipamento está <strong>Em stock</strong> mas a <strong>ficha de produto</strong> está a {pctFicha}%.
+            Completa-a para poder gerar e enviar fichas.
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Link
+              href={`/equipamentos/${eq.id}/ficha`}
+              style={{ background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 16px', fontWeight: 700, textDecoration: 'none' }}
+            >
+              📋 Completar dados de produto
+            </Link>
+            <PedirDadosFalta equipamentoId={eq.id} tituloEquip={[eq.marca, eq.modelo].filter(Boolean).join(' ') || 'Equipamento'} />
+          </div>
+        </div>
+      )}
+
       <div className={styles.seccao}>
         <div className={styles.seccaoTitulo}>Identificação</div>
         <Linha rotulo="Modelo" valor={eq.modelo} />
@@ -225,6 +287,12 @@ export default function DetalheEquipamento() {
           <Linha rotulo="Original/Upgraded" valor={eq.original_upgraded} />
         )}
       </div>
+
+      <DadosProdutoEquip equipamentoId={eq.id} onChange={bump} />
+      <HandpiecesEquip equipamentoId={eq.id} onChange={bump} />
+      <AcessoriosEquip equipamentoId={eq.id} textoLegado={eq.acessorios} onChange={bump} />
+      <LinksPartilha equipamentoId={eq.id} />
+      <HistoricoEnviosEquip equipamentoId={eq.id} refreshKey={rkEnvios} />
 
       <div className={styles.seccao}>
         <div className={styles.seccaoTitulo}>Movimento</div>
@@ -297,7 +365,7 @@ export default function DetalheEquipamento() {
 
       <QrEquipamento equipamentoId={eq.id} modelo={eq.modelo} marca={eq.marca} serial={eq.serial_number} />
 
-      <MediaGaleria equipamentoId={eq.id} />
+      <MediaGaleria equipamentoId={eq.id} onChange={bump} />
 
       {isAdmin && (
         <div className={styles.zonaApagar}>

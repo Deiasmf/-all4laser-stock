@@ -13,7 +13,7 @@ import { contarMinhaArea } from '@/lib/minhaArea'
 // `requer` esconde o item para quem não tem o acesso (o bloqueio real é a RLS
 // + as guardas de rota; isto só limpa o menu).
 type Requer = 'admin' | 'financeiro'
-type SubItem = { href: string; label: string; icon: string }
+type SubItem = { href: string; label: string; icon: string; requer?: Requer; badge?: 'leads' | 'minhaArea' }
 type Item = { href?: string; label: string; icon?: string; badge?: 'leads' | 'minhaArea'; filhos?: SubItem[]; requer?: Requer; exato?: boolean }
 type Seccao = { titulo: string; itens: Item[] }
 
@@ -33,7 +33,10 @@ const NAV: Seccao[] = [
         href: '/admin-dept', label: 'Administrativo', icon: '🗂️',
         filhos: [
           { href: '/admin-dept/expedicao', label: 'Prontos a enviar', icon: '✈️' },
+          { href: '/admin-dept/expedicoes', label: 'Expedições', icon: '🚚' },
           { href: '/admin-dept/envios-pecas', label: 'Envios de Encomendas', icon: '📬' },
+          { href: '/admin-dept/tracking', label: 'Tracking', icon: '🚚' },
+          { href: '/admin-dept/cotacoes-transporte', label: 'Cotações de Transporte', icon: '📦' },
         ],
       },
       { href: '/financeiro', label: 'Financeiro', icon: '💶', requer: 'financeiro' },
@@ -41,6 +44,7 @@ const NAV: Seccao[] = [
       {
         href: '/comercial', label: 'Comercial', icon: '🤝',
         filhos: [
+          { href: '/comercial/leads', label: 'Leads', icon: '🔔', badge: 'leads' },
           { href: '/comercial/clientes', label: 'Clientes', icon: '👥' },
           { href: '/comercial/registos', label: 'Registos de clientes', icon: '📝' },
           { href: '/comercial/notas-encomenda', label: 'Notas de encomenda', icon: '📋' },
@@ -71,7 +75,7 @@ const NAV: Seccao[] = [
         ],
       },
       { href: '/clinico', label: 'Clínico', icon: '🩺' },
-      { href: '/alugueres', label: 'Alugueres', icon: '🔄', badge: 'leads' },
+      { href: '/alugueres', label: 'Alugueres', icon: '🔄' },
       { href: '/projetos', label: 'Outros Projetos', icon: '🏗️' },
     ],
   },
@@ -86,7 +90,8 @@ const NAV: Seccao[] = [
     titulo: 'Sistema',
     itens: [
       { href: '/processos', label: 'Processos', icon: '📋' },
-      { href: '/definicoes/utilizadores', label: 'Utilizadores', icon: '👤', requer: 'admin' },
+      { href: '/definicoes/fichas', label: 'Fichas de Produto', icon: '📄' },
+      { href: '/definicoes/utilizadores', label: 'Utilizadores', icon: '👤', requer: 'admin' }, // requer: gestão de utilizadores (role 'admin')
     ],
   },
 ]
@@ -94,10 +99,13 @@ const NAV: Seccao[] = [
 // Título da página a partir da rota (mais específico primeiro).
 const TITULOS: { prefixo: string; titulo: string }[] = [
   { prefixo: '/a-minha-area/atribuir', titulo: 'Atribuir Tarefa / Recado' },
+  { prefixo: '/a-minha-area/estados', titulo: 'Estados das Tarefas' },
   { prefixo: '/a-minha-area/equipa', titulo: 'Equipa' },
   { prefixo: '/a-minha-area', titulo: 'A Minha Área' },
+  { prefixo: '/admin-dept/expedicoes', titulo: 'Expedições' },
   { prefixo: '/admin-dept/expedicao', titulo: 'Prontos a Enviar' },
   { prefixo: '/admin-dept/envios-pecas', titulo: 'Envios de Encomendas' },
+  { prefixo: '/admin-dept/cotacoes-transporte', titulo: 'Cotações de Transporte' },
   { prefixo: '/admin-dept', titulo: 'Administrativo' },
   { prefixo: '/financeiro/contas-correntes', titulo: 'Contas Correntes' },
   { prefixo: '/financeiro/keyinvoice', titulo: 'Keyinvoice' },
@@ -112,6 +120,7 @@ const TITULOS: { prefixo: string; titulo: string }[] = [
   { prefixo: '/comercial/clientes', titulo: 'Clientes' },
   { prefixo: '/comercial/reservas-portal', titulo: 'Reservas Portal' },
   { prefixo: '/comercial/registos', titulo: 'Registos de Clientes' },
+  { prefixo: '/comercial/leads', titulo: 'Leads' },
   { prefixo: '/comercial', titulo: 'Comercial' },
   { prefixo: '/marketing', titulo: 'Marketing' },
   { prefixo: '/tecnico/preparacao', titulo: 'Em Preparação Técnica' },
@@ -145,7 +154,7 @@ function tituloDaRota(path: string): string {
 }
 
 export default function Shell({ children }: { children: React.ReactNode }) {
-  const { session, perfil, sair, isAdmin, isFinanceiro } = useAuth()
+  const { session, perfil, sair, isFinanceiro, isGestorUtilizadores } = useAuth()
   const pathname = usePathname()
   const [leadsNovas, setLeadsNovas] = useState(0)
   const [minhaArea, setMinhaArea] = useState(0)
@@ -174,7 +183,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     if (!session || !perfil?.id) return
     let ativo = true
     contarMinhaArea(perfil.id).then((r) => {
-      if (ativo) setMinhaArea(r.pendentes + r.naoLidos)
+      if (ativo) setMinhaArea(r.pendentes + r.naoLidos + r.novidades)
     })
     return () => {
       ativo = false
@@ -196,7 +205,8 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     pathname === '/redefinir-password' ||
     pathname.startsWith('/assinar') ||
     pathname.startsWith('/reservas') ||
-    pathname.startsWith('/registo-cliente')
+    pathname.startsWith('/registo-cliente') ||
+    pathname.startsWith('/p/')
   ) {
     return <>{children}</>
   }
@@ -215,7 +225,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   // Mostra o item conforme o role (o bloqueio real é a RLS + guardas de rota).
   function podeVer(requer?: Requer) {
     if (!requer) return true
-    if (requer === 'admin') return isAdmin
+    if (requer === 'admin') return isGestorUtilizadores
     if (requer === 'financeiro') return isFinanceiro
     return true
   }
@@ -257,7 +267,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                         <span>{it.label}</span>
                         <span className={`a4l-sb-chevron${aberto ? ' aberto' : ''}`}>▸</span>
                       </button>
-                      {aberto && it.filhos.map((f) => (
+                      {aberto && it.filhos.filter((f) => podeVer(f.requer)).map((f) => (
                         <Link
                           key={f.href}
                           href={f.href}
@@ -265,6 +275,8 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                         >
                           <span className="a4l-sb-subicon">{f.icon}</span>
                           <span>{f.label}</span>
+                          {f.badge === 'leads' && leadsNovas > 0 && <span className="a4l-sb-badge">{leadsNovas}</span>}
+                          {f.badge === 'minhaArea' && minhaArea > 0 && <span className="a4l-sb-badge">{minhaArea}</span>}
                         </Link>
                       ))}
                     </div>
@@ -330,12 +342,12 @@ export default function Shell({ children }: { children: React.ReactNode }) {
           </div>
           <div className="a4l-topbar-right">
             {minhaArea > 0 && (
-              <Link href="/a-minha-area" className="a4l-pill-leads" title="Tarefas pendentes e recados por ler">
+              <Link href="/a-minha-area" className="a4l-pill-leads" title="Tarefas pendentes, recados por ler e respostas novas">
                 📌 {minhaArea}
               </Link>
             )}
             {leadsNovas > 0 && (
-              <Link href="/alugueres/leads" className="a4l-pill-leads">
+              <Link href="/comercial/leads" className="a4l-pill-leads">
                 🔔 {leadsNovas} {leadsNovas === 1 ? 'lead nova' : 'leads novas'}
               </Link>
             )}

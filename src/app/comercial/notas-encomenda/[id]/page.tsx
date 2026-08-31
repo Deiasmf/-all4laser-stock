@@ -9,6 +9,9 @@ import {
   alterarEstadoNota, eliminarNota,
 } from '@/lib/notasEncomenda'
 import NotaEncomendaForm from '@/components/NotaEncomendaForm'
+import FolhasReutilizaveis from '@/components/FolhasReutilizaveis'
+import { expedicaoDaNota } from '@/lib/expeditions'
+import { estadoExpInfo, type Expedition } from '@/types/expedition'
 import { limparRascunho } from '@/lib/useFormDraft'
 import BotaoPdf from '@/components/BotaoPdf'
 import {
@@ -36,6 +39,9 @@ export default function DetalheNotaPage() {
   const [aGuardar, setAGuardar] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
+  const [expedicao, setExpedicao] = useState<Pick<Expedition, 'id' | 'numero' | 'estado'> | null>(null)
+
+  useEffect(() => { expedicaoDaNota(id).then(setExpedicao) }, [id])
 
   useEffect(() => {
     let activo = true
@@ -139,6 +145,13 @@ export default function DetalheNotaPage() {
             <span style={{ fontSize: 12, fontWeight: 700, color: cfg.color, background: cfg.bg, borderRadius: 999, padding: '2px 10px' }}>{cfg.label}</span>
           </div>
           <Link href="/comercial/notas-encomenda" style={s.voltar}>← Notas de Encomenda</Link>
+          {expedicao && (
+            <div style={{ marginTop: 6 }}>
+              <Link href={`/admin-dept/expedicoes/${expedicao.id}`} style={{ fontSize: 13, fontWeight: 700, color: estadoExpInfo(expedicao.estado).cor, background: estadoExpInfo(expedicao.estado).bg, borderRadius: 999, padding: '3px 10px', textDecoration: 'none' }}>
+                Incluída na Expedição {expedicao.numero} →
+              </Link>
+            </div>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <button onClick={() => window.print()} style={s.btnPdf}>🖨 Imprimir</button>
@@ -203,6 +216,9 @@ export default function DetalheNotaPage() {
 
       {msg && <div style={s.ok} className="no-print">{msg}</div>}
       {erro && <div style={s.erro} className="no-print">{erro}</div>}
+
+      {/* Reutilização de folhas de obra por S/N */}
+      <FolhasReutilizaveis sn={nota.equipamento_sn} notaId={nota.id} />
 
       {/* Documento (formato tipo PDF) */}
       <div style={s.doc}>

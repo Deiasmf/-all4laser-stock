@@ -5,7 +5,7 @@ import Link from 'next/link'
 const ATALHOS = [
   { href: '/comercial/clientes', icon: '👥', titulo: 'Clientes', desc: 'Fichas de cliente, contactos e histórico (CRM).' },
   { href: '/comercial/notas-encomenda', icon: '📋', titulo: 'Notas de Encomenda', desc: 'Emitir e acompanhar notas de encomenda.' },
-  { href: '/alugueres/leads', icon: '🔔', titulo: 'Leads', desc: 'Pedidos recebidos do site e das redes sociais.' },
+  { href: '/comercial/leads', icon: '🔔', titulo: 'Leads', desc: 'Pedidos recebidos do site, redes sociais e email.' },
 ]
 
 export default function ComercialPage() {

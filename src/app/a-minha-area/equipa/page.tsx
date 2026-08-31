@@ -4,10 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import ComentariosTarefa from '@/components/ComentariosTarefa'
+import HistoricoTarefa from '@/components/HistoricoTarefa'
+import AnexosTarefa from '@/components/AnexosTarefa'
 import {
   listarColaboradores, listarTodasTarefas, resumoPorPessoa,
-  prioridadeInfo, estadoTarefaLabel,
-  type Colaborador, type TarefaComAssignees,
+  prioridadeInfo, listarEstados, estadoInfo, SLUG_AGUARDA,
+  type Colaborador, type TarefaComAssignees, type EstadoInfo,
 } from '@/lib/minhaArea'
 
 function formatarData(d: string | null): string {
@@ -22,10 +24,13 @@ export default function EquipaPage() {
   const autor = { id: perfil?.id ?? null, nome: perfil?.nome ?? null }
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([])
   const [todas, setTodas] = useState<TarefaComAssignees[]>([])
+  const [estados, setEstados] = useState<EstadoInfo[]>([])
   const [carregando, setCarregando] = useState(true)
   const [filtroPessoa, setFiltroPessoa] = useState<string>('')   // '' = todas
   const [verConcluidas, setVerConcluidas] = useState(false)
   const [comentariosAberto, setComentariosAberto] = useState<string | null>(null)
+  const [historicoAberto, setHistoricoAberto] = useState<string | null>(null)
+  const [anexosAberto, setAnexosAberto] = useState<string | null>(null)
 
   const nomeDe = useCallback(
     (id: string) => colaboradores.find((c) => c.id === id)?.nome ?? colaboradores.find((c) => c.id === id)?.email ?? '—',
@@ -33,23 +38,23 @@ export default function EquipaPage() {
   )
 
   const carregar = useCallback(async () => {
-    const [cs, ts] = await Promise.all([listarColaboradores(), listarTodasTarefas()])
-    setColaboradores(cs); setTodas(ts); setCarregando(false)
+    const [cs, ts, es] = await Promise.all([listarColaboradores(), listarTodasTarefas(), listarEstados()])
+    setColaboradores(cs); setTodas(ts); setEstados(es); setCarregando(false)
   }, [])
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { if (perfil?.id) carregar() }, [perfil?.id, carregar])
 
-  const resumo = useMemo(() => resumoPorPessoa(todas, colaboradores), [todas, colaboradores])
+  const resumo = useMemo(() => resumoPorPessoa(todas, colaboradores, estados), [todas, colaboradores, estados])
 
   // Tarefas visíveis: aplica filtro por pessoa e o toggle de concluídas.
   // Uma tarefa conta como "em aberto" se algum destinatário ainda não concluiu.
   const tarefasVisiveis = useMemo(() => {
     return todas.filter((t) => {
       if (filtroPessoa && !t.assignees.some((a) => a.user_id === filtroPessoa)) return false
-      const emAberto = t.assignees.some((a) => a.estado !== 'concluida')
+      const emAberto = t.assignees.some((a) => !estadoInfo(a.estado, estados).is_concluido)
       return verConcluidas ? true : emAberto
     })
-  }, [todas, filtroPessoa, verConcluidas])
+  }, [todas, filtroPessoa, verConcluidas, estados])
 
   if (!perfilCarregado) return <main style={c.page}><p style={c.muted}>A carregar…</p></main>
   if (!perfil?.id) return <main style={c.page}><p style={c.muted}>Sem acesso.</p></main>
@@ -80,8 +85,7 @@ export default function EquipaPage() {
                     >
                       <div style={c.cardNome}>{r.nome}</div>
                       <div style={c.cardNums}>
-                        <span style={c.num}><b>{r.pendentes}</b> pendentes</span>
-                        <span style={c.num}><b>{r.emCurso}</b> em curso</span>
+                        <span style={c.num}><b>{r.emAberto}</b> em aberto</span>
                         <span style={c.num}><b>{r.concluidas}</b> concluídas</span>
                         {r.atrasadas > 0 && <span style={c.numAtraso}>⚠ {r.atrasadas} atrasada{r.atrasadas > 1 ? 's' : ''}</span>}
                       </div>
@@ -111,8 +115,8 @@ export default function EquipaPage() {
               <div style={c.lista}>
                 {tarefasVisiveis.map((t) => {
                   const pi = prioridadeInfo(t.prioridade)
-                  const atrasada = !!t.data_limite && t.data_limite < hoje() && t.assignees.some((a) => a.estado !== 'concluida')
-                  const tudoFeito = t.assignees.length > 0 && t.assignees.every((a) => a.estado === 'concluida')
+                  const atrasada = !!t.data_limite && t.data_limite < hoje() && t.assignees.some((a) => !estadoInfo(a.estado, estados).is_concluido)
+                  const tudoFeito = t.assignees.length > 0 && t.assignees.every((a) => estadoInfo(a.estado, estados).is_concluido)
                   return (
                     <div key={t.id} style={{ ...c.tarefa, ...(tudoFeito ? c.tarefaFeita : {}) }}>
                       <div style={c.tarefaTopo}>
@@ -120,18 +124,26 @@ export default function EquipaPage() {
                         <span style={{ flex: 1, fontWeight: 600 }}>{t.titulo}</span>
                         {t.data_limite && <span style={{ ...c.prazo, ...(atrasada ? c.prazoAtraso : {}) }}>{atrasada ? '⚠ ' : ''}{formatarData(t.data_limite)}</span>}
                         <button style={c.btnSecMini} onClick={() => setComentariosAberto((v) => (v === t.id ? null : t.id))} title="Ver respostas">💬</button>
+                        <button style={c.btnSecMini} onClick={() => setHistoricoAberto((v) => (v === t.id ? null : t.id))} title="Ver histórico">🕘</button>
+                        <button style={c.btnSecMini} onClick={() => setAnexosAberto((v) => (v === t.id ? null : t.id))} title="Ver anexos">📎</button>
                       </div>
                       {t.descricao && <div style={c.desc}>{t.descricao}</div>}
                       <div style={c.assignees}>
-                        {t.assignees.length === 0 ? <span style={c.muted}>Sem destinatários.</span> : t.assignees.map((a) => (
-                          <span key={a.id} style={{ ...c.assignee, ...(a.estado === 'concluida' ? c.assigneeFeito : a.estado === 'em_curso' ? c.assigneeCurso : {}) }}>
-                            {a.estado === 'concluida' ? '✓ ' : a.estado === 'em_curso' ? '◐ ' : '○ '}
-                            {nomeDe(a.user_id)} <span style={c.assigneeEstado}>· {estadoTarefaLabel(a.estado)}</span>
-                          </span>
-                        ))}
+                        {t.assignees.length === 0 ? <span style={c.muted}>Sem destinatários.</span> : t.assignees.map((a) => {
+                          const ei = estadoInfo(a.estado, estados)
+                          return (
+                            <span key={a.id} style={{ ...c.assignee, color: ei.cor, background: ei.bg }}>
+                              {ei.is_concluido ? '✓ ' : '○ '}
+                              {nomeDe(a.user_id)} <span style={c.assigneeEstado}>· {ei.label}</span>
+                              {a.estado === SLUG_AGUARDA && a.aguarda_o_que ? <span style={c.assigneeEstado}> (⏳ {a.aguarda_o_que})</span> : null}
+                            </span>
+                          )
+                        })}
                       </div>
                       <div style={c.criador}>Criada por {t.created_by ? nomeDe(t.created_by) : '—'}</div>
                       {comentariosAberto === t.id && <ComentariosTarefa taskId={t.id} autor={autor} soLeitura />}
+                      {historicoAberto === t.id && <HistoricoTarefa taskId={t.id} />}
+                      {anexosAberto === t.id && <AnexosTarefa taskId={t.id} autorId={autor.id} soLeitura />}
                     </div>
                   )
                 })}

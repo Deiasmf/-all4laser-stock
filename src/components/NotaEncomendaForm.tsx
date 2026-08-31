@@ -6,6 +6,7 @@ import {
   listarClientes, criarCliente, pesquisarEquipamentosStock,
   type ClienteOpc, type EquipStockOpc,
 } from '@/lib/notasEncomenda'
+import AvisoDuplicadosCliente from '@/components/AvisoDuplicadosCliente'
 import { PAISES } from '@/lib/paises'
 import { categoriasParaMarca, todasCategorias, subgruposDaCategoria, itensDaCategoria } from '@/lib/material-notas-encomenda'
 import { CAPAS_OPCOES, type NotaEncomenda, type NotaMaterial, type NotaInput, type MaterialEscolhido, type CapasOpcao } from '@/types/notaEncomenda'
@@ -297,6 +298,13 @@ export default function NotaEncomendaForm({ inicial, materiaisIniciais, acoes, a
             <input value={clienteTelefone} onChange={(e) => setClienteTelefone(e.target.value)} style={f.input} placeholder="+351 ..." />
           </Campo>
         </div>
+        {!clienteId && clienteNome.trim() && (
+          <AvisoDuplicadosCliente
+            nome={clienteNome}
+            email={clienteEmail}
+            onUsar={(c) => escolherCliente({ id: c.id, nome: c.nome, pais: c.pais })}
+          />
+        )}
       </section>
 
       {/* 3. Equipamento */}

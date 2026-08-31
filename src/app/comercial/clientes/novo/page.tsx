@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import ClienteForm from '@/components/ClienteForm'
 import { limparRascunho } from '@/lib/useFormDraft'
 import { criarClienteFicha } from '@/lib/clientes'
+import { mensagemErro } from '@/lib/erros'
 import type { ClienteInput } from '@/types/cliente'
 
 const RASCUNHO = 'cliente:novo'
@@ -21,7 +22,7 @@ export default function NovoClientePage() {
     const { data, error } = await criarClienteFicha(input)
     if (error || !data) {
       setAGuardar(false)
-      setErro('Não foi possível criar o cliente: ' + (error?.message ?? 'erro desconhecido'))
+      setErro(mensagemErro(error, { entidade: 'cliente' }))
       return
     }
     limparRascunho(RASCUNHO)
@@ -34,7 +35,14 @@ export default function NovoClientePage() {
         <h1 style={s.titulo}>Novo cliente</h1>
         <Link href="/comercial/clientes" style={s.voltar}>← Clientes</Link>
       </div>
-      <ClienteForm aGuardar={aGuardar} erro={erro} submitLabel="Criar cliente" onSubmit={criar} rascunhoKey={RASCUNHO} />
+      <ClienteForm
+        aGuardar={aGuardar}
+        erro={erro}
+        submitLabel="Criar cliente"
+        onSubmit={criar}
+        rascunhoKey={RASCUNHO}
+        onUsarExistente={(c) => router.push(`/comercial/clientes/${c.id}`)}
+      />
     </main>
   )
 }

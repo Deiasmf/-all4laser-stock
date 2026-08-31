@@ -38,6 +38,7 @@ export async function eliminarReserva(id: string) {
 }
 
 export async function listarClientesNomes(): Promise<{ id: string; nome: string }[]> {
-  const { data } = await supabase.from('clientes').select('id, nome').order('nome')
+  // .limit explícito: sem ele o Supabase devolve só 1000 linhas (há >1000 clientes).
+  const { data } = await supabase.from('clientes').select('id, nome').order('nome').limit(5000)
   return (data as { id: string; nome: string }[]) ?? []
 }
