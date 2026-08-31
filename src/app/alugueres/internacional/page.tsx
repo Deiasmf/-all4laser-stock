@@ -9,6 +9,7 @@ import BotaoExportar from '@/components/BotaoExportar'
 import type { ColunaExport } from '@/lib/exportar'
 import { formatarEuro, nomeMes, parseNumeroPt } from '@/lib/alugueres'
 import type { Aluguer } from '@/types/aluguer'
+import { METODOS_PAGAMENTO } from '@/types/aluguer'
 
 const BUCKET_FATURAS = 'faturas-alugueres'
 
@@ -65,6 +66,13 @@ function adicionarMeses(iso: string, k: number): string {
   const dt = new Date(y, mo - 1, d)
   dt.setMonth(dt.getMonth() + k)
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+}
+
+// Nº de meses (inclusive) entre duas datas 'YYYY-MM-DD' — cada mês = 1 registo.
+function mesesInclusive(inicioISO: string, fimISO: string): number {
+  const [y1, m1] = inicioISO.slice(0, 7).split('-').map(Number)
+  const [y2, m2] = fimISO.slice(0, 7).split('-').map(Number)
+  return (y2 - y1) * 12 + (m2 - m1) + 1
 }
 
 // ─── Contrato = conjunto de registos mensais do mesmo aluguer ────────────────
@@ -127,6 +135,8 @@ export default function AlugueresInternacional() {
   const [abertos, setAbertos] = useState<Set<string>>(new Set())
   const [finalizarCt, setFinalizarCt] = useState<Contrato | null>(null)
   const [renovarCt, setRenovarCt] = useState<Contrato | null>(null)
+  // Modal de contrato manual: null (fechado), 'novo', ou um Contrato (editar).
+  const [contratoModal, setContratoModal] = useState<'novo' | Contrato | null>(null)
 
   const carregar = useCallback(async () => {
     const { data } = await supabase
@@ -277,7 +287,7 @@ export default function AlugueresInternacional() {
       <div style={c.cabecalho}>
         <h1 style={c.titulo}>Alugueres · Internacional</h1>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          {isAdmin && <Link href="/alugueres" style={c.btnAdd}>+ Adicionar</Link>}
+          {isAdmin && <button onClick={() => setContratoModal('novo')} style={c.btnAdd}>+ Novo contrato</button>}
           <Link href="/" style={c.voltar}>← Stock</Link>
         </div>
       </div>
@@ -371,6 +381,7 @@ export default function AlugueresInternacional() {
 
                     {podeFaturar && (
                       <div style={c.acoesContrato}>
+                        <button style={c.btnEditar} onClick={() => setContratoModal(ct)}>✏️ Editar / definir datas</button>
                         <span style={c.acoesLabel}>Fim de contrato:</span>
                         {est.chave !== 'terminado' ? (
                           <>
@@ -404,8 +415,16 @@ export default function AlugueresInternacional() {
           onFeito={async () => { setRenovarCt(null); await carregar() }}
         />
       )}
+      {contratoModal && (
+        <ModalContrato
+          contrato={contratoModal === 'novo' ? null : contratoModal}
+          autor={{ id: perfil?.id ?? null, nome: perfil?.nome ?? null }}
+          onFechar={() => setContratoModal(null)}
+          onFeito={async () => { setContratoModal(null); await carregar() }}
+        />
+      )}
 
-      <p style={c.dica}>Para registar um contrato internacional usa o separador Registar; para editar os dados do aluguer, a Lista.</p>
+      <p style={c.dica}>Cria um contrato internacional em <strong>+ Novo contrato</strong> (com datas de início e fim → gera um registo por mês). Para acertar um existente, usa <strong>Editar / definir datas</strong>.</p>
     </main>
   )
 }
@@ -705,12 +724,194 @@ function ModalRenovar({
   )
 }
 
+// ------------------------------------------------ MODAL: CONTRATO (criar/editar)
+// Contrato internacional manual: cliente + equipamento + valor + datas início/fim.
+// Ao guardar, gera 1 registo (mês) por cada mês entre início e fim, inclusive —
+// mês a mês como nos Nacionais. Em edição, regenera os meses conforme as datas.
+function ModalContrato({
+  contrato, autor, onFechar, onFeito,
+}: {
+  contrato: Contrato | null
+  autor: { id: string | null; nome: string | null }
+  onFechar: () => void
+  onFeito: () => Promise<void>
+}) {
+  const primeiro = contrato?.meses[0]
+  const [clientes, setClientes] = useState<{ id: string; nome: string }[]>([])
+  const [clienteNome, setClienteNome] = useState(contrato?.cliente_nome ?? '')
+  const [clienteId, setClienteId] = useState<string | null>(contrato?.cliente_id ?? null)
+  const [serial, setSerial] = useState(contrato?.serial_number ?? '')
+  const [marca, setMarca] = useState(contrato?.marca ?? '')
+  const [modelo, setModelo] = useState(contrato?.modelo ?? '')
+  const [ano, setAno] = useState(primeiro?.ano ?? '')
+  const [equipamentoId, setEquipamentoId] = useState<string | null>(primeiro?.equipamento_id ?? null)
+  const [valor, setValor] = useState(contrato && contrato.valorMes ? String(contrato.valorMes) : '')
+  const [inicio, setInicio] = useState(contrato?.inicio ?? '')
+  const [fim, setFim] = useState(contrato?.fim ?? '')
+  const [metodo, setMetodo] = useState(primeiro?.metodo_pagamento ?? '')
+  const [aGuardar, setAGuardar] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  useEffect(() => {
+    supabase.from('clientes').select('id, nome').order('nome').limit(5000)
+      .then(({ data }) => setClientes((data as { id: string; nome: string }[]) ?? []))
+  }, [])
+
+  // Ligar o texto do cliente a um cliente registado (por nome exato).
+  function aoMudarCliente(nome: string) {
+    setClienteNome(nome)
+    const m = clientes.find((cl) => cl.nome.trim().toLowerCase() === nome.trim().toLowerCase())
+    setClienteId(m?.id ?? null)
+  }
+
+  // Procurar serial no stock → preenche marca/modelo/ano/equipamento_id.
+  useEffect(() => {
+    const q = serial.trim()
+    const t = setTimeout(async () => {
+      if (q.length < 2) return
+      const { data } = await supabase.from('equipamentos')
+        .select('id, marca, modelo, ano, serial_number')
+        .ilike('serial_number', `%${q}%`).limit(8)
+      const exato = ((data as { id: string; marca: string | null; modelo: string | null; ano: string | null; serial_number: string | null }[]) ?? [])
+        .find((e) => (e.serial_number ?? '').trim().toLowerCase() === q.toLowerCase())
+      if (exato) {
+        setEquipamentoId(exato.id)
+        setMarca(exato.marca ?? ''); setModelo(exato.modelo ?? ''); setAno(exato.ano ?? '')
+      }
+    }, 300)
+    return () => clearTimeout(t)
+  }, [serial])
+
+  const nMeses = inicio && fim && fim >= inicio ? mesesInclusive(inicio, fim) : 0
+
+  async function guardar() {
+    setErro(null)
+    if (!clienteNome.trim()) return setErro('Indica o cliente.')
+    if (!serial.trim()) return setErro('Indica o serial do equipamento.')
+    if (!inicio) return setErro('Indica a data de início.')
+    if (!fim) return setErro('Indica a data de fim.')
+    if (fim < inicio) return setErro('A data de fim não pode ser anterior ao início.')
+    const n = mesesInclusive(inicio, fim)
+    if (n < 1 || n > 120) return setErro('O intervalo de datas é inválido.')
+    const valorNum = valor.trim() ? parseNumeroPt(valor) : null
+    if (valor.trim() && valorNum === null) return setErro('O valor não é válido.')
+
+    const linhas = Array.from({ length: n }, (_, k) => ({
+      cliente_id: clienteId,
+      cliente_nome: clienteNome.trim(),
+      equipamento_id: equipamentoId,
+      serial_number: serial.trim(),
+      marca: marca.trim() || null,
+      modelo: modelo.trim() || null,
+      ano: ano.trim() || null,
+      tipo_aluguer: `${n} meses`,
+      valor: valorNum,
+      metodo_pagamento: metodo || null,
+      nacional: false,
+      data_entrega: adicionarMeses(inicio, k),
+      data_recolha: null,
+      recolha_aplicavel: k === n - 1,
+      criado_por: autor.id,
+      criado_por_nome: autor.nome,
+    }))
+
+    setAGuardar(true)
+    // Em edição: remove os meses antigos (e a sua faturação) e regenera.
+    if (contrato) {
+      const ids = contrato.meses.map((a) => a.id)
+      await supabase.from('alugueres_faturacao_mensal').delete().in('aluguer_id', ids)
+      const { error: eDel } = await supabase.from('alugueres').delete().in('id', ids)
+      if (eDel) { setAGuardar(false); return setErro('Erro a atualizar: ' + eDel.message) }
+    }
+    const { error } = await supabase.from('alugueres').insert(linhas)
+    setAGuardar(false)
+    if (error) return setErro('Erro a guardar: ' + error.message)
+    await onFeito()
+  }
+
+  return (
+    <div style={c.overlay} onClick={onFechar}>
+      <div style={c.modal} onClick={(e) => e.stopPropagation()}>
+        <div style={c.modalCab}>
+          <h2 style={c.modalTitulo}>{contrato ? 'Editar contrato internacional' : 'Novo contrato internacional'}</h2>
+          <button onClick={onFechar} style={c.fechar} aria-label="Fechar">✕</button>
+        </div>
+        {erro && <div style={c.erro}>{erro}</div>}
+
+        <label style={c.label}>Cliente</label>
+        <input style={c.input} list="lista-clientes-intl" value={clienteNome}
+          onChange={(e) => aoMudarCliente(e.target.value)} placeholder="Nome do cliente" />
+        <datalist id="lista-clientes-intl">
+          {clientes.map((cl) => <option key={cl.id} value={cl.nome} />)}
+        </datalist>
+        {clienteNome.trim() && !clienteId && <span style={c.envNota}>Não ligado a um cliente registado (fica só como texto).</span>}
+
+        <label style={c.label}>Serial number</label>
+        <input style={c.input} value={serial} onChange={(e) => setSerial(e.target.value)} placeholder="Serial do equipamento" />
+        <div style={c.linha2}>
+          <div>
+            <label style={c.label}>Marca</label>
+            <input style={c.input} value={marca} onChange={(e) => setMarca(e.target.value)} />
+          </div>
+          <div>
+            <label style={c.label}>Modelo</label>
+            <input style={c.input} value={modelo} onChange={(e) => setModelo(e.target.value)} />
+          </div>
+        </div>
+
+        <div style={c.linha2}>
+          <div>
+            <label style={c.label}>Ano</label>
+            <input style={c.input} value={ano} onChange={(e) => setAno(e.target.value)} />
+          </div>
+          <div>
+            <label style={c.label}>Valor mensal (€)</label>
+            <input style={c.input} type="number" inputMode="decimal" value={valor} onChange={(e) => setValor(e.target.value)} placeholder="0" />
+          </div>
+        </div>
+
+        <div style={c.linha2}>
+          <div>
+            <label style={c.label}>Data de início</label>
+            <input style={c.input} type="date" value={inicio} onChange={(e) => setInicio(e.target.value)} />
+          </div>
+          <div>
+            <label style={c.label}>Data de fim</label>
+            <input style={c.input} type="date" value={fim} onChange={(e) => setFim(e.target.value)} />
+          </div>
+        </div>
+
+        <label style={c.label}>Método de pagamento (opcional)</label>
+        <select style={c.input} value={metodo} onChange={(e) => setMetodo(e.target.value)}>
+          <option value="">—</option>
+          {METODOS_PAGAMENTO.map((m) => <option key={m} value={m}>{m}</option>)}
+        </select>
+
+        <p style={c.envInfo}>
+          {nMeses > 0
+            ? <>Vai gerar <strong>{nMeses}</strong> mês(es) — um registo por mês de {formatarData(inicio)} a {formatarData(fim)}.</>
+            : 'Indica as datas de início e fim para gerar os meses.'}
+          {contrato && <><br /><span style={c.envNota}>⚠ Ao guardar, os {contrato.nMeses} mês(es) atuais são substituídos pelos novos — a faturação/pagamentos já registados nesses meses é reposta.</span></>}
+        </p>
+
+        <div style={c.modalAcoes}>
+          <button onClick={onFechar} style={c.btnGhost}>Cancelar</button>
+          <button onClick={guardar} disabled={aGuardar || nMeses < 1} style={c.btnPrimario}>
+            {aGuardar ? 'A guardar...' : contrato ? 'Guardar alterações' : 'Criar contrato'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const c: Record<string, React.CSSProperties> = {
   page: { maxWidth: 1000, margin: '0 auto', padding: 20 },
   cabecalho: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   titulo: { fontSize: 22, fontWeight: 700, color: 'var(--primary)' },
   voltar: { color: 'var(--muted)', textDecoration: 'none' },
-  btnAdd: { background: 'var(--primary)', color: '#fff', padding: '8px 14px', borderRadius: 8, fontWeight: 700, fontSize: 14, textDecoration: 'none', whiteSpace: 'nowrap' },
+  btnAdd: { background: 'var(--primary)', color: '#fff', padding: '8px 14px', borderRadius: 8, fontWeight: 700, fontSize: 14, textDecoration: 'none', whiteSpace: 'nowrap', border: 'none', cursor: 'pointer' },
+  btnEditar: { background: '#fff', color: 'var(--foreground)', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 12px', fontWeight: 600, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' },
   link: { color: 'var(--primary)', fontWeight: 600 },
   filtros: { display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' },
   inputPesq: { flex: 1, minWidth: 160, padding: 10, border: '1px solid #ccc', borderRadius: 8, fontSize: 15 },
