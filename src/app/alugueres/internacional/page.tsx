@@ -8,34 +8,13 @@ import AlugueresNav from '@/components/AlugueresNav'
 import BotaoExportar from '@/components/BotaoExportar'
 import type { ColunaExport } from '@/lib/exportar'
 import { formatarEuro, nomeMes, parseNumeroPt } from '@/lib/alugueres'
-import type { Aluguer } from '@/types/aluguer'
-import { METODOS_PAGAMENTO } from '@/types/aluguer'
+import {
+  carregarContratosIntl, guardarContratoIntl, apagarContratoIntl, atualizarFaturacaoContrato,
+  mesesInclusive,
+  type ContratoIntl, type ContratoEquip, type ContratoFat,
+} from '@/lib/contratosInternacionais'
 
 const BUCKET_FATURAS = 'faturas-alugueres'
-
-// Faturação de um mês (tabela alugueres_faturacao_mensal). Espelha a Lista.
-type Fat = {
-  id: string | null
-  aluguer_id: string
-  mes: string
-  valor_a_faturar: number | null
-  nao_faturar: boolean
-  validado: boolean
-  pago: boolean
-  fatura_url: string | null
-  fatura_caminho: string | null
-  fatura_nome: string | null
-  fatura_enviada_em: string | null
-  fatura_enviada_para: string | null
-}
-
-function fatVazia(aluguerId: string, mes: string): Fat {
-  return {
-    id: null, aluguer_id: aluguerId, mes, valor_a_faturar: null,
-    nao_faturar: false, validado: false, pago: false, fatura_url: null, fatura_caminho: null,
-    fatura_nome: null, fatura_enviada_em: null, fatura_enviada_para: null,
-  }
-}
 
 function nomeSeguro(nome: string) {
   return nome.normalize('NFD').replace(/[^\w.\-]/g, '_')
@@ -60,134 +39,61 @@ function diasAte(iso: string): number {
   return Math.round((alvo - hoje) / 86400000)
 }
 
-// Soma k meses a uma data 'YYYY-MM-DD' (mantém o dia; ajusta se o mês for curto)
-function adicionarMeses(iso: string, k: number): string {
-  const [y, mo, d] = iso.slice(0, 10).split('-').map(Number)
-  const dt = new Date(y, mo - 1, d)
-  dt.setMonth(dt.getMonth() + k)
-  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+function equipTexto(e: ContratoEquip) {
+  return `${[e.marca, e.modelo].filter(Boolean).join(' ') || '—'} · ${e.serial_number ?? '—'}`
+}
+function seriaisTexto(ct: ContratoIntl) {
+  return ct.equipamentos.map((e) => e.serial_number ?? '—').join(' + ') || '—'
 }
 
-// Nº de meses (inclusive) entre duas datas 'YYYY-MM-DD' — cada mês = 1 registo.
-function mesesInclusive(inicioISO: string, fimISO: string): number {
-  const [y1, m1] = inicioISO.slice(0, 7).split('-').map(Number)
-  const [y2, m2] = fimISO.slice(0, 7).split('-').map(Number)
-  return (y2 - y1) * 12 + (m2 - m1) + 1
-}
-
-// ─── Contrato = conjunto de registos mensais do mesmo aluguer ────────────────
-// Os contratos de vários meses são guardados como N registos (1 por mês), todos
-// criados na mesma instrução (mesmo created_at) com o mesmo serial. Agrupamos
-// por (cliente, serial, created_at) para reconstruir o contrato.
-type Contrato = {
-  chave: string
-  cliente_id: string | null
-  cliente_nome: string | null
-  serial_number: string | null
-  marca: string | null
-  modelo: string | null
-  meses: Aluguer[]        // ordenados por data_entrega asc
-  inicio: string | null   // primeiro mês
-  fim: string | null      // último mês (data_entrega)
-  nMeses: number
-  valorMes: number
-  marcadoVenda: boolean    // sinalizado para avançar para venda
-}
-
-type EstadoContrato = { chave: 'ativo' | 'a_expirar' | 'expirado' | 'terminado'; label: string; cor: string; bg: string }
-
-function estadoContrato(ct: Contrato): EstadoContrato {
+type EstadoContrato = { chave: 'ativo' | 'a_expirar' | 'expirado'; label: string; cor: string; bg: string }
+function estadoContrato(ct: ContratoIntl): EstadoContrato {
   const hoje = hojeISO()
-  const ultimo = ct.meses[ct.meses.length - 1]
-  // Terminado: o último mês já foi recolhido.
-  if (ultimo?.data_recolha && ultimo.data_recolha.slice(0, 10) <= hoje) {
-    return { chave: 'terminado', label: 'Terminado', cor: '#374151', bg: '#E5E7EB' }
-  }
-  const fim = ct.fim
+  const fim = ct.data_fim
   if (!fim) return { chave: 'ativo', label: 'Ativo', cor: '#065F46', bg: '#D1FAE5' }
   if (fim < hoje) return { chave: 'expirado', label: 'Expirado', cor: '#991B1B', bg: '#FEE2E2' }
   if (diasAte(fim) <= 90) return { chave: 'a_expirar', label: 'A expirar', cor: '#92400E', bg: '#FEF3C7' }
   return { chave: 'ativo', label: 'Ativo', cor: '#065F46', bg: '#D1FAE5' }
 }
 
+function contagemPagos(ct: ContratoIntl) {
+  let pagos = 0, porPagar = 0
+  for (const f of ct.faturacao) {
+    if (f.nao_faturar) continue
+    if (f.pago) pagos++; else porPagar++
+  }
+  return { pagos, porPagar }
+}
+
 type Ordenacao = 'fim-asc' | 'inicio-desc' | 'cliente-asc' | 'valor-desc'
 
-const colunasExport: ColunaExport<Contrato>[] = [
+const colunasExport: ColunaExport<ContratoIntl>[] = [
   { cabecalho: 'Cliente', valor: (ct) => ct.cliente_nome ?? '' },
-  { cabecalho: 'Serial Number', valor: (ct) => ct.serial_number ?? '' },
-  { cabecalho: 'Equipamento', valor: (ct) => [ct.marca, ct.modelo].filter(Boolean).join(' ') },
-  { cabecalho: 'Início', valor: (ct) => formatarData(ct.inicio) },
-  { cabecalho: 'Meses', valor: (ct) => String(ct.nMeses) },
-  { cabecalho: 'Fim', valor: (ct) => formatarData(ct.fim) },
-  { cabecalho: 'Valor mensal', valor: (ct) => formatarEuro(ct.valorMes) },
+  { cabecalho: 'Equipamentos', valor: (ct) => ct.equipamentos.map(equipTexto).join(' | ') },
+  { cabecalho: 'Início', valor: (ct) => formatarData(ct.data_inicio) },
+  { cabecalho: 'Fim', valor: (ct) => formatarData(ct.data_fim) },
+  { cabecalho: 'Meses', valor: (ct) => String(ct.faturacao.length) },
+  { cabecalho: 'Valor mensal', valor: (ct) => formatarEuro(ct.valor_mensal ?? 0) },
   { cabecalho: 'Estado', valor: (ct) => estadoContrato(ct).label },
 ]
 
 export default function AlugueresInternacional() {
   const { isAdmin, perfil } = useAuth()
   const podeFaturar = !!perfil
-  const [alugueres, setAlugueres] = useState<Aluguer[]>([])
-  const [faturacao, setFaturacao] = useState<Map<string, Fat>>(new Map())
+  const [contratos, setContratos] = useState<ContratoIntl[]>([])
   const [pesquisa, setPesquisa] = useState('')
   const [fEstado, setFEstado] = useState('')
   const [ordenar, setOrdenar] = useState<Ordenacao>('fim-asc')
   const [carregando, setCarregando] = useState(true)
   const [abertos, setAbertos] = useState<Set<string>>(new Set())
-  const [finalizarCt, setFinalizarCt] = useState<Contrato | null>(null)
-  const [renovarCt, setRenovarCt] = useState<Contrato | null>(null)
-  // Modal de contrato manual: null (fechado), 'novo', ou um Contrato (editar).
-  const [contratoModal, setContratoModal] = useState<'novo' | Contrato | null>(null)
+  const [modal, setModal] = useState<'novo' | ContratoIntl | null>(null)
 
   const carregar = useCallback(async () => {
-    const { data } = await supabase
-      .from('alugueres').select('*').eq('nacional', false)
-      .order('data_entrega', { ascending: true })
-    const lista = (data as Aluguer[]) ?? []
-    setAlugueres(lista)
-    const ids = lista.map((a) => a.id)
-    if (ids.length) {
-      const { data: fats } = await supabase
-        .from('alugueres_faturacao_mensal').select('*').in('aluguer_id', ids)
-      const m = new Map<string, Fat>()
-      for (const f of (fats as Fat[]) ?? []) m.set(`${f.aluguer_id}|${f.mes}`, f)
-      setFaturacao(m)
-    } else {
-      setFaturacao(new Map())
-    }
+    setContratos(await carregarContratosIntl())
     setCarregando(false)
   }, [])
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { carregar() }, [carregar])
-
-  // Reconstrói os contratos a partir dos registos mensais.
-  const contratos = useMemo<Contrato[]>(() => {
-    const m = new Map<string, Aluguer[]>()
-    for (const a of alugueres) {
-      const k = `${a.cliente_id ?? a.cliente_nome ?? ''}|${a.serial_number ?? ''}|${a.created_at}`
-      const arr = m.get(k)
-      if (arr) arr.push(a)
-      else m.set(k, [a])
-    }
-    return [...m.entries()].map(([chave, meses]) => {
-      const ord = [...meses].sort((x, y) => (x.data_entrega ?? '').localeCompare(y.data_entrega ?? ''))
-      const primeiro = ord[0]
-      const ultimo = ord[ord.length - 1]
-      return {
-        chave,
-        cliente_id: primeiro.cliente_id,
-        cliente_nome: primeiro.cliente_nome,
-        serial_number: primeiro.serial_number,
-        marca: primeiro.marca,
-        modelo: primeiro.modelo,
-        meses: ord,
-        inicio: primeiro.data_entrega ? primeiro.data_entrega.slice(0, 10) : null,
-        fim: ultimo.data_entrega ? ultimo.data_entrega.slice(0, 10) : null,
-        nMeses: ord.length,
-        valorMes: primeiro.valor ?? 0,
-        marcadoVenda: ord.some((a) => !!a.marcado_venda_em),
-      }
-    })
-  }, [alugueres])
 
   const filtrados = useMemo(() => {
     const q = pesquisa.trim().toLowerCase()
@@ -196,89 +102,52 @@ export default function AlugueresInternacional() {
       .filter((ct) =>
         !q ||
         (ct.cliente_nome ?? '').toLowerCase().includes(q) ||
-        (ct.serial_number ?? '').toLowerCase().includes(q) ||
-        (ct.modelo ?? '').toLowerCase().includes(q) ||
-        (ct.marca ?? '').toLowerCase().includes(q)
+        ct.equipamentos.some((e) =>
+          (e.serial_number ?? '').toLowerCase().includes(q) ||
+          (e.modelo ?? '').toLowerCase().includes(q) ||
+          (e.marca ?? '').toLowerCase().includes(q))
       )
     return [...lista].sort((a, b) => {
       switch (ordenar) {
-        case 'fim-asc': return (a.fim ?? '9999').localeCompare(b.fim ?? '9999')
-        case 'inicio-desc': return (b.inicio ?? '').localeCompare(a.inicio ?? '')
+        case 'fim-asc': return (a.data_fim ?? '9999').localeCompare(b.data_fim ?? '9999')
+        case 'inicio-desc': return (b.data_inicio ?? '').localeCompare(a.data_inicio ?? '')
         case 'cliente-asc': return (a.cliente_nome ?? '').localeCompare(b.cliente_nome ?? '', 'pt')
-        case 'valor-desc': return b.valorMes - a.valorMes
+        case 'valor-desc': return (b.valor_mensal ?? 0) - (a.valor_mensal ?? 0)
         default: return 0
       }
     })
   }, [contratos, pesquisa, fEstado, ordenar])
 
-  const emVigor = filtrados.filter((ct) => estadoContrato(ct).chave !== 'terminado')
-  const mensalTotal = emVigor.reduce((acc, ct) => acc + ct.valorMes, 0)
+  const emVigor = filtrados.filter((ct) => estadoContrato(ct).chave !== 'expirado')
+  const mensalTotal = emVigor.reduce((acc, ct) => acc + (ct.valor_mensal ?? 0), 0)
 
-  // Nº de meses pagos / por pagar de um contrato (ignora "não faturar").
-  function contagemPagos(ct: Contrato) {
-    let pagos = 0, porPagar = 0
-    for (const a of ct.meses) {
-      const mes = (a.data_entrega ?? '').slice(0, 7)
-      const f = faturacao.get(`${a.id}|${mes}`)
-      if (f?.nao_faturar) continue
-      if (f?.pago) pagos++
-      else porPagar++
-    }
-    return { pagos, porPagar }
-  }
-
-  function toggle(chave: string) {
+  function toggle(id: string) {
     setAbertos((prev) => {
       const n = new Set(prev)
-      if (n.has(chave)) n.delete(chave); else n.add(chave)
+      if (n.has(id)) n.delete(id); else n.add(id)
       return n
     })
   }
 
-  // Upsert da faturação de um mês (otimista + persistência imediata).
-  async function atualizarFaturacao(aluguerId: string, mes: string, patch: Partial<Fat>) {
-    const chave = `${aluguerId}|${mes}`
-    const atual = faturacao.get(chave) ?? fatVazia(aluguerId, mes)
-    setFaturacao((prev) => new Map(prev).set(chave, { ...atual, ...patch }))
-    if (atual.id) {
-      const { data, error } = await supabase
-        .from('alugueres_faturacao_mensal')
-        .update({ ...patch, updated_at: new Date().toISOString() })
-        .eq('id', atual.id).select().single()
-      if (error) return alert('Erro a guardar: ' + error.message)
-      setFaturacao((prev) => new Map(prev).set(chave, data as Fat))
-    } else {
-      const { data, error } = await supabase
-        .from('alugueres_faturacao_mensal')
-        .insert({ aluguer_id: aluguerId, mes, ...patch }).select().single()
-      if (error) return alert('Erro a guardar: ' + error.message)
-      setFaturacao((prev) => new Map(prev).set(chave, data as Fat))
-    }
+  // Atualiza a faturação de um mês (otimista + persistência).
+  async function atualizarFat(contratoId: string, mes: string, patch: Partial<ContratoFat>) {
+    setContratos((prev) => prev.map((ct) => ct.id !== contratoId ? ct : {
+      ...ct,
+      faturacao: (() => {
+        const existe = ct.faturacao.some((f) => f.mes === mes)
+        return existe
+          ? ct.faturacao.map((f) => f.mes === mes ? { ...f, ...patch } : f)
+          : [...ct.faturacao, { id: null, contrato_id: contratoId, mes, valor_a_faturar: null, nao_faturar: false, pago: false, validado: false, fatura_url: null, fatura_caminho: null, fatura_nome: null, fatura_enviada_em: null, fatura_enviada_para: null, ...patch }].sort((a, b) => a.mes.localeCompare(b.mes))
+      })(),
+    }))
+    const { error } = await atualizarFaturacaoContrato(contratoId, mes, patch)
+    if (error) { alert('Erro a guardar: ' + error.message); await carregar() }
   }
 
-  // Avançar para venda: só sinaliza o contrato e notifica por email (não mexe no
-  // inventário).
-  async function avancarVenda(ct: Contrato) {
-    if (!window.confirm(`Sinalizar o contrato de ${ct.cliente_nome ?? 'cliente'} (${ct.serial_number ?? '—'}) para avançar para venda? Será enviado um aviso por email.`)) return
-    const ids = ct.meses.map((a) => a.id)
-    const { error } = await supabase
-      .from('alugueres')
-      .update({ marcado_venda_em: new Date().toISOString(), updated_at: new Date().toISOString() })
-      .in('id', ids)
-    if (error) { alert('Erro a sinalizar: ' + error.message); return }
-    try {
-      await fetch('/api/alugueres/avancar-venda', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          clienteNome: ct.cliente_nome ?? '—',
-          equipamento: [ct.marca, ct.modelo].filter(Boolean).join(' ') || '—',
-          serial: ct.serial_number ?? '—',
-          fim: formatarData(ct.fim),
-          porNome: perfil?.nome ?? '',
-        }),
-      })
-    } catch { /* o aviso por email é best-effort; a sinalização já ficou guardada */ }
+  async function apagar(ct: ContratoIntl) {
+    if (!window.confirm(`Apagar o contrato de ${ct.cliente_nome ?? 'cliente'} (${seriaisTexto(ct)})? Remove também a faturação mensal deste contrato.`)) return
+    const { error } = await apagarContratoIntl(ct.id)
+    if (error) { alert('Erro a apagar: ' + error.message); return }
     await carregar()
   }
 
@@ -287,25 +156,19 @@ export default function AlugueresInternacional() {
       <div style={c.cabecalho}>
         <h1 style={c.titulo}>Alugueres · Internacional</h1>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          {isAdmin && <button onClick={() => setContratoModal('novo')} style={c.btnAdd}>+ Novo contrato</button>}
+          {isAdmin && <button onClick={() => setModal('novo')} style={c.btnAdd}>+ Novo contrato</button>}
           <Link href="/" style={c.voltar}>← Stock</Link>
         </div>
       </div>
       <AlugueresNav />
 
       <div style={c.filtros}>
-        <input
-          placeholder="Procurar cliente, SN, modelo..."
-          value={pesquisa}
-          onChange={(e) => setPesquisa(e.target.value)}
-          style={c.inputPesq}
-        />
+        <input placeholder="Procurar cliente, SN, modelo..." value={pesquisa} onChange={(e) => setPesquisa(e.target.value)} style={c.inputPesq} />
         <select value={fEstado} onChange={(e) => setFEstado(e.target.value)} style={c.inputSel} title="Filtrar por estado">
           <option value="">Todos os estados</option>
           <option value="ativo">Ativo</option>
           <option value="a_expirar">A expirar (≤90 dias)</option>
           <option value="expirado">Expirado</option>
-          <option value="terminado">Terminado</option>
         </select>
         <select value={ordenar} onChange={(e) => setOrdenar(e.target.value as Ordenacao)} style={c.inputSel} title="Ordenar">
           <option value="fim-asc">Fim (mais próximo)</option>
@@ -325,77 +188,69 @@ export default function AlugueresInternacional() {
         <p style={c.estado}>A carregar...</p>
       ) : filtrados.length === 0 ? (
         <div style={c.vazio}>
-          <p style={{ margin: 0, fontWeight: 600 }}>Sem alugueres internacionais.</p>
+          <p style={{ margin: 0, fontWeight: 600 }}>Sem contratos internacionais.</p>
           <p style={{ margin: '6px 0 0', color: 'var(--muted)', fontSize: 14 }}>
-            Os alugueres de clientes fora de Portugal aparecem aqui automaticamente.
-            Regista um novo em <Link href="/alugueres" style={c.link}>Registar</Link>.
+            Cria um em <strong>+ Novo contrato</strong> — junta o laser e o Zimmer, define o valor mensal do conjunto e as datas.
           </p>
         </div>
       ) : (
         <div style={c.lista}>
           {filtrados.map((ct) => {
             const est = estadoContrato(ct)
-            const aberto = abertos.has(ct.chave)
+            const aberto = abertos.has(ct.id)
             const { pagos, porPagar } = contagemPagos(ct)
             return (
-              <div key={ct.chave} style={c.contrato}>
-                <button style={c.contratoCab} onClick={() => toggle(ct.chave)}>
+              <div key={ct.id} style={c.contrato}>
+                <button style={c.contratoCab} onClick={() => toggle(ct.id)}>
                   <span style={c.chevron}>{aberto ? '▼' : '▸'}</span>
                   <span style={c.contratoCliente}>{ct.cliente_nome ?? '—'}</span>
-                  <span style={c.contratoEquip}>{[ct.marca, ct.modelo].filter(Boolean).join(' ') || '—'} · {ct.serial_number ?? '—'}</span>
-                  <span style={c.contratoMeta}>{formatarData(ct.inicio)} → {formatarData(ct.fim)} · {ct.nMeses} mês(es)</span>
-                  <span style={c.contratoValor}>{formatarEuro(ct.valorMes)}/mês</span>
+                  <span style={c.contratoEquip}>{seriaisTexto(ct)}</span>
+                  <span style={c.contratoMeta}>{formatarData(ct.data_inicio)} → {formatarData(ct.data_fim)} · {ct.faturacao.length} mês(es)</span>
+                  <span style={c.contratoValor}>{formatarEuro(ct.valor_mensal ?? 0)}/mês</span>
                   {porPagar > 0
                     ? <span style={c.chipPorPagar}>🔴 {porPagar} por pagar</span>
                     : <span style={c.chipPago}>✓ {pagos} pagos</span>}
-                  {ct.marcadoVenda && <span style={c.badgeVenda}>🏷️ Venda</span>}
                   <span style={{ ...c.badge, color: est.cor, background: est.bg }}>{est.label}</span>
                 </button>
 
                 {aberto && (
-                  <div style={c.mesesTabela}>
-                    <div style={{ ...c.mesLinha, ...c.mesCab }}>
-                      <span>Mês</span>
-                      <span>Valor a faturar</span>
-                      <span>Fatura</span>
-                      <span style={{ textAlign: 'center' }}>Pago</span>
+                  <div style={c.corpo}>
+                    <div style={c.equipBox}>
+                      <span style={c.equipTitulo}>Equipamentos ({ct.equipamentos.length}):</span>
+                      {ct.equipamentos.length
+                        ? ct.equipamentos.map((e, i) => <span key={e.id ?? i} style={c.equipChip}>{equipTexto(e)}</span>)
+                        : <span style={c.semDef}>—</span>}
                     </div>
-                    {ct.meses.map((a) => {
-                      const mes = (a.data_entrega ?? '').slice(0, 7)
-                      const fat = faturacao.get(`${a.id}|${mes}`) ?? fatVazia(a.id, mes)
-                      return (
-                        <div key={a.id} style={c.mesLinha}>
-                          <span style={{ textTransform: 'capitalize' }}>{nomeMes(mes)}</span>
+                    {ct.observacoes && <div style={c.obs}><strong>Observações:</strong> {ct.observacoes}</div>}
+
+                    <div style={c.mesesTabela}>
+                      <div style={{ ...c.mesLinha, ...c.mesCab }}>
+                        <span>Mês</span><span>Valor a faturar</span><span>Fatura</span>
+                        <span style={{ textAlign: 'center' }}>Pago</span>
+                      </div>
+                      {ct.faturacao.map((f) => (
+                        <div key={f.mes} style={c.mesLinha}>
+                          <span style={{ textTransform: 'capitalize' }}>{nomeMes(f.mes)}</span>
                           <span style={c.celula}>
-                            <CelulaFaturar valorTotal={a.valor ?? 0} fat={fat} podeEditar={podeFaturar} onChange={(p) => atualizarFaturacao(a.id, mes, p)} />
+                            <CelulaFaturar valorTotal={ct.valor_mensal ?? 0} fat={f} podeEditar={podeFaturar} onChange={(p) => atualizarFat(ct.id, f.mes, p)} />
                           </span>
                           <span style={c.celula}>
-                            <CelulaFatura aluguerId={a.id} mes={mes} fat={fat} podeEditar={podeFaturar} onChange={(p) => atualizarFaturacao(a.id, mes, p)} />
+                            <CelulaFatura contratoId={ct.id} mes={f.mes} fat={f} podeEditar={podeFaturar} onChange={(p) => atualizarFat(ct.id, f.mes, p)} />
                           </span>
                           <span style={{ ...c.celula, justifyContent: 'center' }}>
-                            <EstadoPago fat={fat} podeEditar={podeFaturar} onChange={(p) => atualizarFaturacao(a.id, mes, p)} />
+                            <EstadoPago fat={f} podeEditar={podeFaturar} onChange={(p) => atualizarFat(ct.id, f.mes, p)} />
                           </span>
                         </div>
-                      )
-                    })}
+                      ))}
+                      {ct.faturacao.length === 0 && <p style={c.semDef}>Sem meses — define as datas de início e fim no contrato.</p>}
 
-                    {podeFaturar && (
-                      <div style={c.acoesContrato}>
-                        <button style={c.btnEditar} onClick={() => setContratoModal(ct)}>✏️ Editar / definir datas</button>
-                        <span style={c.acoesLabel}>Fim de contrato:</span>
-                        {est.chave !== 'terminado' ? (
-                          <>
-                            <button style={c.btnFinalizar} onClick={() => setFinalizarCt(ct)}>✓ Finalizar contrato</button>
-                            <button style={c.btnRenovar} onClick={() => setRenovarCt(ct)}>🔄 Renovar</button>
-                            <button style={c.btnVenda} onClick={() => avancarVenda(ct)} disabled={ct.marcadoVenda}>
-                              {ct.marcadoVenda ? '🏷️ Sinalizado p/ venda' : '🏷️ Avançar para venda'}
-                            </button>
-                          </>
-                        ) : (
-                          <span style={c.semDef}>Contrato terminado{ct.marcadoVenda ? ' · sinalizado para venda' : ''}.</span>
-                        )}
-                      </div>
-                    )}
+                      {podeFaturar && (
+                        <div style={c.acoesContrato}>
+                          <button style={c.btnEditar} onClick={() => setModal(ct)}>✏️ Editar contrato</button>
+                          <button style={c.btnApagar} onClick={() => apagar(ct)}>🗑 Apagar</button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -404,43 +259,26 @@ export default function AlugueresInternacional() {
         </div>
       )}
 
-      {finalizarCt && (
-        <ModalFinalizar contrato={finalizarCt} onFechar={() => setFinalizarCt(null)} onFeito={async () => { setFinalizarCt(null); await carregar() }} />
-      )}
-      {renovarCt && (
-        <ModalRenovar
-          contrato={renovarCt}
-          autor={{ id: perfil?.id ?? null, nome: perfil?.nome ?? null }}
-          onFechar={() => setRenovarCt(null)}
-          onFeito={async () => { setRenovarCt(null); await carregar() }}
-        />
-      )}
-      {contratoModal && (
+      {modal && (
         <ModalContrato
-          contrato={contratoModal === 'novo' ? null : contratoModal}
+          contrato={modal === 'novo' ? null : modal}
           autor={{ id: perfil?.id ?? null, nome: perfil?.nome ?? null }}
-          onFechar={() => setContratoModal(null)}
-          onFeito={async () => { setContratoModal(null); await carregar() }}
+          onFechar={() => setModal(null)}
+          onFeito={async () => { setModal(null); await carregar() }}
         />
       )}
 
-      <p style={c.dica}>Cria um contrato internacional em <strong>+ Novo contrato</strong> (com datas de início e fim → gera um registo por mês). Para acertar um existente, usa <strong>Editar / definir datas</strong>.</p>
+      <p style={c.dica}>Cada contrato junta o laser + o Zimmer com um valor mensal pelo conjunto. As faturas mensais (pago/não pago) ficam dentro de cada contrato.</p>
     </main>
   )
 }
 
 // ------------------------------------------------------ CÉLULA: VALOR A FATURAR
-function CelulaFaturar({
-  valorTotal, fat, podeEditar, onChange,
-}: {
-  valorTotal: number
-  fat: Fat
-  podeEditar: boolean
-  onChange: (patch: Partial<Fat>) => void
+function CelulaFaturar({ valorTotal, fat, podeEditar, onChange }: {
+  valorTotal: number; fat: ContratoFat; podeEditar: boolean; onChange: (patch: Partial<ContratoFat>) => void
 }) {
   const definido = fat.valor_a_faturar != null
   const naoFaturar = !!fat.nao_faturar
-
   let modo: '' | 'total' | 'outro' | 'nao' = ''
   if (naoFaturar) modo = 'nao'
   else if (definido) modo = fat.valor_a_faturar === valorTotal ? 'total' : 'outro'
@@ -455,21 +293,18 @@ function CelulaFaturar({
     return <span style={c.semDef}>—</span>
   }
 
-  function aplicar(patch: Partial<Fat>) { onChange(patch); setEditarOutro(false) }
-
+  function aplicar(patch: Partial<ContratoFat>) { onChange(patch); setEditarOutro(false) }
   function aoMudar(v: string) {
     if (v === 'outro') { setManual(definido ? String(fat.valor_a_faturar) : ''); setEditarOutro(true); return }
     if (v === 'total') return aplicar({ valor_a_faturar: valorTotal, nao_faturar: false })
     if (v === 'nao') return aplicar({ valor_a_faturar: null, nao_faturar: true })
     aplicar({ valor_a_faturar: null, nao_faturar: false })
   }
-
   function guardarManual() {
     const v = parseNumeroPt(manual)
     if (v === null) { setEditarOutro(false); return }
     aplicar({ valor_a_faturar: v, nao_faturar: false })
   }
-
   const estiloSelect = naoFaturar ? c.selectCinza : definido ? c.selectVerde : c.selectFaturar
 
   return (
@@ -481,39 +316,30 @@ function CelulaFaturar({
         <option value="nao">Não faturar</option>
       </select>
       {mostrarInput && (
-        <input
-          style={c.inputManual} type="number" inputMode="decimal" placeholder="€" autoFocus
+        <input style={c.inputManual} type="number" inputMode="decimal" placeholder="€" autoFocus
           value={manual} onChange={(e) => setManual(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') guardarManual() }} onBlur={guardarManual}
-        />
+          onKeyDown={(e) => { if (e.key === 'Enter') guardarManual() }} onBlur={guardarManual} />
       )}
     </span>
   )
 }
 
 // ------------------------------------------------------------- CÉLULA: FATURA
-function CelulaFatura({
-  aluguerId, mes, fat, podeEditar, onChange,
-}: {
-  aluguerId: string
-  mes: string
-  fat: Fat
-  podeEditar: boolean
-  onChange: (patch: Partial<Fat>) => void
+function CelulaFatura({ contratoId, mes, fat, podeEditar, onChange }: {
+  contratoId: string; mes: string; fat: ContratoFat; podeEditar: boolean; onChange: (patch: Partial<ContratoFat>) => void
 }) {
   const [aCarregar, setACarregar] = useState(false)
   const temFatura = !!fat.fatura_url
 
   async function carregar(file: File) {
     setACarregar(true)
-    const caminho = `${aluguerId}/${mes}/${Date.now()}-${nomeSeguro(file.name)}`
+    const caminho = `contrato/${contratoId}/${mes}/${Date.now()}-${nomeSeguro(file.name)}`
     const { error: erroUp } = await supabase.storage.from(BUCKET_FATURAS).upload(caminho, file)
     if (erroUp) { setACarregar(false); alert('Erro a carregar a fatura: ' + erroUp.message); return }
     const { data: pub } = supabase.storage.from(BUCKET_FATURAS).getPublicUrl(caminho)
     onChange({ fatura_url: pub.publicUrl, fatura_caminho: caminho, fatura_nome: file.name })
     setACarregar(false)
   }
-
   async function remover() {
     if (!window.confirm(`Remover a fatura “${fat.fatura_nome ?? ''}”?`)) return
     if (fat.fatura_caminho) await supabase.storage.from(BUCKET_FATURAS).remove([fat.fatura_caminho])
@@ -523,232 +349,57 @@ function CelulaFatura({
   if (temFatura) {
     return (
       <span style={c.faturaLinha}>
-        <a href={fat.fatura_url!} target="_blank" rel="noopener noreferrer" style={c.faturaLink}>
-          📄 {fat.fatura_nome ?? 'fatura'}
-        </a>
+        <a href={fat.fatura_url!} target="_blank" rel="noopener noreferrer" style={c.faturaLink}>📄 {fat.fatura_nome ?? 'fatura'}</a>
         {podeEditar && <button style={c.chipApagar} onClick={remover} title="Remover fatura">×</button>}
       </span>
     )
   }
-
   if (!podeEditar) return <span style={c.semDef}>—</span>
-
   return (
     <label style={c.btnAnexar}>
       {aCarregar ? '...' : '📎 Anexar'}
-      <input
-        type="file" accept="application/pdf,image/*" style={{ display: 'none' }}
-        onChange={(e) => { const f = e.target.files?.[0]; if (f) carregar(f); e.target.value = '' }}
-      />
+      <input type="file" accept="application/pdf,image/*" style={{ display: 'none' }}
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) carregar(f); e.target.value = '' }} />
     </label>
   )
 }
 
 // -------------------------------------------------------------- CÉLULA: PAGO
-function EstadoPago({
-  fat, podeEditar, onChange,
-}: {
-  fat: Fat
-  podeEditar: boolean
-  onChange: (patch: Partial<Fat>) => void
+function EstadoPago({ fat, podeEditar, onChange }: {
+  fat: ContratoFat; podeEditar: boolean; onChange: (patch: Partial<ContratoFat>) => void
 }) {
   const pago = !!fat.pago
   if (!podeEditar) return <span style={pago ? c.pagoVerde : c.pagoVermelho}>{pago ? 'Pago' : 'Não pago'}</span>
   return (
-    <button
-      type="button"
-      style={pago ? c.pagoVerde : c.pagoVermelho}
+    <button type="button" style={pago ? c.pagoVerde : c.pagoVermelho}
       onClick={() => onChange({ pago: !pago })}
-      title={pago ? 'Pago — clica para marcar como não pago' : 'Não pago — clica para marcar como pago'}
-    >
+      title={pago ? 'Pago — clica para marcar como não pago' : 'Não pago — clica para marcar como pago'}>
       {pago ? 'Pago' : 'Não pago'}
     </button>
   )
 }
 
-// -------------------------------------------------------- MODAL: FINALIZAR
-function ModalFinalizar({
-  contrato, onFechar, onFeito,
-}: {
-  contrato: Contrato
-  onFechar: () => void
-  onFeito: () => void | Promise<void>
-}) {
-  const ultimo = contrato.meses[contrato.meses.length - 1]
-  const [data, setData] = useState(hojeISO())
-  const [aGuardar, setAGuardar] = useState(false)
-  const [erro, setErro] = useState<string | null>(null)
-
-  async function guardar() {
-    setErro(null)
-    setAGuardar(true)
-    const { error } = await supabase.from('alugueres')
-      .update({ data_recolha: data || hojeISO(), updated_at: new Date().toISOString() })
-      .eq('id', ultimo.id)
-    setAGuardar(false)
-    if (error) return setErro('Erro ao finalizar: ' + error.message)
-    await onFeito()
-  }
-
-  return (
-    <div style={c.overlay} onClick={onFechar}>
-      <div style={c.modal} onClick={(e) => e.stopPropagation()}>
-        <div style={c.modalCab}>
-          <h2 style={c.modalTitulo}>Finalizar contrato</h2>
-          <button onClick={onFechar} style={c.fechar} aria-label="Fechar">✕</button>
-        </div>
-        {erro && <div style={c.erro}>{erro}</div>}
-        <p style={c.envInfo}>
-          <strong>Cliente:</strong> {contrato.cliente_nome ?? '—'}<br />
-          <strong>Equipamento:</strong> {[contrato.marca, contrato.modelo].filter(Boolean).join(' ') || '—'} · {contrato.serial_number ?? '—'}
-        </p>
-        <label style={c.label}>Data de recolha do equipamento</label>
-        <input style={c.input} type="date" value={data} onChange={(e) => setData(e.target.value)} />
-        <span style={c.envNota}>O contrato passa a “Terminado” e o equipamento fica recolhido.</span>
-        <div style={c.modalAcoes}>
-          <button onClick={onFechar} style={c.btnGhost}>Cancelar</button>
-          <button onClick={guardar} disabled={aGuardar} style={c.btnPrimario}>{aGuardar ? 'A guardar...' : 'Finalizar'}</button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ----------------------------------------------------------- MODAL: RENOVAR
-function ModalRenovar({
-  contrato, autor, onFechar, onFeito,
-}: {
-  contrato: Contrato
-  autor: { id: string | null; nome: string | null }
-  onFechar: () => void
-  onFeito: () => void | Promise<void>
-}) {
-  const ultimo = contrato.meses[contrato.meses.length - 1]
-  const [nMeses, setNMeses] = useState('12')
-  const [valor, setValor] = useState(contrato.valorMes ? String(contrato.valorMes) : '')
-  const [trocar, setTrocar] = useState(false)
-  const [serial, setSerial] = useState('')
-  const [marca, setMarca] = useState('')
-  const [modelo, setModelo] = useState('')
-  const [aGuardar, setAGuardar] = useState(false)
-  const [erro, setErro] = useState<string | null>(null)
-
-  async function guardar() {
-    setErro(null)
-    const n = Math.max(1, Math.min(48, Math.round(Number(nMeses) || 0)))
-    if (!n) return setErro('Indica o número de meses.')
-    const valorNum = valor.trim() ? parseNumeroPt(valor) : null
-    if (valor.trim() && valorNum === null) return setErro('O valor não é válido.')
-    if (trocar && !serial.trim()) return setErro('Indica o serial do novo equipamento.')
-
-    const base = (ultimo.data_entrega ?? hojeISO()).slice(0, 10)
-    const equip = trocar
-      ? { serial_number: serial.trim(), marca: marca.trim() || null, modelo: modelo.trim() || null, ano: null as string | null, equipamento_id: null as string | null }
-      : { serial_number: contrato.serial_number, marca: contrato.marca, modelo: contrato.modelo, ano: ultimo.ano, equipamento_id: ultimo.equipamento_id }
-
-    const linhas = Array.from({ length: n }, (_, k) => ({
-      cliente_id: contrato.cliente_id,
-      cliente_nome: contrato.cliente_nome,
-      ...equip,
-      tipo_aluguer: `${n} meses`,
-      valor: valorNum,
-      metodo_pagamento: null,
-      nacional: false,
-      data_entrega: adicionarMeses(base, k + 1),
-      data_recolha: null,
-      recolha_aplicavel: k === n - 1,
-      criado_por: autor.id,
-      criado_por_nome: autor.nome,
-    }))
-
-    setAGuardar(true)
-    const { error } = await supabase.from('alugueres').insert(linhas)
-    setAGuardar(false)
-    if (error) return setErro('Erro a renovar: ' + error.message)
-    await onFeito()
-  }
-
-  return (
-    <div style={c.overlay} onClick={onFechar}>
-      <div style={c.modal} onClick={(e) => e.stopPropagation()}>
-        <div style={c.modalCab}>
-          <h2 style={c.modalTitulo}>Renovar contrato</h2>
-          <button onClick={onFechar} style={c.fechar} aria-label="Fechar">✕</button>
-        </div>
-        {erro && <div style={c.erro}>{erro}</div>}
-        <p style={c.envInfo}>
-          <strong>Cliente:</strong> {contrato.cliente_nome ?? '—'}<br />
-          Continua a seguir a <strong>{formatarData(contrato.fim)}</strong>.
-        </p>
-        <div style={c.linha2}>
-          <div>
-            <label style={c.label}>Número de meses</label>
-            <input style={c.input} type="number" min={1} value={nMeses} onChange={(e) => setNMeses(e.target.value)} />
-          </div>
-          <div>
-            <label style={c.label}>Valor mensal (€)</label>
-            <input style={c.input} type="number" inputMode="decimal" value={valor} onChange={(e) => setValor(e.target.value)} />
-          </div>
-        </div>
-
-        <label style={c.checkLinha}>
-          <input type="checkbox" checked={trocar} onChange={(e) => setTrocar(e.target.checked)} />
-          Trocar de equipamento
-        </label>
-
-        {trocar ? (
-          <>
-            <label style={c.label}>Serial do novo equipamento</label>
-            <input style={c.input} value={serial} onChange={(e) => setSerial(e.target.value)} placeholder="Serial number" />
-            <div style={c.linha2}>
-              <div>
-                <label style={c.label}>Marca</label>
-                <input style={c.input} value={marca} onChange={(e) => setMarca(e.target.value)} />
-              </div>
-              <div>
-                <label style={c.label}>Modelo</label>
-                <input style={c.input} value={modelo} onChange={(e) => setModelo(e.target.value)} />
-              </div>
-            </div>
-          </>
-        ) : (
-          <span style={c.envNota}>Mantém o mesmo equipamento: {[contrato.marca, contrato.modelo].filter(Boolean).join(' ') || '—'} · {contrato.serial_number ?? '—'}</span>
-        )}
-
-        <div style={c.modalAcoes}>
-          <button onClick={onFechar} style={c.btnGhost}>Cancelar</button>
-          <button onClick={guardar} disabled={aGuardar} style={c.btnPrimario}>{aGuardar ? 'A criar...' : 'Renovar'}</button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // ------------------------------------------------ MODAL: CONTRATO (criar/editar)
-// Contrato internacional manual: cliente + equipamento + valor + datas início/fim.
-// Ao guardar, gera 1 registo (mês) por cada mês entre início e fim, inclusive —
-// mês a mês como nos Nacionais. Em edição, regenera os meses conforme as datas.
-function ModalContrato({
-  contrato, autor, onFechar, onFeito,
-}: {
-  contrato: Contrato | null
+type EquipLinha = ContratoEquip & { _k: number }
+
+function ModalContrato({ contrato, autor, onFechar, onFeito }: {
+  contrato: ContratoIntl | null
   autor: { id: string | null; nome: string | null }
   onFechar: () => void
   onFeito: () => Promise<void>
 }) {
-  const primeiro = contrato?.meses[0]
   const [clientes, setClientes] = useState<{ id: string; nome: string }[]>([])
   const [clienteNome, setClienteNome] = useState(contrato?.cliente_nome ?? '')
   const [clienteId, setClienteId] = useState<string | null>(contrato?.cliente_id ?? null)
-  const [serial, setSerial] = useState(contrato?.serial_number ?? '')
-  const [marca, setMarca] = useState(contrato?.marca ?? '')
-  const [modelo, setModelo] = useState(contrato?.modelo ?? '')
-  const [ano, setAno] = useState(primeiro?.ano ?? '')
-  const [equipamentoId, setEquipamentoId] = useState<string | null>(primeiro?.equipamento_id ?? null)
-  const [valor, setValor] = useState(contrato && contrato.valorMes ? String(contrato.valorMes) : '')
-  const [inicio, setInicio] = useState(contrato?.inicio ?? '')
-  const [fim, setFim] = useState(contrato?.fim ?? '')
-  const [metodo, setMetodo] = useState(primeiro?.metodo_pagamento ?? '')
+  const [equipas, setEquipas] = useState<EquipLinha[]>(
+    contrato && contrato.equipamentos.length
+      ? contrato.equipamentos.map((e, i) => ({ ...e, _k: i }))
+      : [{ _k: 0, equipamento_id: null, serial_number: '', marca: null, modelo: null, ano: null }]
+  )
+  const [valor, setValor] = useState(contrato?.valor_mensal != null ? String(contrato.valor_mensal) : '')
+  const [inicio, setInicio] = useState(contrato?.data_inicio ?? '')
+  const [fim, setFim] = useState(contrato?.data_fim ?? '')
+  const [obs, setObs] = useState(contrato?.observacoes ?? '')
   const [aGuardar, setAGuardar] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
@@ -757,73 +408,63 @@ function ModalContrato({
       .then(({ data }) => setClientes((data as { id: string; nome: string }[]) ?? []))
   }, [])
 
-  // Ligar o texto do cliente a um cliente registado (por nome exato).
   function aoMudarCliente(nome: string) {
     setClienteNome(nome)
     const m = clientes.find((cl) => cl.nome.trim().toLowerCase() === nome.trim().toLowerCase())
     setClienteId(m?.id ?? null)
   }
 
-  // Procurar serial no stock → preenche marca/modelo/ano/equipamento_id.
-  useEffect(() => {
+  function alterarEquip(k: number, patch: Partial<EquipLinha>) {
+    setEquipas((prev) => prev.map((e) => e._k === k ? { ...e, ...patch } : e))
+  }
+  function adicionarEquip() {
+    setEquipas((prev) => [...prev, { _k: (prev.at(-1)?._k ?? 0) + 1, equipamento_id: null, serial_number: '', marca: null, modelo: null, ano: null }])
+  }
+  function removerEquip(k: number) {
+    setEquipas((prev) => prev.length > 1 ? prev.filter((e) => e._k !== k) : prev)
+  }
+  // Procura o serial no stock e preenche marca/modelo/ano.
+  async function procurarEquip(k: number, serial: string) {
     const q = serial.trim()
-    const t = setTimeout(async () => {
-      if (q.length < 2) return
-      const { data } = await supabase.from('equipamentos')
-        .select('id, marca, modelo, ano, serial_number')
-        .ilike('serial_number', `%${q}%`).limit(8)
-      const exato = ((data as { id: string; marca: string | null; modelo: string | null; ano: string | null; serial_number: string | null }[]) ?? [])
-        .find((e) => (e.serial_number ?? '').trim().toLowerCase() === q.toLowerCase())
-      if (exato) {
-        setEquipamentoId(exato.id)
-        setMarca(exato.marca ?? ''); setModelo(exato.modelo ?? ''); setAno(exato.ano ?? '')
-      }
-    }, 300)
-    return () => clearTimeout(t)
-  }, [serial])
+    if (q.length < 2) return
+    const { data } = await supabase.from('equipamentos')
+      .select('id, marca, modelo, ano, serial_number')
+      .ilike('serial_number', `%${q}%`).limit(8)
+    const exato = ((data as { id: string; marca: string | null; modelo: string | null; ano: string | null; serial_number: string | null }[]) ?? [])
+      .find((e) => (e.serial_number ?? '').trim().toLowerCase() === q.toLowerCase())
+    if (exato) alterarEquip(k, { equipamento_id: exato.id, marca: exato.marca, modelo: exato.modelo, ano: exato.ano })
+  }
 
   const nMeses = inicio && fim && fim >= inicio ? mesesInclusive(inicio, fim) : 0
 
   async function guardar() {
     setErro(null)
     if (!clienteNome.trim()) return setErro('Indica o cliente.')
-    if (!serial.trim()) return setErro('Indica o serial do equipamento.')
+    const equips = equipas.filter((e) => (e.serial_number ?? '').trim())
+    if (!equips.length) return setErro('Indica pelo menos um equipamento (serial).')
     if (!inicio) return setErro('Indica a data de início.')
     if (!fim) return setErro('Indica a data de fim.')
     if (fim < inicio) return setErro('A data de fim não pode ser anterior ao início.')
     const n = mesesInclusive(inicio, fim)
     if (n < 1 || n > 120) return setErro('O intervalo de datas é inválido.')
     const valorNum = valor.trim() ? parseNumeroPt(valor) : null
-    if (valor.trim() && valorNum === null) return setErro('O valor não é válido.')
-
-    const linhas = Array.from({ length: n }, (_, k) => ({
-      cliente_id: clienteId,
-      cliente_nome: clienteNome.trim(),
-      equipamento_id: equipamentoId,
-      serial_number: serial.trim(),
-      marca: marca.trim() || null,
-      modelo: modelo.trim() || null,
-      ano: ano.trim() || null,
-      tipo_aluguer: `${n} meses`,
-      valor: valorNum,
-      metodo_pagamento: metodo || null,
-      nacional: false,
-      data_entrega: adicionarMeses(inicio, k),
-      data_recolha: null,
-      recolha_aplicavel: k === n - 1,
-      criado_por: autor.id,
-      criado_por_nome: autor.nome,
-    }))
+    if (valor.trim() && valorNum === null) return setErro('O valor mensal não é válido.')
 
     setAGuardar(true)
-    // Em edição: remove os meses antigos (e a sua faturação) e regenera.
-    if (contrato) {
-      const ids = contrato.meses.map((a) => a.id)
-      await supabase.from('alugueres_faturacao_mensal').delete().in('aluguer_id', ids)
-      const { error: eDel } = await supabase.from('alugueres').delete().in('id', ids)
-      if (eDel) { setAGuardar(false); return setErro('Erro a atualizar: ' + eDel.message) }
-    }
-    const { error } = await supabase.from('alugueres').insert(linhas)
+    const { error } = await guardarContratoIntl({
+      id: contrato?.id ?? null,
+      cliente_id: clienteId,
+      cliente_nome: clienteNome.trim(),
+      valor_mensal: valorNum,
+      data_inicio: inicio,
+      data_fim: fim,
+      observacoes: obs.trim() || null,
+      equipamentos: equips.map((e) => ({
+        equipamento_id: e.equipamento_id,
+        serial_number: (e.serial_number ?? '').trim(),
+        marca: e.marca, modelo: e.modelo, ano: e.ano,
+      })),
+    }, autor)
     setAGuardar(false)
     if (error) return setErro('Erro a guardar: ' + error.message)
     await onFeito()
@@ -833,7 +474,7 @@ function ModalContrato({
     <div style={c.overlay} onClick={onFechar}>
       <div style={c.modal} onClick={(e) => e.stopPropagation()}>
         <div style={c.modalCab}>
-          <h2 style={c.modalTitulo}>{contrato ? 'Editar contrato internacional' : 'Novo contrato internacional'}</h2>
+          <h2 style={c.modalTitulo}>{contrato ? 'Editar contrato' : 'Novo contrato internacional'}</h2>
           <button onClick={onFechar} style={c.fechar} aria-label="Fechar">✕</button>
         </div>
         {erro && <div style={c.erro}>{erro}</div>}
@@ -846,28 +487,24 @@ function ModalContrato({
         </datalist>
         {clienteNome.trim() && !clienteId && <span style={c.envNota}>Não ligado a um cliente registado (fica só como texto).</span>}
 
-        <label style={c.label}>Serial number</label>
-        <input style={c.input} value={serial} onChange={(e) => setSerial(e.target.value)} placeholder="Serial do equipamento" />
-        <div style={c.linha2}>
-          <div>
-            <label style={c.label}>Marca</label>
-            <input style={c.input} value={marca} onChange={(e) => setMarca(e.target.value)} />
+        <label style={c.label}>Equipamentos (laser + Zimmer)</label>
+        {equipas.map((e) => (
+          <div key={e._k} style={c.equipRow}>
+            <input style={{ ...c.input, flex: 1 }} value={e.serial_number ?? ''} placeholder="Serial number"
+              onChange={(ev) => alterarEquip(e._k, { serial_number: ev.target.value })}
+              onBlur={(ev) => procurarEquip(e._k, ev.target.value)} />
+            <span style={c.equipInfo}>{[e.marca, e.modelo].filter(Boolean).join(' ') || '—'}</span>
+            {equipas.length > 1 && <button style={c.btnRemoverEquip} onClick={() => removerEquip(e._k)} title="Remover">×</button>}
           </div>
-          <div>
-            <label style={c.label}>Modelo</label>
-            <input style={c.input} value={modelo} onChange={(e) => setModelo(e.target.value)} />
-          </div>
-        </div>
+        ))}
+        <button style={c.btnAddEquip} onClick={adicionarEquip}>+ Adicionar equipamento</button>
 
         <div style={c.linha2}>
           <div>
-            <label style={c.label}>Ano</label>
-            <input style={c.input} value={ano} onChange={(e) => setAno(e.target.value)} />
-          </div>
-          <div>
-            <label style={c.label}>Valor mensal (€)</label>
+            <label style={c.label}>Valor mensal (€) — do conjunto</label>
             <input style={c.input} type="number" inputMode="decimal" value={valor} onChange={(e) => setValor(e.target.value)} placeholder="0" />
           </div>
+          <div />
         </div>
 
         <div style={c.linha2}>
@@ -881,17 +518,14 @@ function ModalContrato({
           </div>
         </div>
 
-        <label style={c.label}>Método de pagamento (opcional)</label>
-        <select style={c.input} value={metodo} onChange={(e) => setMetodo(e.target.value)}>
-          <option value="">—</option>
-          {METODOS_PAGAMENTO.map((m) => <option key={m} value={m}>{m}</option>)}
-        </select>
+        <label style={c.label}>Observações</label>
+        <textarea style={{ ...c.input, minHeight: 64, fontFamily: 'inherit' }} value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Notas do contrato (opcional)" />
 
         <p style={c.envInfo}>
           {nMeses > 0
-            ? <>Vai gerar <strong>{nMeses}</strong> mês(es) — um registo por mês de {formatarData(inicio)} a {formatarData(fim)}.</>
+            ? <>Vai gerar <strong>{nMeses}</strong> fatura(s) mensal(is) de {formatarData(inicio)} a {formatarData(fim)}.</>
             : 'Indica as datas de início e fim para gerar os meses.'}
-          {contrato && <><br /><span style={c.envNota}>⚠ Ao guardar, os {contrato.nMeses} mês(es) atuais são substituídos pelos novos — a faturação/pagamentos já registados nesses meses é reposta.</span></>}
+          {contrato && <><br /><span style={c.envNota}>Os meses que se mantiverem no intervalo preservam o estado de pagamento/fatura.</span></>}
         </p>
 
         <div style={c.modalAcoes}>
@@ -910,8 +544,7 @@ const c: Record<string, React.CSSProperties> = {
   cabecalho: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   titulo: { fontSize: 22, fontWeight: 700, color: 'var(--primary)' },
   voltar: { color: 'var(--muted)', textDecoration: 'none' },
-  btnAdd: { background: 'var(--primary)', color: '#fff', padding: '8px 14px', borderRadius: 8, fontWeight: 700, fontSize: 14, textDecoration: 'none', whiteSpace: 'nowrap', border: 'none', cursor: 'pointer' },
-  btnEditar: { background: '#fff', color: 'var(--foreground)', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 12px', fontWeight: 600, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' },
+  btnAdd: { background: 'var(--primary)', color: '#fff', padding: '8px 14px', borderRadius: 8, fontWeight: 700, fontSize: 14, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' },
   link: { color: 'var(--primary)', fontWeight: 600 },
   filtros: { display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' },
   inputPesq: { flex: 1, minWidth: 160, padding: 10, border: '1px solid #ccc', borderRadius: 8, fontSize: 15 },
@@ -921,7 +554,6 @@ const c: Record<string, React.CSSProperties> = {
   vazio: { background: '#fff', border: '1px dashed var(--border)', borderRadius: 12, padding: 24, textAlign: 'center' },
   dica: { color: 'var(--muted)', fontSize: 13, marginTop: 12, textAlign: 'center' },
 
-  // Lista de contratos (accordion)
   lista: { display: 'flex', flexDirection: 'column', gap: 10 },
   contrato: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' },
   contratoCab: { width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: '#fff', border: 'none', cursor: 'pointer', textAlign: 'left', flexWrap: 'wrap', font: 'inherit' },
@@ -933,22 +565,22 @@ const c: Record<string, React.CSSProperties> = {
   chipPorPagar: { border: '1px solid #c62828', background: '#ffebee', color: '#c62828', fontWeight: 700, fontSize: 12, borderRadius: 999, padding: '3px 10px', whiteSpace: 'nowrap' },
   chipPago: { border: '1px solid #1b873f', background: '#e8f5ec', color: '#1b873f', fontWeight: 700, fontSize: 12, borderRadius: 999, padding: '3px 10px', whiteSpace: 'nowrap' },
   badge: { fontSize: 11.5, fontWeight: 700, borderRadius: 999, padding: '2px 10px', whiteSpace: 'nowrap' },
-  badgeVenda: { fontSize: 11.5, fontWeight: 700, borderRadius: 999, padding: '2px 10px', whiteSpace: 'nowrap', color: '#5B21B6', background: '#EDE9FE' },
 
-  // Ações de fim de contrato
+  corpo: { borderTop: '1px solid #f0f0f0', padding: 8, background: '#fafafa' },
+  equipBox: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', padding: '4px 6px 8px' },
+  equipTitulo: { fontSize: 12, fontWeight: 700, color: 'var(--muted)' },
+  equipChip: { background: '#eef1f6', borderRadius: 999, padding: '3px 10px', fontSize: 12.5, fontWeight: 600 },
+  obs: { padding: '4px 6px 8px', fontSize: 13, color: 'var(--foreground)' },
+
   acoesContrato: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '12px 8px 4px', borderTop: '1px dashed var(--border)', marginTop: 4 },
-  acoesLabel: { fontSize: 13, fontWeight: 600, color: 'var(--muted)', marginRight: 4 },
-  btnFinalizar: { background: '#fff', color: '#065F46', border: '1px solid #065F46', borderRadius: 8, padding: '7px 12px', fontWeight: 600, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' },
-  btnRenovar: { background: '#fff', color: '#1E40AF', border: '1px solid #1E40AF', borderRadius: 8, padding: '7px 12px', fontWeight: 600, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' },
-  btnVenda: { background: '#fff', color: '#5B21B6', border: '1px solid #5B21B6', borderRadius: 8, padding: '7px 12px', fontWeight: 600, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' },
+  btnEditar: { background: '#fff', color: 'var(--foreground)', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 12px', fontWeight: 600, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' },
+  btnApagar: { background: '#fff', color: '#B91C1C', border: '1px solid #FCA5A5', borderRadius: 8, padding: '7px 12px', fontWeight: 600, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' },
 
-  // Tabela de meses (expandida)
   mesesTabela: { borderTop: '1px solid #f0f0f0', padding: 8, background: '#fafafa', overflowX: 'auto' },
   mesLinha: { display: 'grid', gridTemplateColumns: '1.2fr 1.4fr 1.8fr 0.9fr', gap: 10, padding: '8px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center', minWidth: 620 },
   mesCab: { fontWeight: 700, color: 'var(--muted)', fontSize: 12, borderBottom: '2px solid var(--border)' },
   celula: { display: 'flex', alignItems: 'center', minWidth: 0 },
 
-  // Células de faturação (espelham a Lista)
   faturarLinha: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', minWidth: 0, maxWidth: '100%' },
   selectFaturar: { padding: '5px 8px', border: '1px solid #ccc', borderRadius: 6, fontSize: 13, background: '#fff', color: 'var(--muted)', cursor: 'pointer', maxWidth: '100%', minWidth: 0 },
   selectVerde: { padding: '5px 8px', border: '1px solid #1b873f', borderRadius: 6, fontSize: 13, background: '#fff', color: '#1b873f', fontWeight: 700, cursor: 'pointer', maxWidth: '100%', minWidth: 0 },
@@ -964,9 +596,8 @@ const c: Record<string, React.CSSProperties> = {
   pagoVerde: { border: '1px solid #1b873f', background: '#e8f5ec', color: '#1b873f', fontWeight: 700, fontSize: 12, borderRadius: 999, padding: '4px 12px', cursor: 'pointer', whiteSpace: 'nowrap', lineHeight: 1 },
   pagoVermelho: { border: '1px solid #c62828', background: '#ffebee', color: '#c62828', fontWeight: 700, fontSize: 12, borderRadius: 999, padding: '4px 12px', cursor: 'pointer', whiteSpace: 'nowrap', lineHeight: 1 },
 
-  // Modais
   overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 16, overflowY: 'auto', zIndex: 100 },
-  modal: { background: '#fff', borderRadius: 14, padding: 20, width: '100%', maxWidth: 520, margin: 'auto', display: 'flex', flexDirection: 'column', gap: 2 },
+  modal: { background: '#fff', borderRadius: 14, padding: 20, width: '100%', maxWidth: 560, margin: 'auto', display: 'flex', flexDirection: 'column', gap: 2 },
   modalCab: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   modalTitulo: { fontSize: 18, fontWeight: 700, color: 'var(--primary)' },
   fechar: { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: 'var(--muted)', padding: 4 },
@@ -974,7 +605,10 @@ const c: Record<string, React.CSSProperties> = {
   label: { fontWeight: 600, fontSize: 14, marginTop: 12, marginBottom: 4, display: 'block' },
   input: { width: '100%', padding: 10, border: '1px solid #ccc', borderRadius: 8, fontSize: 16, boxSizing: 'border-box' },
   linha2: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 },
-  checkLinha: { display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, fontSize: 14, fontWeight: 600 },
+  equipRow: { display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 },
+  equipInfo: { fontSize: 12.5, color: 'var(--muted)', minWidth: 90, maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  btnRemoverEquip: { width: 30, height: 30, borderRadius: 8, border: '1px solid #FCA5A5', background: '#fff', color: '#B91C1C', fontSize: 16, cursor: 'pointer', flexShrink: 0 },
+  btnAddEquip: { alignSelf: 'flex-start', background: '#fff', color: 'var(--primary)', border: '1px dashed var(--primary)', borderRadius: 8, padding: '6px 12px', fontWeight: 600, fontSize: 13, cursor: 'pointer', marginTop: 2 },
   modalAcoes: { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 },
   btnGhost: { background: '#fff', color: 'var(--foreground)', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 14px', fontWeight: 600, cursor: 'pointer' },
   btnPrimario: { background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 16px', fontWeight: 700, cursor: 'pointer' },
