@@ -3,11 +3,16 @@ import { supabase } from './supabase'
 // ─────────────────────────────────────────────────────────────────────────────
 // SITUAÇÃO ATUAL DOS ALUGUERES
 //
-// O quadro é DERIVADO do status do equipamento (nunca mantido à mão):
-//   • "Aluguer nacional" / "Aluguer internacional" → está em aluguer agora.
-// A separação nacional/internacional vem do próprio status.
-// A tabela `aluguer_situacao` só ENRIQUECE cada linha (cliente, datas, valor
-// mensal, renovação) — é opcional e preenchida aos poucos.
+// Estar EM aluguer é derivado do status do equipamento ("Aluguer nacional" /
+// "Aluguer internacional"). Mas a separação Nacional/Internacional NÃO se fia no
+// status (era escrito à mão e ficava desatualizado). A classificação é
+// DETERMINÍSTICA e nunca cai num quadro por omissão — ver `classificar()`:
+//   1. `mercado` (override explícito na ficha) manda sempre;
+//   2. senão, país do cliente ligado: Portugal → Nacional, outro → Internacional;
+//   3. sem override e sem país → "Por classificar" (fora dos dois quadros).
+//
+// A tabela `aluguer_situacao` ENRIQUECE cada linha (cliente, datas, valor mensal,
+// renovação) e guarda o `mercado`.
 //
 // "Disponíveis" = frota de aluguer (equipamentos cujos modelos estão no
 // catálogo `modelos_aluguer`) que estão livres (Em stock) ou indisponíveis
@@ -16,6 +21,22 @@ import { supabase } from './supabase'
 
 export const STATUS_ALUGUER_NAC = 'Aluguer nacional'
 export const STATUS_ALUGUER_INT = 'Aluguer internacional'
+
+// Quadro onde um aluguer é mostrado (determinístico, sem "por omissão").
+export type Mercado = 'nacional' | 'internacional'
+export type Quadro = Mercado | 'por-classificar'
+
+function paisEhPortugal(pais: string | null | undefined): boolean {
+  const p = (pais ?? '').trim().toLowerCase()
+  return p === 'portugal' || p === 'pt'
+}
+
+// Classificação de um aluguer: override `mercado` → país do cliente → por classificar.
+export function classificar(s: SituacaoAluguer): Quadro {
+  if (s.mercado === 'nacional' || s.mercado === 'internacional') return s.mercado
+  if ((s.cliente_pais ?? '').trim()) return paisEhPortugal(s.cliente_pais) ? 'nacional' : 'internacional'
+  return 'por-classificar'
+}
 
 // Status "em casa" que contam para os Disponíveis (fora daqui: Enviado, Olicargo,
 // Consignação, etc. — equipamento que já saiu/foi vendido).
@@ -29,7 +50,7 @@ export type SituacaoAluguer = {
   modelo: string | null
   ano: string | null
   status: string
-  nacional: boolean
+  mercado: Mercado | null
   destino: string | null
   data_saida: string | null
   // ficha opcional (aluguer_situacao)
@@ -60,6 +81,7 @@ export type Disponiveis = { livres: EquipDisponivel[]; indisponiveis: EquipDispo
 
 export type FichaPatch = {
   cliente_id?: string | null
+  mercado?: Mercado | null
   data_inicio?: string | null
   data_fim_prevista?: string | null
   renovacao_automatica?: boolean
@@ -74,7 +96,8 @@ type EquipRow = {
   ano: string | null; status: string; destino: string | null; data_saida: string | null
 }
 type FichaRow = {
-  id: string; equipamento_id: string; cliente_id: string | null; data_inicio: string | null
+  id: string; equipamento_id: string; cliente_id: string | null; mercado: Mercado | null
+  data_inicio: string | null
   data_fim_prevista: string | null; renovacao_automatica: boolean; valor_mensal: number | null
   localizacao: string | null; notas: string | null
 }
@@ -110,7 +133,7 @@ export async function carregarSituacaoAlugueres(): Promise<SituacaoAluguer[]> {
       modelo: e.modelo,
       ano: e.ano,
       status: e.status,
-      nacional: e.status === STATUS_ALUGUER_NAC,
+      mercado: f?.mercado ?? null,
       destino: e.destino,
       data_saida: e.data_saida,
       situacao_id: f?.id ?? null,
