@@ -10,11 +10,11 @@ import { formatarEuro, somar } from '@/lib/alugueres'
 import { listarClientesPicker, type EntidadeOpc } from '@/lib/contasCorrentes'
 import {
   carregarSituacaoAlugueres, carregarDisponiveis, guardarFichaSituacao, apagarFichaSituacao,
-  inicioEfetivo, duracaoTexto, diasAte, alertaDe,
-  type SituacaoAluguer, type Disponiveis, type EquipDisponivel, type FichaPatch,
+  classificar, inicioEfetivo, duracaoTexto, diasAte, alertaDe,
+  type SituacaoAluguer, type Disponiveis, type EquipDisponivel, type FichaPatch, type Mercado,
 } from '@/lib/situacaoAlugueres'
 
-type Tab = 'nacionais' | 'internacionais' | 'disponiveis'
+type Tab = 'nacionais' | 'internacionais' | 'por-classificar' | 'disponiveis'
 type Ordenacao = 'inicio-desc' | 'inicio-asc' | 'fim-asc' | 'valor-desc'
 
 function formatarData(d: string | null) {
@@ -49,7 +49,7 @@ const colunasExport: ColunaExport<SituacaoAluguer>[] = [
   { cabecalho: 'Serial', valor: (l) => l.serial_number ?? '' },
   { cabecalho: 'Marca', valor: (l) => l.marca ?? '' },
   { cabecalho: 'Modelo', valor: (l) => l.modelo ?? '' },
-  { cabecalho: 'Mercado', valor: (l) => (l.nacional ? 'Nacional' : 'Internacional') },
+  { cabecalho: 'Mercado', valor: (l) => ({ nacional: 'Nacional', internacional: 'Internacional', 'por-classificar': 'Por classificar' }[classificar(l)]) },
   { cabecalho: 'Cliente', valor: (l) => clienteTexto(l) },
   { cabecalho: 'Localização', valor: (l) => localizacaoTexto(l) },
   { cabecalho: 'Início', valor: (l) => formatarData(inicioEfetivo(l)) },
@@ -67,6 +67,7 @@ const colunasDispExport: ColunaExport<EquipDisponivel>[] = [
 ]
 
 export default function SituacaoAtualPage() {
+  const { perfil } = useAuth()
   const estreito = useEcraEstreito()
   const [tab, setTab] = useState<Tab>('nacionais')
   const [alugueres, setAlugueres] = useState<SituacaoAluguer[]>([])
@@ -83,8 +84,9 @@ export default function SituacaoAtualPage() {
   }, [])
   useEffect(() => { carregar() }, [carregar])
 
-  const nacionais = useMemo(() => alugueres.filter((a) => a.nacional), [alugueres])
-  const internacionais = useMemo(() => alugueres.filter((a) => !a.nacional), [alugueres])
+  const nacionais = useMemo(() => alugueres.filter((a) => classificar(a) === 'nacional'), [alugueres])
+  const internacionais = useMemo(() => alugueres.filter((a) => classificar(a) === 'internacional'), [alugueres])
+  const porClassificar = useMemo(() => alugueres.filter((a) => classificar(a) === 'por-classificar'), [alugueres])
 
   function filtrarOrdenar(lista: SituacaoAluguer[]): SituacaoAluguer[] {
     const q = pesquisa.trim().toLowerCase()
@@ -104,7 +106,8 @@ export default function SituacaoAtualPage() {
   }
 
   const listaAtual = tab === 'nacionais' ? filtrarOrdenar(nacionais)
-    : tab === 'internacionais' ? filtrarOrdenar(internacionais) : []
+    : tab === 'internacionais' ? filtrarOrdenar(internacionais)
+    : tab === 'por-classificar' ? filtrarOrdenar(porClassificar) : []
 
   const dispFiltrados = useMemo(() => {
     const q = pesquisa.trim().toLowerCase()
@@ -116,6 +119,16 @@ export default function SituacaoAtualPage() {
   function aoGuardarFicha(atualizado: SituacaoAluguer) {
     setAlugueres((prev) => prev.map((a) => (a.equipamento_id === atualizado.equipamento_id ? atualizado : a)))
     setEditar(null)
+  }
+
+  // Ação rápida na zona "Por classificar": define o mercado num clique.
+  async function definirMercado(s: SituacaoAluguer, mercado: Mercado) {
+    setAlugueres((prev) => prev.map((a) => (a.equipamento_id === s.equipamento_id ? { ...a, mercado } : a)))
+    const { error } = await guardarFichaSituacao(s.equipamento_id, { mercado }, { id: perfil?.id ?? null, nome: perfil?.nome ?? null })
+    if (error) {
+      setAlugueres((prev) => prev.map((a) => (a.equipamento_id === s.equipamento_id ? { ...a, mercado: s.mercado } : a)))
+      alert('Não foi possível guardar a classificação: ' + error.message)
+    }
   }
 
   return (
@@ -132,6 +145,9 @@ export default function SituacaoAtualPage() {
         <div style={c.rgSep} />
         <div style={c.rgItem}><span style={c.rgNum}>{nacionais.length}</span><span style={c.rgLbl}>🇵🇹 nacionais</span></div>
         <div style={c.rgItem}><span style={c.rgNum}>{internacionais.length}</span><span style={c.rgLbl}>🌍 internacionais</span></div>
+        {porClassificar.length > 0 && (
+          <div style={c.rgItem}><span style={{ ...c.rgNum, color: '#B45309' }}>{porClassificar.length}</span><span style={c.rgLbl}>⚠ por classificar</span></div>
+        )}
         <div style={c.rgSep} />
         <div style={c.rgItem}><span style={{ ...c.rgNum, color: '#00A87A' }}>{disponiveis.livres.length}</span><span style={c.rgLbl}>disponíveis</span></div>
         {disponiveis.indisponiveis.length > 0 && (
@@ -139,10 +155,20 @@ export default function SituacaoAtualPage() {
         )}
       </div>
 
+      {/* Aviso destacado: alugueres por classificar */}
+      {porClassificar.length > 0 && tab !== 'por-classificar' && (
+        <button style={c.bannerPC} onClick={() => setTab('por-classificar')}>
+          ⚠ {porClassificar.length} aluguer(es) por classificar — sem país do cliente nem mercado definido. Não aparecem em Nacionais nem Internacionais. Clica para resolver.
+        </button>
+      )}
+
       {/* Tabs */}
       <div style={c.tabs}>
         <button style={{ ...c.tab, ...(tab === 'nacionais' ? c.tabAtiva : {}) }} onClick={() => setTab('nacionais')}>🇵🇹 Nacionais ({nacionais.length})</button>
         <button style={{ ...c.tab, ...(tab === 'internacionais' ? c.tabAtiva : {}) }} onClick={() => setTab('internacionais')}>🌍 Internacionais ({internacionais.length})</button>
+        {porClassificar.length > 0 && (
+          <button style={{ ...c.tab, ...c.tabPC, ...(tab === 'por-classificar' ? c.tabPCAtiva : {}) }} onClick={() => setTab('por-classificar')}>⚠ Por classificar ({porClassificar.length})</button>
+        )}
         <button style={{ ...c.tab, ...(tab === 'disponiveis' ? c.tabAtiva : {}) }} onClick={() => setTab('disponiveis')}>📦 Disponíveis ({disponiveis.livres.length})</button>
       </div>
 
@@ -166,6 +192,8 @@ export default function SituacaoAtualPage() {
         <p style={c.estado}>A carregar...</p>
       ) : tab === 'disponiveis' ? (
         <SeccaoDisponiveis dados={dispFiltrados} estreito={estreito} />
+      ) : tab === 'por-classificar' ? (
+        <ZonaPorClassificar lista={listaAtual} onEditar={setEditar} onDefinir={definirMercado} />
       ) : (
         <QuadroAlugueres lista={listaAtual} estreito={estreito} onEditar={setEditar} />
       )}
@@ -223,6 +251,39 @@ function QuadroAlugueres({ lista, estreito, onEditar }: {
           })}
         </div>
       )}
+    </>
+  )
+}
+
+// ─────────────────────────────────────────────── POR CLASSIFICAR ─────────────
+function ZonaPorClassificar({ lista, onEditar, onDefinir }: {
+  lista: SituacaoAluguer[]; onEditar: (s: SituacaoAluguer) => void; onDefinir: (s: SituacaoAluguer, m: Mercado) => void
+}) {
+  if (lista.length === 0) return <p style={c.estado}>Nada por classificar. 🎉 Todos os alugueres têm mercado definido.</p>
+  return (
+    <>
+      <p style={c.pcIntro}>
+        Estes alugueres não têm país do cliente nem mercado definido, por isso <strong>não aparecem em Nacionais nem Internacionais</strong>.
+        Define o mercado num clique (ou abre o detalhe para ligar o cliente / afinar).
+      </p>
+      <div style={c.cartoes}>
+        {lista.map((s) => (
+          <div key={s.equipamento_id} style={c.pcCartao}>
+            <div style={c.pcTopo}>
+              <span style={c.equipSn}>{s.serial_number ?? '—'}</span>
+              <span style={c.equipMarca}>{[s.marca, s.modelo].filter(Boolean).join(' ') || '—'}</span>
+            </div>
+            <div style={c.pcDestino}>
+              <span style={c.cartaoLabel}>Destino registado:</span> <strong>{s.destino || '—'}</strong>
+            </div>
+            <div style={c.pcAcoes}>
+              <button style={c.pcBtnNac} onClick={() => onDefinir(s, 'nacional')}>🇵🇹 Nacional</button>
+              <button style={c.pcBtnInt} onClick={() => onDefinir(s, 'internacional')}>🌍 Internacional</button>
+              <button style={c.pcBtnDet} onClick={() => onEditar(s)}>Detalhe / ligar cliente →</button>
+            </div>
+          </div>
+        ))}
+      </div>
     </>
   )
 }
@@ -310,6 +371,7 @@ function ModalFicha({ situacao, onFechar, onGuardado }: {
   const [clientes, setClientes] = useState<EntidadeOpc[]>([])
   const [clienteId, setClienteId] = useState(situacao.cliente_id ?? '')
   const [clienteNome, setClienteNome] = useState(situacao.cliente_nome ?? '')
+  const [mercado, setMercado] = useState<'' | Mercado>(situacao.mercado ?? '')
   const [inicio, setInicio] = useState(situacao.data_inicio ?? situacao.data_saida ?? '')
   const [renovacao, setRenovacao] = useState(situacao.renovacao_automatica)
   const [fim, setFim] = useState(situacao.data_fim_prevista ?? '')
@@ -328,6 +390,10 @@ function ModalFicha({ situacao, onFechar, onGuardado }: {
     setClienteId(m?.id ?? '')
   }
 
+  // País do cliente escolhido (para o texto "Automático") — do picker ou da própria ficha.
+  const paisClienteEscolhido = (clientes.find((c2) => c2.id === clienteId)?.pais ?? (clienteId ? situacao.cliente_pais : null) ?? '').trim() || null
+  const paisClienteEhPT = ['portugal', 'pt'].includes((paisClienteEscolhido ?? '').toLowerCase())
+
   async function guardar() {
     setErro(null)
     if (fim && inicio && fim < inicio) return setErro('O fim previsto não pode ser anterior ao início.')
@@ -336,6 +402,7 @@ function ModalFicha({ situacao, onFechar, onGuardado }: {
     setAGuardar(true)
     const patch: FichaPatch = {
       cliente_id: clienteId || null,
+      mercado: mercado || null,
       data_inicio: inicio || null,
       data_fim_prevista: renovacao ? null : (fim || null),
       renovacao_automatica: renovacao,
@@ -351,18 +418,21 @@ function ModalFicha({ situacao, onFechar, onGuardado }: {
     onGuardado({
       ...situacao, ...patch,
       cliente_nome: cli?.nome ?? (clienteId ? clienteNome : null),
+      cliente_pais: cli?.pais ?? (clienteId ? situacao.cliente_pais : null),
+      cliente_cidade: cli?.cidade ?? (clienteId ? situacao.cliente_cidade : null),
+      mercado: mercado || null,
       renovacao_automatica: renovacao, valor_mensal: valorNum,
       localizacao: local.trim() || null, notas: notas.trim() || null,
     })
   }
 
   async function limpar() {
-    if (!window.confirm('Limpar os dados de detalhe deste aluguer? O equipamento continua em aluguer.')) return
+    if (!window.confirm('Limpar os dados deste aluguer (incluindo a classificação de mercado)? O equipamento continua em aluguer, mas passa a "Por classificar" até ser reclassificado.')) return
     setAGuardar(true)
     await apagarFichaSituacao(situacao.equipamento_id)
     setAGuardar(false)
     onGuardado({
-      ...situacao, situacao_id: null, cliente_id: null, cliente_nome: null, cliente_pais: null, cliente_cidade: null,
+      ...situacao, situacao_id: null, cliente_id: null, cliente_nome: null, cliente_pais: null, cliente_cidade: null, mercado: null,
       data_inicio: null, data_fim_prevista: null, renovacao_automatica: false, valor_mensal: null, localizacao: null, notas: null,
     })
   }
@@ -376,9 +446,8 @@ function ModalFicha({ situacao, onFechar, onGuardado }: {
         </div>
 
         <p style={c.envInfo}>
-          <strong>{[situacao.marca, situacao.modelo].filter(Boolean).join(' ') || '—'}</strong> · {situacao.serial_number ?? '—'}<br />
-          <span style={c.mercadoTag}>{situacao.nacional ? '🇵🇹 Nacional' : '🌍 Internacional'}</span>
-          {situacao.destino && <span style={{ color: 'var(--muted)' }}> · destino registado: {situacao.destino}</span>}
+          <strong>{[situacao.marca, situacao.modelo].filter(Boolean).join(' ') || '—'}</strong> · {situacao.serial_number ?? '—'}
+          {situacao.destino && <><br /><span style={{ color: 'var(--muted)' }}>Destino registado: {situacao.destino}</span></>}
         </p>
 
         {erro && <div style={c.erro}>{erro}</div>}
@@ -390,6 +459,13 @@ function ModalFicha({ situacao, onFechar, onGuardado }: {
           {clientes.map((c2) => <option key={c2.id} value={c2.nome} />)}
         </datalist>
         {clienteNome && !clienteId && <span style={c.notaLigacao}>Este nome não está ligado a um cliente registado (fica só como texto).</span>}
+
+        <label style={c.label}>Mercado (quadro)</label>
+        <select style={c.input} value={mercado} onChange={(e) => setMercado(e.target.value as '' | Mercado)}>
+          <option value="">Automático — pelo país do cliente{paisClienteEscolhido ? ` (${paisClienteEscolhido} → ${paisClienteEhPT ? 'Nacional' : 'Internacional'})` : ' (sem país → Por classificar)'}</option>
+          <option value="nacional">🇵🇹 Nacional (forçar)</option>
+          <option value="internacional">🌍 Internacional (forçar)</option>
+        </select>
 
         <label style={c.label}>Localização (cidade / país)</label>
         <input style={c.input} value={local} onChange={(e) => setLocal(e.target.value)} placeholder="Ex.: Porto, Portugal" />
@@ -448,6 +524,17 @@ const c: Record<string, React.CSSProperties> = {
   tabs: { display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 },
   tab: { padding: '9px 14px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', color: 'var(--foreground)', fontWeight: 600, fontSize: 14, cursor: 'pointer' },
   tabAtiva: { background: 'var(--primary)', color: '#fff', borderColor: 'var(--primary)' },
+  tabPC: { borderColor: '#F59E0B', color: '#B45309', background: '#FFFBEB' },
+  tabPCAtiva: { background: '#B45309', color: '#fff', borderColor: '#B45309' },
+  bannerPC: { display: 'block', width: '100%', textAlign: 'left', background: '#FFFBEB', border: '1px solid #F59E0B', color: '#92400E', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13.5, fontWeight: 600, cursor: 'pointer' },
+  pcIntro: { fontSize: 13.5, color: 'var(--muted)', marginBottom: 12, lineHeight: 1.5 },
+  pcCartao: { border: '1px solid #F59E0B', borderRadius: 12, padding: 14, background: '#FFFDF6', display: 'flex', flexDirection: 'column', gap: 8 },
+  pcTopo: { display: 'flex', flexDirection: 'column' },
+  pcDestino: { fontSize: 13 },
+  pcAcoes: { display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 },
+  pcBtnNac: { background: '#fff', border: '1px solid var(--primary)', color: 'var(--primary)', borderRadius: 8, padding: '8px 14px', fontWeight: 700, cursor: 'pointer' },
+  pcBtnInt: { background: '#fff', border: '1px solid #2563EB', color: '#2563EB', borderRadius: 8, padding: '8px 14px', fontWeight: 700, cursor: 'pointer' },
+  pcBtnDet: { background: 'transparent', border: 'none', color: 'var(--muted)', fontWeight: 600, cursor: 'pointer', marginLeft: 'auto' },
   filtros: { display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' },
   inputPesq: { flex: 1, minWidth: 200, padding: 10, border: '1px solid #ccc', borderRadius: 8, fontSize: 15 },
   select: { padding: 10, border: '1px solid #ccc', borderRadius: 8, fontSize: 15 },

@@ -279,13 +279,13 @@ export function extrato(movs: MovimentoCC[]): LinhaExtrato[] {
 
 // ─── Pickers de entidade (para o registo manual) ─────────────────────────────
 
-export type EntidadeOpc = { id: string; nome: string }
+export type EntidadeOpc = { id: string; nome: string; pais?: string | null; cidade?: string | null }
 
 export async function listarClientesPicker(): Promise<EntidadeOpc[]> {
-  const { data } = await supabase.from('clientes').select('id, nome').order('nome').limit(3000)
-  return ((data as { id: string; nome: string | null }[]) ?? [])
+  const { data } = await supabase.from('clientes').select('id, nome, pais, cidade').order('nome').limit(3000)
+  return ((data as { id: string; nome: string | null; pais: string | null; cidade: string | null }[]) ?? [])
     .filter((c) => c.nome)
-    .map((c) => ({ id: c.id, nome: c.nome as string }))
+    .map((c) => ({ id: c.id, nome: c.nome as string, pais: c.pais, cidade: c.cidade }))
 }
 
 export async function listarFornecedoresPicker(): Promise<EntidadeOpc[]> {
