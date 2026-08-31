@@ -113,6 +113,7 @@ const TITULOS: { prefixo: string; titulo: string }[] = [
   { prefixo: '/financeiro/cofre', titulo: 'Cofre de Documentos' },
   { prefixo: '/financeiro/alertas', titulo: 'Alertas' },
   { prefixo: '/financeiro/recolhas', titulo: 'Recolhas' },
+  { prefixo: '/financeiro/tabelas', titulo: 'Folhas de Cálculo' },
   { prefixo: '/financeiro', titulo: 'Financeiro' },
   { prefixo: '/pedidos-fatura', titulo: 'Pedidos de Fatura' },
   { prefixo: '/definicoes/utilizadores', titulo: 'Utilizadores' },
