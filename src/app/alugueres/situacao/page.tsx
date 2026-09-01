@@ -6,11 +6,11 @@ import { useAuth } from '@/lib/auth'
 import AlugueresNav from '@/components/AlugueresNav'
 import BotaoExportar from '@/components/BotaoExportar'
 import type { ColunaExport } from '@/lib/exportar'
-import { formatarEuro, somar } from '@/lib/alugueres'
+import { formatarEuro } from '@/lib/alugueres'
 import { listarClientesPicker, type EntidadeOpc } from '@/lib/contasCorrentes'
 import {
   carregarSituacaoAlugueres, carregarDisponiveis, guardarFichaSituacao, apagarFichaSituacao,
-  procurarEquipamentosEmStock, colocarEmAluguer, terminarAluguer,
+  procurarEquipamentosEmStock, colocarEmAluguer, terminarAluguer, propagarPack, totalMensalComPacks,
   STATUS_ALUGUER_NAC, STATUS_ALUGUER_INT,
   classificar, inicioEfetivo, duracaoTexto, diasAte, alertaDe,
   type SituacaoAluguer, type Disponiveis, type EquipDisponivel, type FichaPatch, type Mercado, type EquipEmStock,
@@ -52,6 +52,7 @@ const colunasExport: ColunaExport<SituacaoAluguer>[] = [
   { cabecalho: 'Marca', valor: (l) => l.marca ?? '' },
   { cabecalho: 'Modelo', valor: (l) => l.modelo ?? '' },
   { cabecalho: 'Mercado', valor: (l) => ({ nacional: 'Nacional', internacional: 'Internacional', 'por-classificar': 'Por classificar' }[classificar(l)]) },
+  { cabecalho: 'Pack', valor: (l) => l.pack ?? '' },
   { cabecalho: 'Cliente', valor: (l) => clienteTexto(l) },
   { cabecalho: 'Localização', valor: (l) => localizacaoTexto(l) },
   { cabecalho: 'Início', valor: (l) => formatarData(inicioEfetivo(l)) },
@@ -90,6 +91,10 @@ export default function SituacaoAtualPage() {
   const nacionais = useMemo(() => alugueres.filter((a) => classificar(a) === 'nacional'), [alugueres])
   const internacionais = useMemo(() => alugueres.filter((a) => classificar(a) === 'internacional'), [alugueres])
   const porClassificar = useMemo(() => alugueres.filter((a) => classificar(a) === 'por-classificar'), [alugueres])
+  const packsExistentes = useMemo(
+    () => (Array.from(new Set(alugueres.map((a) => a.pack).filter(Boolean))) as string[]).sort((a, b) => a.localeCompare(b)),
+    [alugueres],
+  )
 
   function filtrarOrdenar(lista: SituacaoAluguer[]): SituacaoAluguer[] {
     const q = pesquisa.trim().toLowerCase()
@@ -207,14 +212,16 @@ export default function SituacaoAtualPage() {
       {editar && (
         <ModalFicha
           situacao={editar}
+          packsExistentes={packsExistentes}
           onFechar={() => setEditar(null)}
           onGuardado={aoGuardarFicha}
           onTerminado={() => { setEditar(null); carregar() }}
+          onRecarregar={() => carregar()}
         />
       )}
 
       {novo && (
-        <ModalNovoAluguer onFechar={() => setNovo(false)} onCriado={() => { setNovo(false); carregar() }} />
+        <ModalNovoAluguer packsExistentes={packsExistentes} onFechar={() => setNovo(false)} onCriado={() => { setNovo(false); carregar() }} />
       )}
     </main>
   )
@@ -224,28 +231,34 @@ export default function SituacaoAtualPage() {
 function QuadroAlugueres({ lista, estreito, onEditar }: {
   lista: SituacaoAluguer[]; estreito: boolean; onEditar: (s: SituacaoAluguer) => void
 }) {
-  const totalMensal = somar(lista, (l) => l.valor_mensal)
-  const semValor = lista.filter((l) => l.valor_mensal == null).length
+  const { total: totalMensal, semValor } = totalMensalComPacks(lista)
+  const numPacks = new Set(lista.filter((l) => l.pack).map((l) => l.pack)).size
+
+  // Agrupa os equipamentos do mesmo pack (ficam adjacentes); sem pack vão para o fim.
+  const ordenada = [...lista].sort((a, b) => {
+    if (!!a.pack === !!b.pack) return (a.pack ?? '').localeCompare(b.pack ?? '')
+    return a.pack ? -1 : 1
+  })
 
   if (lista.length === 0) return <p style={c.estado}>Nenhum equipamento em aluguer nesta vista.</p>
 
   return (
     <>
       <div style={c.totais}>
-        <span><strong>{lista.length}</strong> equipamento(s)</span>
+        <span><strong>{lista.length}</strong> equipamento(s){numPacks > 0 && <> · <strong>{numPacks}</strong> pack(s)</>}</span>
         <span>Valor mensal: <strong>{formatarEuro(totalMensal)}</strong>{semValor > 0 && <span style={c.avisoTotais}> ({semValor} sem valor definido)</span>}</span>
       </div>
 
       {estreito ? (
-        <div style={c.cartoes}>{lista.map((s) => <CartaoAluguer key={s.equipamento_id} s={s} onEditar={onEditar} />)}</div>
+        <div style={c.cartoes}>{ordenada.map((s) => <CartaoAluguer key={s.equipamento_id} s={s} onEditar={onEditar} />)}</div>
       ) : (
         <div style={c.tabela}>
           <div style={{ ...c.linha, ...c.cab }}>
-            <span>Equipamento</span><span>Cliente</span><span>Localização</span>
+            <span>Equipamento</span><span>Pack</span><span>Cliente</span><span>Localização</span>
             <span>Início</span><span>Duração</span><span>Fim previsto</span>
             <span style={{ textAlign: 'right' }}>Mensal</span>
           </div>
-          {lista.map((s) => {
+          {ordenada.map((s) => {
             const alerta = alertaDe(s)
             return (
               <div key={s.equipamento_id}
@@ -255,6 +268,7 @@ function QuadroAlugueres({ lista, estreito, onEditar }: {
                   <span style={c.equipSn}>{s.serial_number ?? '—'}</span>
                   <span style={c.equipMarca}>{[s.marca, s.modelo].filter(Boolean).join(' ') || '—'}</span>
                 </span>
+                <span>{s.pack ? <span style={c.packTag}>{s.pack}</span> : '—'}</span>
                 <span>{clienteTexto(s)}</span>
                 <span>{localizacaoTexto(s)}</span>
                 <span>{formatarData(inicioEfetivo(s))}</span>
@@ -319,6 +333,7 @@ function CartaoAluguer({ s, onEditar }: { s: SituacaoAluguer; onEditar: (s: Situ
         {alerta && <BadgeAlerta s={s} alerta={alerta} />}
       </div>
       <div style={c.equipMarca}>{[s.marca, s.modelo].filter(Boolean).join(' ') || '—'}</div>
+      {s.pack && <div style={c.cartaoLinha}><span style={c.cartaoLabel}>Pack</span><span style={c.packTag}>{s.pack}</span></div>}
       <div style={c.cartaoLinha}><span style={c.cartaoLabel}>Cliente</span><span>{clienteTexto(s)}</span></div>
       <div style={c.cartaoLinha}><span style={c.cartaoLabel}>Localização</span><span>{localizacaoTexto(s)}</span></div>
       <div style={c.cartaoLinha}><span style={c.cartaoLabel}>Início</span><span>{formatarData(inicioEfetivo(s))} · {duracaoTexto(inicioEfetivo(s))}</span></div>
@@ -379,8 +394,8 @@ function GrupoDisp({ titulo, cor, itens, estreito, vazio }: {
 }
 
 // ─────────────────────────────────────────────── MODAL FICHA ─────────────────
-function ModalFicha({ situacao, onFechar, onGuardado, onTerminado }: {
-  situacao: SituacaoAluguer; onFechar: () => void; onGuardado: (s: SituacaoAluguer) => void; onTerminado: () => void
+function ModalFicha({ situacao, packsExistentes, onFechar, onGuardado, onTerminado, onRecarregar }: {
+  situacao: SituacaoAluguer; packsExistentes: string[]; onFechar: () => void; onGuardado: (s: SituacaoAluguer) => void; onTerminado: () => void; onRecarregar: () => void
 }) {
   const { perfil } = useAuth()
   const [clientes, setClientes] = useState<EntidadeOpc[]>([])
@@ -391,6 +406,7 @@ function ModalFicha({ situacao, onFechar, onGuardado, onTerminado }: {
   const [renovacao, setRenovacao] = useState(situacao.renovacao_automatica)
   const [fim, setFim] = useState(situacao.data_fim_prevista ?? '')
   const [valor, setValor] = useState(situacao.valor_mensal != null ? String(situacao.valor_mensal) : '')
+  const [pack, setPack] = useState(situacao.pack ?? '')
   const [local, setLocal] = useState(situacao.localizacao ?? '')
   const [notas, setNotas] = useState(situacao.notas ?? '')
   const [aGuardar, setAGuardar] = useState(false)
@@ -415,6 +431,8 @@ function ModalFicha({ situacao, onFechar, onGuardado, onTerminado }: {
     const valorNum = valor.trim() ? Number(valor.replace(',', '.')) : null
     if (valorNum != null && (isNaN(valorNum) || valorNum < 0)) return setErro('Valor mensal inválido.')
     setAGuardar(true)
+    const autor = { id: perfil?.id ?? null, nome: perfil?.nome ?? null }
+    const packTrim = pack.trim() || null
     const patch: FichaPatch = {
       cliente_id: clienteId || null,
       mercado: mercado || null,
@@ -424,10 +442,20 @@ function ModalFicha({ situacao, onFechar, onGuardado, onTerminado }: {
       valor_mensal: valorNum,
       localizacao: local.trim() || null,
       notas: notas.trim() || null,
+      pack: packTrim,
     }
-    const { error } = await guardarFichaSituacao(situacao.equipamento_id, patch, { id: perfil?.id ?? null, nome: perfil?.nome ?? null })
+    const { error } = await guardarFichaSituacao(situacao.equipamento_id, patch, autor)
+    if (error) { setAGuardar(false); return setErro('Erro ao guardar: ' + error.message) }
+    // Pack: aplica valor/cliente/mercado a todos os equipamentos do mesmo pack e recarrega.
+    if (packTrim) {
+      const { error: e2 } = await propagarPack(packTrim, { valor_mensal: valorNum, cliente_id: clienteId || null, mercado: mercado || null }, autor)
+      setAGuardar(false)
+      if (e2) return setErro('Guardado, mas falhou aplicar ao pack: ' + e2.message)
+      onFechar()
+      onRecarregar()
+      return
+    }
     setAGuardar(false)
-    if (error) return setErro('Erro ao guardar: ' + error.message)
     // Reflete localmente (inclui nome/país do cliente escolhido)
     const cli = clientes.find((c2) => c2.id === clienteId)
     onGuardado({
@@ -438,6 +466,7 @@ function ModalFicha({ situacao, onFechar, onGuardado, onTerminado }: {
       mercado: mercado || null,
       renovacao_automatica: renovacao, valor_mensal: valorNum,
       localizacao: local.trim() || null, notas: notas.trim() || null,
+      pack: packTrim,
     })
   }
 
@@ -485,6 +514,14 @@ function ModalFicha({ situacao, onFechar, onGuardado, onTerminado }: {
           {clientes.map((c2) => <option key={c2.id} value={c2.nome} />)}
         </datalist>
         {clienteNome && !clienteId && <span style={c.notaLigacao}>Este nome não está ligado a um cliente registado (fica só como texto).</span>}
+
+        <label style={c.label}>Pack / Grupo (junta laser + Zimmer)</label>
+        <input style={c.input} list="packs-existentes" value={pack} onChange={(e) => setPack(e.target.value)}
+          placeholder="Ex.: nome do cliente/clínica — o mesmo nos 2 equipamentos" />
+        <datalist id="packs-existentes">
+          {packsExistentes.map((p) => <option key={p} value={p} />)}
+        </datalist>
+        {pack.trim() && <span style={c.notaLigacao}>Ao guardar, o valor mensal e o cliente aplicam-se a TODOS os equipamentos deste pack.</span>}
 
         <label style={c.label}>Mercado (quadro)</label>
         <select style={c.input} value={mercado} onChange={(e) => setMercado(e.target.value as '' | Mercado)}>
@@ -541,7 +578,7 @@ function ModalFicha({ situacao, onFechar, onGuardado, onTerminado }: {
 }
 
 // ─────────────────────────────────────────────── NOVO ALUGUER (manual) ───────
-function ModalNovoAluguer({ onFechar, onCriado }: { onFechar: () => void; onCriado: () => void }) {
+function ModalNovoAluguer({ packsExistentes, onFechar, onCriado }: { packsExistentes: string[]; onFechar: () => void; onCriado: () => void }) {
   const { perfil } = useAuth()
   const [clientes, setClientes] = useState<EntidadeOpc[]>([])
   const [busca, setBusca] = useState('')
@@ -554,6 +591,7 @@ function ModalNovoAluguer({ onFechar, onCriado }: { onFechar: () => void; onCria
   const [renovacao, setRenovacao] = useState(false)
   const [fim, setFim] = useState('')
   const [valor, setValor] = useState('')
+  const [pack, setPack] = useState('')
   const [local, setLocal] = useState('')
   const [notas, setNotas] = useState('')
   const [aGuardar, setAGuardar] = useState(false)
@@ -602,6 +640,7 @@ function ModalNovoAluguer({ onFechar, onCriado }: { onFechar: () => void; onCria
       valor_mensal: valorNum,
       localizacao: local.trim() || null,
       notas: notas.trim() || null,
+      pack: pack.trim() || null,
     }
     setAGuardar(true)
     const r = await colocarEmAluguer({
@@ -656,6 +695,13 @@ function ModalNovoAluguer({ onFechar, onCriado }: { onFechar: () => void; onCria
           {clientes.map((c2) => <option key={c2.id} value={c2.nome} />)}
         </datalist>
         {clienteNome && !clienteId && <span style={c.notaLigacao}>Este nome não está ligado a um cliente registado (fica só como texto).</span>}
+
+        <label style={c.label}>Pack / Grupo (junta laser + Zimmer)</label>
+        <input style={c.input} list="packs-existentes-novo" value={pack} onChange={(e) => setPack(e.target.value)}
+          placeholder="Opcional — o mesmo nome nos equipamentos do mesmo pack" />
+        <datalist id="packs-existentes-novo">
+          {packsExistentes.map((p) => <option key={p} value={p} />)}
+        </datalist>
 
         <label style={c.label}>Mercado (quadro)</label>
         <select style={c.input} value={mercado} onChange={(e) => setMercado(e.target.value as '' | Mercado)}>
@@ -733,7 +779,8 @@ const c: Record<string, React.CSSProperties> = {
   avisoTotais: { color: 'var(--muted)', fontWeight: 400 },
   estado: { color: 'var(--muted)', padding: 10 },
   tabela: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 8, overflowX: 'auto' },
-  linha: { display: 'grid', gridTemplateColumns: '1.6fr 1.3fr 1.3fr 1fr 0.9fr 1.3fr 0.9fr', gap: 8, padding: '10px 8px', fontSize: 13, borderBottom: '1px solid #f2f2f2', alignItems: 'center' },
+  linha: { display: 'grid', gridTemplateColumns: '1.5fr 0.9fr 1.1fr 1.1fr 0.9fr 0.8fr 1.1fr 0.9fr', gap: 8, padding: '10px 8px', fontSize: 13, borderBottom: '1px solid #f2f2f2', alignItems: 'center' },
+  packTag: { display: 'inline-block', background: 'var(--accent-bg, #eef1f6)', border: '1px solid var(--border)', borderRadius: 6, padding: '1px 7px', fontSize: 12, fontWeight: 600, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   linhaDisp: { display: 'grid', gridTemplateColumns: '2fr 1.3fr 1fr', gap: 8, padding: '10px 8px', fontSize: 13, borderBottom: '1px solid #f2f2f2', alignItems: 'center' },
   cab: { fontWeight: 700, color: 'var(--muted)', fontSize: 12, borderBottom: '2px solid var(--border)' },
   linhaClicavel: { cursor: 'pointer' },
