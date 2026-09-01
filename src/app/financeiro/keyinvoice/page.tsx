@@ -8,6 +8,7 @@ import {
   type LinhaImport, type SyncRun, type ResultadoImport,
 } from '@/lib/keyinvoiceSync'
 import { tipoDocInfo, formatarEuro, formatarData } from '@/lib/contasCorrentes'
+import { categoriaInfo } from '@/lib/categorizacaoFinanceira'
 
 export default function KeyinvoicePage() {
   const { perfil } = useAuth()
@@ -28,6 +29,8 @@ export default function KeyinvoicePage() {
     novos: linhas.filter((l) => l.associada && !l.jaImportada).length,
     atualizar: linhas.filter((l) => l.associada && l.jaImportada).length,
     semEntidade: linhas.filter((l) => !l.associada).length,
+    porClassificar: linhas.filter((l) => l.associada && !l.categoria && !l.categoriaBloqueada).length,
+    servicoTecnico: linhas.filter((l) => l.categoria === 'servico_tecnico').length,
   }), [linhas])
   const podeImportar = contagens.novos + contagens.atualizar
 
@@ -88,6 +91,9 @@ export default function KeyinvoicePage() {
           </label>
         </div>
         <p style={c.aviso2}>
+          Cada documento é associado ao cliente e classificado por natureza (serviço técnico · aluguer · venda · outro).
+          As <strong>pró-formas</strong> entram no extrato mas não contam para o saldo. As faturas de <strong>serviço técnico</strong>
+          seguem automaticamente para <a href="/tecnico/comissoes" style={{ color: 'var(--primary)' }}>Técnico → Comissões</a>.
           A ligação automática à API do Keyinvoice fica para quando houver chave de acesso — o pipeline (associação, idempotência) é o mesmo.
         </p>
       </section>
@@ -124,13 +130,15 @@ export default function KeyinvoicePage() {
             <Chip cor="#065F46" bg="#D1FAE5" n={contagens.novos} txt="novos" />
             <Chip cor="#5B21B6" bg="#EDE9FE" n={contagens.atualizar} txt="a atualizar" />
             <Chip cor="#92400E" bg="#FEF3C7" n={contagens.semEntidade} txt="sem entidade" />
+            <Chip cor="#374151" bg="#F3F4F6" n={contagens.porClassificar} txt="por classificar" />
+            <Chip cor="#1E40AF" bg="#DBEAFE" n={contagens.servicoTecnico} txt="serviço técnico" />
           </div>
 
           {resultado && (
             <div style={c.resultado}>
               {resultado.erro
                 ? `⚠️ Erro na importação: ${resultado.erro}`
-                : `✅ ${resultado.importados} novo(s) · ${resultado.atualizados} atualizado(s) · ${resultado.semEntidade} sem entidade.`}
+                : `✅ ${resultado.importados} novo(s) · ${resultado.atualizados} atualizado(s) · ${resultado.semEntidade} sem entidade · ${resultado.porClassificar} por classificar · ${resultado.servicoTecnico} para comissões.`}
             </div>
           )}
 
@@ -140,6 +148,7 @@ export default function KeyinvoicePage() {
               <span>Entidade</span>
               <span>Data</span>
               <span style={{ textAlign: 'right' }}>Valor</span>
+              <span>Categoria</span>
               <span style={{ textAlign: 'center' }}>Estado</span>
             </div>
             {linhas.slice(0, 200).map((l, i) => (
@@ -151,6 +160,15 @@ export default function KeyinvoicePage() {
                 </span>
                 <span style={c.muted}>{formatarData(l.data_documento)}</span>
                 <span style={{ textAlign: 'right' }}>{formatarEuro(l.valor)}</span>
+                <span>
+                  {l.categoriaBloqueada ? (
+                    <span style={c.catManual} title="Classificada à mão na app — a importação não a altera">🔒 definida na app</span>
+                  ) : l.categoria ? (
+                    (() => { const k = categoriaInfo(l.categoria)!; return <span style={{ ...c.cat, color: k.cor, background: k.bg }}>{k.icon} {k.label}</span> })()
+                  ) : (
+                    <span style={c.catVazia}>por classificar</span>
+                  )}
+                </span>
                 <span style={{ textAlign: 'center' }}><EstadoLinha l={l} /></span>
               </div>
             ))}
@@ -230,7 +248,10 @@ const c: Record<string, React.CSSProperties> = {
   chip: { fontSize: 13, borderRadius: 999, padding: '4px 12px', fontWeight: 600 },
   resultado: { background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 8, padding: '10px 12px', fontSize: 14 },
   tabela: { border: '1px solid var(--border)', borderRadius: 10, padding: 6, overflowX: 'auto' },
-  linha: { display: 'grid', gridTemplateColumns: '1.6fr 2fr 1fr 1fr 1.1fr', gap: 8, padding: '9px 8px', fontSize: 13.5, borderBottom: '1px solid #f2f2f2', alignItems: 'center', minWidth: 720 },
+  linha: { display: 'grid', gridTemplateColumns: '1.5fr 1.8fr 0.9fr 0.9fr 1.3fr 1.1fr', gap: 8, padding: '9px 8px', fontSize: 13.5, borderBottom: '1px solid #f2f2f2', alignItems: 'center', minWidth: 880 },
+  cat: { fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '2px 8px', whiteSpace: 'nowrap' },
+  catVazia: { fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '2px 8px', color: '#92400E', background: '#FEF3C7', whiteSpace: 'nowrap' },
+  catManual: { fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '2px 8px', color: '#374151', background: '#E5E7EB', whiteSpace: 'nowrap' },
   linhaSync: { display: 'grid', gridTemplateColumns: '1.4fr 1fr 0.8fr 2.4fr', gap: 8, padding: '9px 8px', fontSize: 13, borderBottom: '1px solid #f2f2f2', alignItems: 'center', minWidth: 620 },
   cab: { fontWeight: 700, color: 'var(--muted)', fontSize: 12, borderBottom: '2px solid var(--border)' },
   muted: { color: 'var(--muted)', fontSize: 13 },

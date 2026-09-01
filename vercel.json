@@ -2,6 +2,7 @@
   "crons": [
     { "path": "/api/alugueres/inatividade-resumo", "schedule": "0 8 * * 1" },
     { "path": "/api/alugueres/notificacoes", "schedule": "0 8 * * *" },
-    { "path": "/api/leads/ingest-email", "schedule": "0 9 * * *" }
+    { "path": "/api/leads/ingest-email", "schedule": "0 9 * * *" },
+    { "path": "/api/financeiro/cobrancas", "schedule": "0 10 * * 1-5" }
   ]
 }

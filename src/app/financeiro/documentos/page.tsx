@@ -7,8 +7,10 @@ import {
   FILTROS_VAZIOS, type FiltrosDoc,
 } from '@/lib/documentosFinanceiros'
 import {
-  TIPOS_DOCUMENTO, tipoDocInfo, formatarEuro, formatarData, type MovimentoCC,
+  TIPOS_DOCUMENTO, tipoDocInfo, formatarEuro, formatarData,
+  definirCategoria, marcarPago, marcarPorPagar, type MovimentoCC,
 } from '@/lib/contasCorrentes'
+import { CATEGORIAS, categoriaInfo, type CategoriaDoc } from '@/lib/categorizacaoFinanceira'
 
 export default function DocumentosPage() {
   const [docs, setDocs] = useState<MovimentoCC[]>([])
@@ -44,6 +46,23 @@ export default function DocumentosPage() {
     if (url) window.open(url, '_blank', 'noopener,noreferrer')
     else setMsg('Não foi possível abrir o ficheiro.')
   }
+  async function classificar(m: MovimentoCC, valor: string) {
+    setATrabalhar(m.id); setMsg(null)
+    const { error } = await definirCategoria(m.id, (valor || null) as CategoriaDoc | null)
+    if (error) setMsg('Erro ao classificar: ' + error.message)
+    await carregar()
+    setATrabalhar(null)
+  }
+
+  async function alternarPagamento(m: MovimentoCC) {
+    const pago = m.estado === 'liquidado'
+    setATrabalhar(m.id); setMsg(null)
+    const { error } = pago ? await marcarPorPagar(m.id) : await marcarPago(m)
+    if (error) setMsg('Erro ao atualizar o pagamento: ' + error.message)
+    await carregar()
+    setATrabalhar(null)
+  }
+
   async function remover(m: MovimentoCC) {
     if (!m.ficheiro_caminho) return
     if (!confirm('Remover o ficheiro deste documento?')) return
@@ -54,6 +73,7 @@ export default function DocumentosPage() {
   }
 
   const comFicheiro = docs.filter((d) => d.ficheiro_caminho).length
+  const porClassificar = docs.filter((d) => !d.categoria).length
 
   return (
     <main style={c.page}>
@@ -80,6 +100,16 @@ export default function DocumentosPage() {
           <option value="">Todos os tipos</option>
           {TIPOS_DOCUMENTO.map((t) => <option key={t.valor} value={t.valor}>{t.label}</option>)}
         </select>
+        <select value={f.categoria} onChange={(e) => set('categoria', e.target.value as FiltrosDoc['categoria'])} style={c.input}>
+          <option value="">Todas as categorias</option>
+          {CATEGORIAS.map((k) => <option key={k.valor} value={k.valor}>{k.icon} {k.label}</option>)}
+          <option value="por_classificar">⚠️ Por classificar</option>
+        </select>
+        <select value={f.pagamento} onChange={(e) => set('pagamento', e.target.value as FiltrosDoc['pagamento'])} style={c.input}>
+          <option value="">Pagos e por pagar</option>
+          <option value="pago">Pagamento confirmado</option>
+          <option value="por_confirmar">Por confirmar</option>
+        </select>
         <select value={f.origem} onChange={(e) => set('origem', e.target.value as FiltrosDoc['origem'])} style={c.input}>
           <option value="">Todas as origens</option>
           <option value="manual">Manual</option>
@@ -95,7 +125,14 @@ export default function DocumentosPage() {
         {temFiltros && <button style={c.btnGhost} onClick={() => setF(FILTROS_VAZIOS)}>Limpar</button>}
       </div>
 
-      <div style={c.resumo}>{docs.length} documento(s) · {comFicheiro} com ficheiro</div>
+      <div style={c.resumo}>
+        {docs.length} documento(s) · {comFicheiro} com ficheiro
+        {porClassificar > 0 && (
+          <button style={c.resumoAviso} onClick={() => set('categoria', 'por_classificar')}>
+            ⚠️ {porClassificar} por classificar
+          </button>
+        )}
+      </div>
 
       {carregando ? (
         <p style={c.estado}>A carregar...</p>
@@ -108,18 +145,45 @@ export default function DocumentosPage() {
             <span>Documento</span>
             <span>Entidade</span>
             <span style={{ textAlign: 'right' }}>Valor</span>
+            <span>Categoria</span>
+            <span style={{ textAlign: 'center' }}>Pagamento</span>
             <span style={{ textAlign: 'center' }}>Origem</span>
             <span style={{ textAlign: 'center' }}>Ficheiro</span>
           </div>
           {docs.map((m) => {
             const valor = m.valor_debito || m.valor_credito
             const ocupado = aTrabalhar === m.id
+            const cat = categoriaInfo(m.categoria)
+            const liquidavel = m.tipo_documento === 'fatura' || m.tipo_documento === 'pro_forma'
+            const pago = m.estado === 'liquidado'
             return (
               <div key={m.id} style={c.linha}>
                 <span style={c.muted}>{formatarData(m.data_documento)}</span>
                 <span>{tipoDocInfo(m.tipo_documento).label}{m.documento_ref ? ` ${m.documento_ref}` : ''}</span>
                 <span>{m.entidade_nome ?? '—'}<span style={c.entTipo}> · {m.entidade_tipo}</span></span>
                 <span style={{ textAlign: 'right', fontWeight: 700 }}>{formatarEuro(valor)}</span>
+                <span>
+                  <select
+                    value={m.categoria ?? ''}
+                    disabled={ocupado}
+                    onChange={(e) => classificar(m, e.target.value)}
+                    style={{ ...c.selCat, ...(cat ? { color: cat.cor, background: cat.bg, borderColor: cat.bg } : c.selCatVazio) }}
+                    title={m.categoria_manual ? 'Classificada à mão' : 'Proposta pela importação'}
+                  >
+                    <option value="">Por classificar</option>
+                    {CATEGORIAS.map((k) => <option key={k.valor} value={k.valor}>{k.icon} {k.label}</option>)}
+                  </select>
+                </span>
+                <span style={{ textAlign: 'center' }}>
+                  {liquidavel ? (
+                    <button style={{ ...c.pagoBtn, ...(pago ? c.pagoOn : {}) }} disabled={ocupado} onClick={() => alternarPagamento(m)}
+                      title={pago ? `Pago${m.data_pagamento ? ' em ' + formatarData(m.data_pagamento) : ''} — clicar para reverter` : 'Marcar como pago'}>
+                      {pago ? `✓ ${formatarData(m.data_pagamento)}` : 'Marcar pago'}
+                    </button>
+                  ) : (
+                    <span style={c.muted}>—</span>
+                  )}
+                </span>
                 <span style={{ textAlign: 'center' }}>
                   <span style={{ ...c.badge, ...(m.origem === 'keyinvoice' ? c.badgeKi : c.badgeManual) }}>
                     {m.origem === 'keyinvoice' ? 'Keyinvoice' : 'Manual'}
@@ -158,10 +222,15 @@ const c: Record<string, React.CSSProperties> = {
   filtros: { display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' },
   input: { padding: 9, border: '1px solid #ccc', borderRadius: 8, fontSize: 14 },
   dataLabel: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--muted)' },
-  resumo: { background: 'var(--accent-bg, #eef1f6)', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 14 },
+  resumo: { background: 'var(--accent-bg, #eef1f6)', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 14, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
+  resumoAviso: { background: '#FEF3C7', color: '#92400E', border: '1px solid #FCD34D', borderRadius: 999, padding: '3px 12px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' },
+  selCat: { border: '1px solid var(--border)', borderRadius: 999, padding: '3px 8px', fontSize: 12, fontWeight: 600, maxWidth: '100%' },
+  selCatVazio: { color: '#92400E', background: '#FEF3C7', borderColor: '#FCD34D' },
+  pagoBtn: { background: '#fff', color: 'var(--primary)', border: '1px solid var(--border)', borderRadius: 999, padding: '3px 10px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' },
+  pagoOn: { background: '#D1FAE5', color: '#065F46', borderColor: '#6EE7B7' },
   estado: { color: 'var(--muted)', padding: 8 },
   tabela: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 8, overflowX: 'auto' },
-  linha: { display: 'grid', gridTemplateColumns: '0.9fr 1.6fr 2fr 1fr 1fr 1.1fr', gap: 8, padding: '10px 8px', fontSize: 13.5, borderBottom: '1px solid #f2f2f2', alignItems: 'center', minWidth: 820 },
+  linha: { display: 'grid', gridTemplateColumns: '0.9fr 1.5fr 1.7fr 0.9fr 1.3fr 1.1fr 0.9fr 1fr', gap: 8, padding: '10px 8px', fontSize: 13.5, borderBottom: '1px solid #f2f2f2', alignItems: 'center', minWidth: 1080 },
   cab: { fontWeight: 700, color: 'var(--muted)', fontSize: 12, borderBottom: '2px solid var(--border)' },
   muted: { color: 'var(--muted)', fontSize: 13 },
   entTipo: { color: 'var(--muted)', fontSize: 12 },

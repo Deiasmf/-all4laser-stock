@@ -12,6 +12,11 @@ export default function TecnicoPage() {
           <span style={s.cartaoTitulo}>Folhas de Obra</span>
           <span style={s.cartaoDesc}>Registar intervenções, reparações e manutenções.</span>
         </Link>
+        <Link href="/tecnico/comissoes" style={s.cartao}>
+          <span style={s.icone}>💰</span>
+          <span style={s.cartaoTitulo}>Comissões</span>
+          <span style={s.cartaoDesc}>Faturas de serviço técnico: retirar despesas e apurar a comissão.</span>
+        </Link>
       </div>
     </main>
   )

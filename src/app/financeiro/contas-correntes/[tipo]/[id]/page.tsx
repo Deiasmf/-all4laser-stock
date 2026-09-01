@@ -1,13 +1,14 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import {
   movimentosDaEntidade, extrato, aging, hojeISO, formatarEuro, formatarData,
-  tipoDocInfo, estadoMovInfo, ESTADOS_MOV,
+  tipoDocInfo, estadoMovInfo, ESTADOS_MOV, contaParaSaldo, marcarPago, marcarPorPagar,
   type MovimentoCC, type EntidadeTipo, type LinhaExtrato,
 } from '@/lib/contasCorrentes'
+import { categoriaInfo } from '@/lib/categorizacaoFinanceira'
 
 export default function ExtratoEntidadePage() {
   const params = useParams<{ tipo: string; id: string }>()
@@ -20,9 +21,12 @@ export default function ExtratoEntidadePage() {
   const [ate, setAte] = useState('')
   const [estado, setEstado] = useState('')
 
-  useEffect(() => {
-    movimentosDaEntidade(tipo, id).then((m) => { setMovs(m); setCarregando(false) })
+  const recarregar = useCallback(async () => {
+    setMovs(await movimentosDaEntidade(tipo, id))
+    setCarregando(false)
   }, [tipo, id])
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { recarregar() }, [recarregar])
 
   const nome = movs.find((m) => m.entidade_nome)?.entidade_nome ?? '—'
   const hoje = hojeISO()
@@ -39,7 +43,7 @@ export default function ExtratoEntidadePage() {
     })
   }, [movs, de, ate, estado])
 
-  const saldoFinal = movs.reduce((s, m) => s + m.valor_debito - m.valor_credito, 0)
+  const saldoFinal = movs.filter(contaParaSaldo).reduce((s, m) => s + m.valor_debito - m.valor_credito, 0)
   const ag = useMemo(() => aging(movs, hoje), [movs, hoje])
   const receber = tipo === 'cliente'
   const temFiltros = !!de || !!ate || !!estado
@@ -101,33 +105,59 @@ export default function ExtratoEntidadePage() {
             <span style={{ textAlign: 'right' }}>Crédito</span>
             <span style={{ textAlign: 'right' }}>Saldo</span>
             <span style={{ textAlign: 'center' }}>Estado</span>
+            <span style={{ textAlign: 'center' }}>Pagamento</span>
           </div>
-          {linhas.map((l) => <LinhaMov key={l.id} l={l} />)}
+          {linhas.map((l) => <LinhaMov key={l.id} l={l} aoMudar={recarregar} />)}
         </div>
       )}
     </main>
   )
 }
 
-function LinhaMov({ l }: { l: LinhaExtrato }) {
+function LinhaMov({ l, aoMudar }: { l: LinhaExtrato; aoMudar: () => Promise<void> }) {
   const td = tipoDocInfo(l.tipo_documento)
-  const soFatura = l.tipo_documento === 'fatura' && l.estadoCalc
-  const est = soFatura ? estadoMovInfo(l.estadoCalc as string) : null
+  const cat = categoriaInfo(l.categoria)
+  const proForma = l.tipo_documento === 'pro_forma'
+  const cobravel = l.tipo_documento === 'fatura' || proForma
+  const est = cobravel && l.estadoCalc ? estadoMovInfo(l.estadoCalc) : null
+  const pago = l.estado === 'liquidado'
+  const [ocupado, setOcupado] = useState(false)
+
+  async function alternar() {
+    setOcupado(true)
+    if (pago) await marcarPorPagar(l.id)
+    else await marcarPago(l)
+    await aoMudar()
+    setOcupado(false)
+  }
+
   return (
-    <div style={c.linha}>
+    <div style={{ ...c.linha, ...(proForma ? c.proForma : {}) }}>
       <span style={c.muted}>{formatarData(l.data_documento)}</span>
       <span>
         {td.label}{l.documento_ref ? ` ${l.documento_ref}` : ''}
+        {cat && <span style={{ ...c.badge, color: cat.cor, background: cat.bg, marginLeft: 6 }}>{cat.icon} {cat.label}</span>}
+        {proForma && <span style={c.notas} title="A pró-forma não entra no saldo da conta corrente"> · fora do saldo</span>}
         {l.notas && <span style={c.notas} title={l.notas}> · {l.notas}</span>}
       </span>
       <span style={c.muted}>{formatarData(l.data_vencimento)}</span>
       <span style={{ textAlign: 'right' }}>{l.valor_debito ? formatarEuro(l.valor_debito) : '—'}</span>
       <span style={{ textAlign: 'right' }}>{l.valor_credito ? formatarEuro(l.valor_credito) : '—'}</span>
-      <span style={{ textAlign: 'right', fontWeight: 700 }}>{formatarEuro(l.saldoAcumulado)}</span>
+      <span style={{ textAlign: 'right', fontWeight: 700 }}>{proForma ? '—' : formatarEuro(l.saldoAcumulado)}</span>
       <span style={{ textAlign: 'center' }}>
         {est
           ? <span style={{ ...c.badge, color: est.cor, background: est.bg }} title={l.porLiquidarCalc > 0 ? `Por liquidar: ${formatarEuro(l.porLiquidarCalc)}` : undefined}>{est.label}</span>
           : <span style={c.muted}>—</span>}
+      </span>
+      <span style={{ textAlign: 'center' }}>
+        {cobravel ? (
+          <button style={{ ...c.pagoBtn, ...(pago ? c.pagoOn : {}) }} disabled={ocupado} onClick={alternar}
+            title={pago ? 'Pagamento confirmado — clicar para reverter' : 'Confirmar o pagamento total deste documento'}>
+            {pago ? `✓ ${formatarData(l.data_pagamento)}` : 'Marcar pago'}
+          </button>
+        ) : (
+          <span style={c.muted}>—</span>
+        )}
       </span>
     </div>
   )
@@ -151,7 +181,10 @@ const c: Record<string, React.CSSProperties> = {
   btnGhost: { background: '#fff', color: 'var(--foreground)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 14px', fontWeight: 600, cursor: 'pointer' },
   estado: { color: 'var(--muted)', padding: 8 },
   tabela: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 8, overflowX: 'auto' },
-  linha: { display: 'grid', gridTemplateColumns: '0.9fr 2fr 0.9fr 1fr 1fr 1fr 1fr', gap: 8, padding: '10px 8px', fontSize: 13.5, borderBottom: '1px solid #f2f2f2', alignItems: 'center', minWidth: 820 },
+  linha: { display: 'grid', gridTemplateColumns: '0.9fr 2.2fr 0.9fr 0.9fr 0.9fr 0.9fr 0.9fr 1.1fr', gap: 8, padding: '10px 8px', fontSize: 13.5, borderBottom: '1px solid #f2f2f2', alignItems: 'center', minWidth: 980 },
+  proForma: { background: '#FAFAFA' },
+  pagoBtn: { background: '#fff', color: 'var(--primary)', border: '1px solid var(--border)', borderRadius: 999, padding: '3px 10px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' },
+  pagoOn: { background: '#D1FAE5', color: '#065F46', borderColor: '#6EE7B7' },
   cab: { fontWeight: 700, color: 'var(--muted)', fontSize: 12, borderBottom: '2px solid var(--border)' },
   muted: { color: 'var(--muted)', fontSize: 13 },
   notas: { color: 'var(--muted)', fontSize: 12.5 },

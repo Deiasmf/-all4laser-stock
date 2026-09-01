@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { tipoDocInfo, type EntidadeTipo, type TipoDocumento } from './contasCorrentes'
+import { categorizar, CATEGORIAS, semAcentos, type CategoriaDoc } from './categorizacaoFinanceira'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sincronização Keyinvoice → Contas Correntes (por importação de ficheiro).
@@ -9,7 +10,12 @@ import { tipoDocInfo, type EntidadeTipo, type TipoDocumento } from './contasCorr
 //     Data ; RefªDocº ; Cliente ; Contribuinte ; Valor S/IVA ; Valor IVA ;
 //     Valor C/IVA ; Valor Pendente   (separador ; , tab ou espaços)
 //     → tipo vem do prefixo da RefªDocº; valor = Valor Pendente.
-//  2) Modelo próprio (tipo;numero;entidade_tipo;nome;nif;data;vencimento;valor).
+//  2) Modelo próprio (tipo;numero;entidade_tipo;nome;nif;data;vencimento;valor
+//     [;categoria;descricao] — as duas últimas colunas são opcionais).
+//
+// A categoria (serviço técnico / aluguer / venda / outro) vem do ficheiro se lá
+// estiver; senão é proposta a partir da descrição e da referência. Uma categoria
+// corrigida à mão na app (categoria_manual) nunca é sobreposta por reimportação.
 //
 // A ligação à API do Keyinvoice (fechada) fica isolada no adaptador
 // obterDocumentosViaApi(); o pipeline a jusante (matching, idempotência, log)
@@ -18,6 +24,8 @@ import { tipoDocInfo, type EntidadeTipo, type TipoDocumento } from './contasCorr
 
 export type DocKeyinvoice = {
   keyinvoice_doc_id: string
+  descricao: string | null
+  categoria: CategoriaDoc | null
   entidade_tipo: EntidadeTipo
   nome: string
   nif: string | null
@@ -33,24 +41,30 @@ export type LinhaImport = DocKeyinvoice & {
   fornecedor_id: string | null
   associada: boolean
   jaImportada: boolean
+  // Já existe na app com categoria fixada à mão → a importação não lhe toca.
+  categoriaBloqueada: boolean
   erro: string | null
 }
 
 // ─── Modelo próprio (download) ───────────────────────────────────────────────
 
-export const CABECALHO_CSV = 'tipo;numero;entidade_tipo;nome;nif;data;vencimento;valor'
+export const CABECALHO_CSV =
+  'tipo;numero;entidade_tipo;nome;nif;data;vencimento;valor;categoria;descricao'
 
 export const MODELO_CSV = [
   CABECALHO_CSV,
-  'fatura;FT2026/101;cliente;Clínica Exemplo Lda;500100200;2026-05-10;2026-06-09;1230,00',
-  'recibo;RC2026/57;cliente;Clínica Exemplo Lda;500100200;2026-06-05;;500,00',
-  'nota_credito;NC2026/12;cliente;Clínica Exemplo Lda;500100200;2026-06-20;;130,00',
+  'fatura;FT2026/101;cliente;Clínica Exemplo Lda;500100200;2026-05-10;2026-06-09;1230,00;servico_tecnico;Assistência técnica | Deslocação 120,00 | Estadia 85,00',
+  'pro_forma;PF2026/9;cliente;Clínica Exemplo Lda;500100200;2026-06-01;;2460,00;venda;Pró-forma de consumíveis',
+  'recibo;RC2026/57;cliente;Clínica Exemplo Lda;500100200;2026-06-05;;500,00;;',
+  'nota_credito;NC2026/12;cliente;Clínica Exemplo Lda;500100200;2026-06-20;;130,00;;',
 ].join('\n')
 
 // Aliases dos tipos (nossos + códigos do Keyinvoice).
 const ALIAS_TIPO: Record<string, TipoDocumento> = {
   fatura: 'fatura', ft: 'fatura', fs: 'fatura', fr: 'fatura', ftr: 'fatura',
   fatr: 'fatura', nd: 'fatura', ndc: 'fatura',
+  pro_forma: 'pro_forma', proforma: 'pro_forma', pf: 'pro_forma', fp: 'pro_forma',
+  prof: 'pro_forma', pp: 'pro_forma',
   nota_credito: 'nota_credito', nc: 'nota_credito', ncr: 'nota_credito',
   recibo: 'recibo', rc: 'recibo', rg: 'recibo', re: 'recibo',
   pagamento: 'pagamento', pg: 'pagamento',
@@ -58,7 +72,17 @@ const ALIAS_TIPO: Record<string, TipoDocumento> = {
 }
 
 function normalizar(s: string): string {
-  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase()
+  return semAcentos(s).trim()
+}
+
+// Lê a coluna "categoria" do modelo próprio (aceita o valor ou o rótulo).
+function parseCategoria(s: string | undefined): CategoriaDoc | null {
+  const t = normalizar(s ?? '').replace(/[\s-]+/g, '_')
+  if (!t) return null
+  const direta = CATEGORIAS.find((c) => c.valor === t)
+  if (direta) return direta.valor
+  const porLabel = CATEGORIAS.find((c) => normalizar(c.label).replace(/[\s-]+/g, '_') === t)
+  return porLabel?.valor ?? null
 }
 function normHeader(h: string): string {
   return normalizar(h).replace(/[^a-z0-9]/g, '')
@@ -133,6 +157,7 @@ function parseKeyinvoice(linhas: string[], delim: string | RegExp, header: strin
   const iPend = idx('valorpendente', 'pendente')
   const iCiva = idx('valorciva', 'totalciva', 'total', 'valorcimposto')
   const iVenc = idx('vencimento', 'datavencimento', 'datadevencimento')
+  const iDesc = idx('descricao', 'observacoes', 'obs', 'designacao', 'assunto')
   const entidade_tipo: EntidadeTipo = header.includes('fornecedor') ? 'fornecedor' : 'cliente'
 
   const docs: DocKeyinvoice[] = []
@@ -148,8 +173,11 @@ function parseKeyinvoice(linhas: string[], delim: string | RegExp, header: strin
     const valor = parseValor(bruto ?? '')
     if (isNaN(valor)) { erros.push(`Linha ${i + 1}: valor inválido ("${bruto ?? ''}").`); continue }
     if (valor <= 0) continue // nada pendente (documento liquidado) → fora da conta corrente
+    const descricao = (iDesc >= 0 ? cols[iDesc] ?? '' : '').trim() || null
     docs.push({
       keyinvoice_doc_id: `${tipo}|${ref}`,
+      descricao,
+      categoria: categorizar(descricao, ref),
       entidade_tipo,
       nome: (cols[iNome] ?? '').trim() || '—',
       nif: normalizarNif(cols[iNif]) || null,
@@ -170,7 +198,8 @@ function parseModelo(linhas: string[], delim: string | RegExp): { docs: DocKeyin
   const erros: string[] = []
   for (let i = inicio; i < linhas.length; i++) {
     const n = i + 1
-    const [tipoRaw, numero, entRaw, nome, nif, dataRaw, vencRaw, valorRaw] = celulas(linhas[i], delim)
+    const [tipoRaw, numero, entRaw, nome, nif, dataRaw, vencRaw, valorRaw, catRaw, descRaw] =
+      celulas(linhas[i], delim)
     if (!tipoRaw && !numero && !nome) continue
     const tipo = ALIAS_TIPO[normalizar(tipoRaw ?? '')]
     if (!tipo) { erros.push(`Linha ${n}: tipo inválido ("${tipoRaw ?? ''}").`); continue }
@@ -182,8 +211,11 @@ function parseModelo(linhas: string[], delim: string | RegExp): { docs: DocKeyin
     if (!data) { erros.push(`Linha ${n}: data inválida ("${dataRaw ?? ''}").`); continue }
     const valor = parseValor(valorRaw ?? '')
     if (isNaN(valor) || valor <= 0) { erros.push(`Linha ${n}: valor inválido ("${valorRaw ?? ''}").`); continue }
+    const descricao = (descRaw ?? '').trim() || null
     docs.push({
       keyinvoice_doc_id: `${tipo}|${numero.trim()}`,
+      descricao,
+      categoria: parseCategoria(catRaw) ?? categorizar(descricao, numero),
       entidade_tipo, nome: nome.trim(), nif: normalizarNif(nif) || null,
       tipo_documento: tipo, numero: numero.trim(),
       data_documento: data, data_vencimento: parseData(vencRaw ?? ''), valor,
@@ -221,31 +253,48 @@ export async function processar(docs: DocKeyinvoice[]): Promise<LinhaImport[]> {
     const idx = d.entidade_tipo === 'cliente' ? idxCli : idxForn
     const nif = normalizarNif(d.nif).toLowerCase()
     const entId = (nif && idx.porNif.get(nif)) || idx.porNome.get(normalizar(d.nome)) || null
+    const existente = jaLa.get(d.keyinvoice_doc_id)
     return {
       ...d,
       cliente_id: d.entidade_tipo === 'cliente' ? entId : null,
       fornecedor_id: d.entidade_tipo === 'fornecedor' ? entId : null,
       associada: !!entId,
-      jaImportada: jaLa.has(d.keyinvoice_doc_id),
+      jaImportada: !!existente,
+      categoriaBloqueada: !!existente?.categoria_manual,
       erro: null,
     }
   })
 }
 
-export async function jaImportados(ids: string[]): Promise<Set<string>> {
-  const set = new Set<string>()
-  if (ids.length === 0) return set
+export type MovExistente = { categoria_manual: boolean }
+
+// Documentos já na app, por keyinvoice_doc_id (com o que a reimportação deve respeitar).
+export async function jaImportados(ids: string[]): Promise<Map<string, MovExistente>> {
+  const mapa = new Map<string, MovExistente>()
+  if (ids.length === 0) return mapa
   for (let i = 0; i < ids.length; i += 500) {
     const lote = ids.slice(i, i + 500)
-    const { data } = await supabase.from('financeiro_movimentos').select('keyinvoice_doc_id').in('keyinvoice_doc_id', lote)
-    for (const r of (data as { keyinvoice_doc_id: string }[]) ?? []) set.add(r.keyinvoice_doc_id)
+    const { data } = await supabase
+      .from('financeiro_movimentos')
+      .select('keyinvoice_doc_id, categoria_manual')
+      .in('keyinvoice_doc_id', lote)
+    for (const r of (data as { keyinvoice_doc_id: string; categoria_manual: boolean | null }[]) ?? []) {
+      mapa.set(r.keyinvoice_doc_id, { categoria_manual: !!r.categoria_manual })
+    }
   }
-  return set
+  return mapa
 }
 
 // ─── Importação (idempotente: insere novos, atualiza existentes) + log ───────
 
-export type ResultadoImport = { importados: number; atualizados: number; semEntidade: number; erro?: string }
+export type ResultadoImport = {
+  importados: number
+  atualizados: number
+  semEntidade: number
+  porClassificar: number
+  servicoTecnico: number
+  erro?: string
+}
 
 export async function importar(
   linhas: LinhaImport[],
@@ -256,7 +305,7 @@ export async function importar(
 
   const campos = (l: LinhaImport) => {
     const sentido = tipoDocInfo(l.tipo_documento).sentido
-    return {
+    const base: Record<string, unknown> = {
       entidade_tipo: l.entidade_tipo,
       cliente_id: l.cliente_id,
       fornecedor_id: l.fornecedor_id,
@@ -268,6 +317,10 @@ export async function importar(
       valor_debito: sentido === 'debito' ? l.valor : 0,
       valor_credito: sentido === 'credito' ? l.valor : 0,
     }
+    if (l.descricao) base.descricao = l.descricao
+    // A classificação corrigida à mão manda sobre a proposta do ficheiro.
+    if (!l.categoriaBloqueada) base.categoria = l.categoria
+    return base
   }
 
   // Novos (dedup no lote) → insert.
@@ -295,8 +348,13 @@ export async function importar(
     }
   }
 
-  await registarSync({ total: linhas.length, importados, atualizados, semEntidade, ok: !erro, erro })
-  return { importados, atualizados, semEntidade, erro }
+  const porClassificar = associadas.filter((l) => !l.categoria && !l.categoriaBloqueada).length
+  const servicoTecnico = associadas.filter((l) => l.categoria === 'servico_tecnico').length
+  await registarSync({
+    total: linhas.length, importados, atualizados, semEntidade,
+    porClassificar, servicoTecnico, ok: !erro, erro,
+  })
+  return { importados, atualizados, semEntidade, porClassificar, servicoTecnico, erro }
 }
 
 // ─── Log de sincronizações ───────────────────────────────────────────────────
@@ -310,7 +368,10 @@ export type SyncRun = {
   created_at: string
 }
 
-async function registarSync(resumo: { total: number; importados: number; atualizados: number; semEntidade: number; ok: boolean; erro?: string }) {
+async function registarSync(resumo: {
+  total: number; importados: number; atualizados: number; semEntidade: number
+  porClassificar: number; servicoTecnico: number; ok: boolean; erro?: string
+}) {
   await supabase.from('financeiro_keyinvoice_sync').insert({
     recurso: 'import_csv',
     estado: resumo.ok ? 'ok' : 'erro',

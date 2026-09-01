@@ -40,3 +40,36 @@ Acesso: todo o staff (`is_staff()` via `has_administrativo_access()`). Código e
   `carta_porte_url` é a URL herdada do documento de origem.
 - **Tabela:** colunas por ordem Entidade · Transportadora · AWB/Tracking · Tipo · Dir. ·
   Conteúdo · Origem · Estado · Expedição · Ações; em mobile vira cartões (entidade = título).
+
+## Faturação (Keyinvoice → Contas Correntes → Comissões)
+Fluxo completo do documento, desde a importação até à comissão do técnico.
+
+- **Importar** (`/financeiro/keyinvoice`): aceita o export nativo do Keyinvoice e o
+  modelo próprio (`tipo;numero;entidade_tipo;nome;nif;data;vencimento;valor;categoria;descricao`
+  — as duas últimas colunas são opcionais). Faturas **e pró-formas**; associa ao
+  cliente por NIF (ou nome); idempotente por `keyinvoice_doc_id`.
+- **Categoria** (`servico_tecnico | aluguer | venda | outro`): proposta a partir da
+  descrição/referência (`src/lib/categorizacaoFinanceira.ts`); corrigível na página
+  Documentos. Uma categoria definida à mão (`categoria_manual`) nunca é sobreposta
+  por reimportação. Sem correspondência fica "por classificar" (null).
+- **Pró-forma**: entra no extrato mas **não conta para o saldo** (`afeta_saldo=false`)
+  — não é documento fiscal.
+- **Pagamento**: `valor_liquidado` + `data_pagamento` no próprio documento
+  ("Marcar pago"). A alocação FIFO dos créditos (recibos/NC) soma-se a essa
+  liquidação manual sem dupla contagem — ver `alocarFaturas`.
+- **Cobranças** (`/financeiro/cobrancas`): tudo o que está por receber, com envio do
+  pedido de pagamento ao cliente — manual (1 clique) ou automático por documento
+  (`lembretes_auto`) com cadência em `financeiro_config`. Cron diário
+  `/api/financeiro/cobrancas` (CRON_SECRET; `?dryrun=1` para testar). Histórico em
+  `financeiro_cobrancas`.
+- **Comissões** (`/tecnico/comissoes`): as faturas de cliente com categoria
+  "serviço técnico" caem aqui por trigger (`sync_comissao_tecnica`). Atribui-se o
+  técnico (e a folha de obra), retiram-se as **deslocações, alimentação e estadia**
+  e a comissão é `(fatura − despesas) × %` — a % é por técnico
+  (`tecnico_comissao_taxas`, definida só por admin/financeiro) e fica gravada na
+  linha ao apurar. Estados: por apurar → apurada → paga.
+  Se o documento deixar de ser serviço técnico (ou for apagado), a linha fica
+  `origem_anulada` e sai do apuramento, sem perder o histórico.
+- **Acessos**: tudo o que é financeiro continua em `has_financeiro_access()`; as
+  comissões vivem na área técnica e são geríveis por `is_staff()`, mas a taxa (%)
+  só admin/financeiro pode alterar.
