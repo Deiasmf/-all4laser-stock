@@ -13,8 +13,8 @@ import { contarMinhaArea } from '@/lib/minhaArea'
 // `requer` esconde o item para quem não tem o acesso (o bloqueio real é a RLS
 // + as guardas de rota; isto só limpa o menu).
 type Requer = 'admin' | 'financeiro'
-type SubItem = { href: string; label: string; icon: string; requer?: Requer; badge?: 'leads' | 'minhaArea' }
-type Item = { href?: string; label: string; icon?: string; badge?: 'leads' | 'minhaArea'; filhos?: SubItem[]; requer?: Requer; exato?: boolean }
+type SubItem = { href: string; label: string; icon: string; requer?: Requer; badge?: 'leads' | 'minhaArea' | 'registos' }
+type Item = { href?: string; label: string; icon?: string; badge?: 'leads' | 'minhaArea' | 'registos'; filhos?: SubItem[]; requer?: Requer; exato?: boolean }
 type Seccao = { titulo: string; itens: Item[] }
 
 const NAV: Seccao[] = [
@@ -46,7 +46,7 @@ const NAV: Seccao[] = [
         filhos: [
           { href: '/comercial/leads', label: 'Leads', icon: '🔔', badge: 'leads' },
           { href: '/comercial/clientes', label: 'Clientes', icon: '👥' },
-          { href: '/comercial/registos', label: 'Registos de clientes', icon: '📝' },
+          { href: '/comercial/registos', label: 'Registos de clientes', icon: '📝', badge: 'registos' },
           { href: '/comercial/notas-encomenda', label: 'Notas de encomenda', icon: '📋' },
           { href: '/comercial/reservas-portal', label: 'Reservas Portal', icon: '📅' },
         ],
@@ -158,6 +158,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const { session, perfil, sair, isFinanceiro, isGestorUtilizadores } = useAuth()
   const pathname = usePathname()
   const [leadsNovas, setLeadsNovas] = useState(0)
+  const [registosPendentes, setRegistosPendentes] = useState(0)
   const [minhaArea, setMinhaArea] = useState(0)
   const [menuAberto, setMenuAberto] = useState(false)
   // Grupos recolhíveis: override manual por label (senão abre se contiver a rota ativa)
@@ -173,6 +174,22 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       .eq('estado', 'nova')
       .then(({ count }) => {
         if (ativo) setLeadsNovas(count ?? 0)
+      })
+    return () => {
+      ativo = false
+    }
+  }, [session, pathname])
+
+  // Contagem de registos de clientes pendentes (badge). Se a tabela falhar, fica 0.
+  useEffect(() => {
+    if (!session) return
+    let ativo = true
+    supabase
+      .from('registos_cliente')
+      .select('id', { count: 'exact', head: true })
+      .eq('estado', 'pendente')
+      .then(({ count }) => {
+        if (ativo) setRegistosPendentes(count ?? 0)
       })
     return () => {
       ativo = false
@@ -277,6 +294,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                           <span className="a4l-sb-subicon">{f.icon}</span>
                           <span>{f.label}</span>
                           {f.badge === 'leads' && leadsNovas > 0 && <span className="a4l-sb-badge">{leadsNovas}</span>}
+                          {f.badge === 'registos' && registosPendentes > 0 && <span className="a4l-sb-badge">{registosPendentes}</span>}
                           {f.badge === 'minhaArea' && minhaArea > 0 && <span className="a4l-sb-badge">{minhaArea}</span>}
                         </Link>
                       ))}
@@ -293,6 +311,9 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                     <span>{it.label}</span>
                     {it.badge === 'leads' && leadsNovas > 0 && (
                       <span className="a4l-sb-badge">{leadsNovas}</span>
+                    )}
+                    {it.badge === 'registos' && registosPendentes > 0 && (
+                      <span className="a4l-sb-badge">{registosPendentes}</span>
                     )}
                     {it.badge === 'minhaArea' && minhaArea > 0 && (
                       <span className="a4l-sb-badge">{minhaArea}</span>
