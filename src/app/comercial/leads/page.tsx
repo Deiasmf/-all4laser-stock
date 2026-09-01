@@ -345,6 +345,17 @@ function LeadDrawer({
           <Linha rotulo="Recebida" valor={formatarData(lead.created_at)} />
         </div>
 
+        {linkWhatsapp(lead.telefone) && (
+          <a
+            href={linkWhatsapp(lead.telefone)!}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={c.btnWhatsapp}
+          >
+            <span aria-hidden>💬</span> Abrir WhatsApp
+          </a>
+        )}
+
         {lead.mensagem && (
           <div style={c.mensagem}>
             <div style={c.rotulo}>Mensagem</div>
@@ -383,6 +394,19 @@ function LeadDrawer({
   )
 }
 
+// Constrói o link do WhatsApp a partir de um telefone, tratando do indicativo de Portugal.
+// Devolve null se não houver dígitos suficientes para um número válido.
+function linkWhatsapp(telefone: string | null | undefined): string | null {
+  if (!telefone) return null
+  let digitos = telefone.replace(/\D/g, '') // só dígitos: remove espaços, traços, +, ()
+  if (!digitos) return null
+  if (digitos.startsWith('00')) digitos = digitos.slice(2) // 00351... -> 351...
+  // Número nacional sem indicativo (9 dígitos, ex.: 912345678) -> prefixa 351
+  if (digitos.length === 9 && !digitos.startsWith('351')) digitos = '351' + digitos
+  if (digitos.length < 8) return null // curto demais para ser um número
+  return `https://wa.me/${digitos}`
+}
+
 function Linha({ rotulo, valor }: { rotulo: string; valor: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', gap: 8, fontSize: 14 }}>
@@ -418,4 +442,5 @@ const c: Record<string, React.CSSProperties> = {
   btnPrimario: { background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontWeight: 700, cursor: 'pointer' },
   btnSecundario: { background: 'var(--surface)', color: 'var(--foreground)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 18px', fontWeight: 600, cursor: 'pointer' },
   btnEliminar: { marginLeft: 'auto', background: 'var(--surface)', color: 'var(--danger)', border: '1px solid var(--danger)', borderRadius: 8, padding: '10px 16px', fontWeight: 600, cursor: 'pointer' },
+  btnWhatsapp: { display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 14, background: '#25D366', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 18px', fontWeight: 700, fontSize: 14, textDecoration: 'none', cursor: 'pointer' },
 }
