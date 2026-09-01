@@ -65,6 +65,7 @@ export type SituacaoAluguer = {
   valor_mensal: number | null
   localizacao: string | null
   notas: string | null
+  pack: string | null
 }
 
 export type EquipDisponivel = {
@@ -88,6 +89,7 @@ export type FichaPatch = {
   valor_mensal?: number | null
   localizacao?: string | null
   notas?: string | null
+  pack?: string | null
 }
 export type Autor = { id: string | null; nome: string | null }
 
@@ -99,7 +101,7 @@ type FichaRow = {
   id: string; equipamento_id: string; cliente_id: string | null; mercado: Mercado | null
   data_inicio: string | null
   data_fim_prevista: string | null; renovacao_automatica: boolean; valor_mensal: number | null
-  localizacao: string | null; notas: string | null
+  localizacao: string | null; notas: string | null; pack: string | null
 }
 type ClienteRow = { id: string; nome: string | null; pais: string | null; cidade: string | null }
 
@@ -147,6 +149,7 @@ export async function carregarSituacaoAlugueres(): Promise<SituacaoAluguer[]> {
       valor_mensal: f?.valor_mensal ?? null,
       localizacao: f?.localizacao ?? null,
       notas: f?.notas ?? null,
+      pack: f?.pack ?? null,
     }
   })
 }
@@ -195,6 +198,46 @@ export async function guardarFichaSituacao(equipamentoId: string, patch: FichaPa
 
 export async function apagarFichaSituacao(equipamentoId: string) {
   return supabase.from('aluguer_situacao').delete().eq('equipamento_id', equipamentoId)
+}
+
+// Propaga o preço/cliente/mercado a TODOS os equipamentos do mesmo pack.
+// Só PREENCHE campos definidos — nunca apaga os irmãos (guardar um sem valor
+// não limpa o valor dos outros). Assim o "preço do pack" aplica-se ao conjunto.
+export async function propagarPack(pack: string, campos: FichaPatch, autor: Autor) {
+  const set: Record<string, unknown> = {}
+  if (campos.valor_mensal != null) set.valor_mensal = campos.valor_mensal
+  if (campos.cliente_id) set.cliente_id = campos.cliente_id
+  if (campos.mercado) set.mercado = campos.mercado
+  if (Object.keys(set).length === 0) return { error: null }
+  set.atualizado_por = autor.id
+  set.atualizado_por_nome = autor.nome
+  set.updated_at = new Date().toISOString()
+  return supabase.from('aluguer_situacao').update(set).eq('pack', pack)
+}
+
+// Total mensal contando cada PACK uma vez (o valor do pack é o de qualquer
+// membro que o tenha). Equipamentos sem pack contam individualmente.
+export function totalMensalComPacks(lista: SituacaoAluguer[]): { total: number; semValor: number } {
+  const packVal = new Map<string, number | null>()
+  let total = 0
+  let semValor = 0
+  for (const l of lista) {
+    if (l.pack) {
+      const atual = packVal.get(l.pack)
+      const novo = l.valor_mensal
+      if (novo != null && (atual == null || novo > atual)) packVal.set(l.pack, novo)
+      else if (!packVal.has(l.pack)) packVal.set(l.pack, atual ?? null)
+    } else if (l.valor_mensal != null) {
+      total += l.valor_mensal
+    } else {
+      semValor += 1
+    }
+  }
+  for (const v of packVal.values()) {
+    if (v != null) total += v
+    else semValor += 1
+  }
+  return { total, semValor }
 }
 
 // ── Colocar / tirar de aluguer manualmente (a partir da Situação atual) ──────
