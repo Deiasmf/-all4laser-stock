@@ -454,7 +454,7 @@ function ModalFicha({ situacao, onFechar, onGuardado, onTerminado }: {
 
   async function terminar() {
     const nome = [situacao.marca, situacao.modelo].filter(Boolean).join(' ') || 'este equipamento'
-    if (!window.confirm(`Terminar o aluguer de ${nome} (${situacao.serial_number ?? '—'})?\n\nO equipamento volta a "Em stock" (fica disponível para alugar) e os dados deste aluguer são removidos.`)) return
+    if (!window.confirm(`Terminar o aluguer de ${nome} (${situacao.serial_number ?? '—'})?\n\nO equipamento volta a "Em stock" (fica disponível para alugar), a ficha é removida e a recolha fica registada (data de hoje) na Lista / rentabilidade.`)) return
     setErro(null)
     setAGuardar(true)
     const r = await terminarAluguer(situacao.equipamento_id)
@@ -604,7 +604,11 @@ function ModalNovoAluguer({ onFechar, onCriado }: { onFechar: () => void; onCria
       notas: notas.trim() || null,
     }
     setAGuardar(true)
-    const r = await colocarEmAluguer(equip.id, status, patch, { id: perfil?.id ?? null, nome: perfil?.nome ?? null })
+    const r = await colocarEmAluguer({
+      equipamentoId: equip.id, status, patch,
+      serial_number: equip.serial_number, marca: equip.marca, modelo: equip.modelo, ano: equip.ano,
+      cliente_nome: clienteNome.trim() || null, valor: valorNum, data_entrega: inicio || null,
+    }, { id: perfil?.id ?? null, nome: perfil?.nome ?? null })
     setAGuardar(false)
     if (r?.error) return setErro('Erro ao criar o aluguer: ' + r.error.message)
     onCriado()
