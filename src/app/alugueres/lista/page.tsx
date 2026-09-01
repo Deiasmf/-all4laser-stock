@@ -634,7 +634,10 @@ function CelulaFaturar({
           type="number"
           inputMode="decimal"
           placeholder="€"
-          autoFocus
+          // Só foca quando o utilizador ACABOU de escolher "Outro valor…" — não quando
+          // o input aparece por já haver um valor guardado (senão rouba o foco à pesquisa
+          // ao re-filtrar a lista e o cursor salta para o valor de outra linha).
+          autoFocus={editarOutro}
           value={manual}
           onChange={(e) => setManual(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') guardarManual() }}
