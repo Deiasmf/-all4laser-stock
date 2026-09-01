@@ -218,18 +218,66 @@ export async function procurarEquipamentosEmStock(query: string): Promise<EquipE
   return (data as EquipEmStock[]) ?? []
 }
 
-// Coloca um equipamento em aluguer: muda o status e cria/atualiza a ficha de detalhe.
-export async function colocarEmAluguer(equipamentoId: string, status: string, patch: FichaPatch, autor: Autor) {
-  const up = await supabase.from('equipamentos').update({ status }).eq('id', equipamentoId)
-  if (up.error) return { error: up.error }
-  return guardarFichaSituacao(equipamentoId, patch, autor)
+// Dados do equipamento/aluguer para criar também a entrada na tabela `alugueres`.
+export type NovoAluguerInput = {
+  equipamentoId: string
+  status: string
+  patch: FichaPatch           // ficha de detalhe (aluguer_situacao)
+  serial_number: string | null
+  marca: string | null
+  modelo: string | null
+  ano: string | null
+  cliente_nome: string | null
+  valor: number | null        // valor mensal
+  data_entrega: string | null // = início do aluguer
 }
 
-// Termina o aluguer: devolve o equipamento a "Em stock" (fica disponível) e remove a ficha.
-export async function terminarAluguer(equipamentoId: string) {
+// Coloca um equipamento em aluguer. Escreve nos TRÊS sítios para ficar consistente:
+//   1. status do equipamento (faz aparecer na "Situação atual");
+//   2. ficha de detalhe `aluguer_situacao` (cliente, datas, valor, mercado);
+//   3. tabela `alugueres` (separador "Lista" + rentabilidade acumulada).
+export async function colocarEmAluguer(input: NovoAluguerInput, autor: Autor) {
+  const { equipamentoId, status, patch } = input
+  const up = await supabase.from('equipamentos').update({ status }).eq('id', equipamentoId)
+  if (up.error) return { error: up.error }
+  const f = await guardarFichaSituacao(equipamentoId, patch, autor)
+  if (f.error) return { error: f.error }
+  const linha = {
+    cliente_id: patch.cliente_id ?? null,
+    cliente_nome: input.cliente_nome,
+    equipamento_id: equipamentoId,
+    serial_number: input.serial_number,
+    marca: input.marca,
+    modelo: input.modelo,
+    ano: input.ano,
+    tipo_aluguer: null,
+    valor: input.valor,
+    metodo_pagamento: null,
+    nacional: status === STATUS_ALUGUER_NAC,
+    data_entrega: input.data_entrega ?? null,
+    data_recolha: null,
+    recolha_aplicavel: true,
+    criado_por: autor.id,
+    criado_por_nome: autor.nome,
+  }
+  const r = await supabase.from('alugueres').insert(linha)
+  return { error: r.error ?? null }
+}
+
+// Termina o aluguer. Devolve o equipamento a "Em stock", remove a ficha e FECHA
+// as entradas em aberto na tabela `alugueres` (data_recolha = hoje), preservando
+// o histórico para a rentabilidade — tal como a "Registar recolha".
+export async function terminarAluguer(equipamentoId: string, dataRecolha?: string) {
   const up = await supabase.from('equipamentos').update({ status: STATUS_EM_STOCK }).eq('id', equipamentoId)
   if (up.error) return { error: up.error }
-  return apagarFichaSituacao(equipamentoId)
+  const del = await apagarFichaSituacao(equipamentoId)
+  if (del.error) return { error: del.error }
+  const hoje = new Date().toISOString().slice(0, 10)
+  const r = await supabase.from('alugueres')
+    .update({ data_recolha: dataRecolha || hoje, updated_at: new Date().toISOString() })
+    .eq('equipamento_id', equipamentoId)
+    .is('data_recolha', null)
+  return { error: r.error ?? null }
 }
 
 // ── Helpers de datas ────────────────────────────────────────────────────────
