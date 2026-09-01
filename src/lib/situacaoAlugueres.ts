@@ -197,6 +197,41 @@ export async function apagarFichaSituacao(equipamentoId: string) {
   return supabase.from('aluguer_situacao').delete().eq('equipamento_id', equipamentoId)
 }
 
+// ── Colocar / tirar de aluguer manualmente (a partir da Situação atual) ──────
+export const STATUS_EM_STOCK = 'Em stock'
+
+// Equipamento candidato a entrar em aluguer (está "Em stock", livre para alugar).
+export type EquipEmStock = {
+  id: string; serial_number: string | null; marca: string | null; modelo: string | null; ano: string | null
+}
+
+// Procura equipamentos "Em stock" por serial / marca / modelo (para o "Novo aluguer").
+export async function procurarEquipamentosEmStock(query: string): Promise<EquipEmStock[]> {
+  let q = supabase.from('equipamentos')
+    .select('id, serial_number, marca, modelo, ano')
+    .eq('status', STATUS_EM_STOCK)
+    .order('serial_number')
+    .limit(20)
+  const termo = query.trim().replace(/[,()%]/g, ' ').trim()
+  if (termo) q = q.or(`serial_number.ilike.%${termo}%,marca.ilike.%${termo}%,modelo.ilike.%${termo}%`)
+  const { data } = await q
+  return (data as EquipEmStock[]) ?? []
+}
+
+// Coloca um equipamento em aluguer: muda o status e cria/atualiza a ficha de detalhe.
+export async function colocarEmAluguer(equipamentoId: string, status: string, patch: FichaPatch, autor: Autor) {
+  const up = await supabase.from('equipamentos').update({ status }).eq('id', equipamentoId)
+  if (up.error) return { error: up.error }
+  return guardarFichaSituacao(equipamentoId, patch, autor)
+}
+
+// Termina o aluguer: devolve o equipamento a "Em stock" (fica disponível) e remove a ficha.
+export async function terminarAluguer(equipamentoId: string) {
+  const up = await supabase.from('equipamentos').update({ status: STATUS_EM_STOCK }).eq('id', equipamentoId)
+  if (up.error) return { error: up.error }
+  return apagarFichaSituacao(equipamentoId)
+}
+
 // ── Helpers de datas ────────────────────────────────────────────────────────
 export function inicioEfetivo(s: SituacaoAluguer): string | null {
   return s.data_inicio ?? s.data_saida ?? null

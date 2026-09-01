@@ -10,8 +10,10 @@ import { formatarEuro, somar } from '@/lib/alugueres'
 import { listarClientesPicker, type EntidadeOpc } from '@/lib/contasCorrentes'
 import {
   carregarSituacaoAlugueres, carregarDisponiveis, guardarFichaSituacao, apagarFichaSituacao,
+  procurarEquipamentosEmStock, colocarEmAluguer, terminarAluguer,
+  STATUS_ALUGUER_NAC, STATUS_ALUGUER_INT,
   classificar, inicioEfetivo, duracaoTexto, diasAte, alertaDe,
-  type SituacaoAluguer, type Disponiveis, type EquipDisponivel, type FichaPatch, type Mercado,
+  type SituacaoAluguer, type Disponiveis, type EquipDisponivel, type FichaPatch, type Mercado, type EquipEmStock,
 } from '@/lib/situacaoAlugueres'
 
 type Tab = 'nacionais' | 'internacionais' | 'por-classificar' | 'disponiveis'
@@ -76,6 +78,7 @@ export default function SituacaoAtualPage() {
   const [pesquisa, setPesquisa] = useState('')
   const [ordenar, setOrdenar] = useState<Ordenacao>('inicio-desc')
   const [editar, setEditar] = useState<SituacaoAluguer | null>(null)
+  const [novo, setNovo] = useState(false)
 
   const carregar = useCallback(async () => {
     setCarregando(true)
@@ -135,7 +138,10 @@ export default function SituacaoAtualPage() {
     <main style={c.page}>
       <div style={c.cabecalho}>
         <h1 style={c.titulo}>Situação atual</h1>
-        <Link href="/" style={c.voltar}>← Stock</Link>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <button style={c.btnNovo} onClick={() => setNovo(true)}>＋ Novo aluguer</button>
+          <Link href="/" style={c.voltar}>← Stock</Link>
+        </div>
       </div>
       <AlugueresNav />
 
@@ -199,7 +205,16 @@ export default function SituacaoAtualPage() {
       )}
 
       {editar && (
-        <ModalFicha situacao={editar} onFechar={() => setEditar(null)} onGuardado={aoGuardarFicha} />
+        <ModalFicha
+          situacao={editar}
+          onFechar={() => setEditar(null)}
+          onGuardado={aoGuardarFicha}
+          onTerminado={() => { setEditar(null); carregar() }}
+        />
+      )}
+
+      {novo && (
+        <ModalNovoAluguer onFechar={() => setNovo(false)} onCriado={() => { setNovo(false); carregar() }} />
       )}
     </main>
   )
@@ -364,8 +379,8 @@ function GrupoDisp({ titulo, cor, itens, estreito, vazio }: {
 }
 
 // ─────────────────────────────────────────────── MODAL FICHA ─────────────────
-function ModalFicha({ situacao, onFechar, onGuardado }: {
-  situacao: SituacaoAluguer; onFechar: () => void; onGuardado: (s: SituacaoAluguer) => void
+function ModalFicha({ situacao, onFechar, onGuardado, onTerminado }: {
+  situacao: SituacaoAluguer; onFechar: () => void; onGuardado: (s: SituacaoAluguer) => void; onTerminado: () => void
 }) {
   const { perfil } = useAuth()
   const [clientes, setClientes] = useState<EntidadeOpc[]>([])
@@ -437,6 +452,17 @@ function ModalFicha({ situacao, onFechar, onGuardado }: {
     })
   }
 
+  async function terminar() {
+    const nome = [situacao.marca, situacao.modelo].filter(Boolean).join(' ') || 'este equipamento'
+    if (!window.confirm(`Terminar o aluguer de ${nome} (${situacao.serial_number ?? '—'})?\n\nO equipamento volta a "Em stock" (fica disponível para alugar) e os dados deste aluguer são removidos.`)) return
+    setErro(null)
+    setAGuardar(true)
+    const r = await terminarAluguer(situacao.equipamento_id)
+    setAGuardar(false)
+    if (r?.error) return setErro('Erro ao terminar: ' + r.error.message)
+    onTerminado()
+  }
+
   return (
     <div style={c.overlay} onClick={onFechar}>
       <div style={c.modal} onClick={(e) => e.stopPropagation()}>
@@ -502,9 +528,170 @@ function ModalFicha({ situacao, onFechar, onGuardado }: {
         </div>
 
         <div style={c.modalAcoes}>
-          {situacao.situacao_id && <button onClick={limpar} disabled={aGuardar} style={c.btnGhostDanger}>Limpar</button>}
+          <div style={c.modalAcoesEsq}>
+            <button onClick={terminar} disabled={aGuardar} style={c.btnGhostDanger}>Terminar aluguer</button>
+            {situacao.situacao_id && <button onClick={limpar} disabled={aGuardar} style={c.btnGhost}>Limpar</button>}
+          </div>
           <button onClick={onFechar} style={c.btnGhost}>Cancelar</button>
           <button onClick={guardar} disabled={aGuardar} style={c.btnPrimario}>{aGuardar ? 'A guardar...' : 'Guardar'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────── NOVO ALUGUER (manual) ───────
+function ModalNovoAluguer({ onFechar, onCriado }: { onFechar: () => void; onCriado: () => void }) {
+  const { perfil } = useAuth()
+  const [clientes, setClientes] = useState<EntidadeOpc[]>([])
+  const [busca, setBusca] = useState('')
+  const [resultados, setResultados] = useState<EquipEmStock[]>([])
+  const [equip, setEquip] = useState<EquipEmStock | null>(null)
+  const [clienteId, setClienteId] = useState('')
+  const [clienteNome, setClienteNome] = useState('')
+  const [mercado, setMercado] = useState<'' | Mercado>('')
+  const [inicio, setInicio] = useState(() => new Date().toISOString().slice(0, 10))
+  const [renovacao, setRenovacao] = useState(false)
+  const [fim, setFim] = useState('')
+  const [valor, setValor] = useState('')
+  const [local, setLocal] = useState('')
+  const [notas, setNotas] = useState('')
+  const [aGuardar, setAGuardar] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  useEffect(() => { listarClientesPicker().then(setClientes) }, [])
+
+  // Pesquisa de equipamentos "Em stock" (com pequeno atraso). Só enquanto não há escolhido.
+  useEffect(() => {
+    if (equip) return
+    let ativo = true
+    const t = setTimeout(() => {
+      procurarEquipamentosEmStock(busca).then((r) => { if (ativo) setResultados(r) })
+    }, 250)
+    return () => { ativo = false; clearTimeout(t) }
+  }, [busca, equip])
+
+  function aoMudarCliente(nome: string) {
+    setClienteNome(nome)
+    const m = clientes.find((c2) => c2.nome.toLowerCase() === nome.trim().toLowerCase())
+    setClienteId(m?.id ?? '')
+  }
+
+  const paisCliente = (clientes.find((c2) => c2.id === clienteId)?.pais ?? '').trim() || null
+  const paisEhPT = ['portugal', 'pt'].includes((paisCliente ?? '').toLowerCase())
+
+  async function criar() {
+    setErro(null)
+    if (!equip) return setErro('Escolhe primeiro o equipamento a colocar em aluguer.')
+    if (fim && inicio && fim < inicio) return setErro('O fim previsto não pode ser anterior ao início.')
+    const valorNum = valor.trim() ? Number(valor.replace(',', '.')) : null
+    if (valorNum != null && (isNaN(valorNum) || valorNum < 0)) return setErro('Valor mensal inválido.')
+
+    // Status do equipamento: pelo mercado forçado, senão pelo país do cliente, senão nacional.
+    const status = mercado === 'internacional' ? STATUS_ALUGUER_INT
+      : mercado === 'nacional' ? STATUS_ALUGUER_NAC
+      : paisCliente ? (paisEhPT ? STATUS_ALUGUER_NAC : STATUS_ALUGUER_INT)
+      : STATUS_ALUGUER_NAC
+
+    const patch: FichaPatch = {
+      cliente_id: clienteId || null,
+      mercado: mercado || null,
+      data_inicio: inicio || null,
+      data_fim_prevista: renovacao ? null : (fim || null),
+      renovacao_automatica: renovacao,
+      valor_mensal: valorNum,
+      localizacao: local.trim() || null,
+      notas: notas.trim() || null,
+    }
+    setAGuardar(true)
+    const r = await colocarEmAluguer(equip.id, status, patch, { id: perfil?.id ?? null, nome: perfil?.nome ?? null })
+    setAGuardar(false)
+    if (r?.error) return setErro('Erro ao criar o aluguer: ' + r.error.message)
+    onCriado()
+  }
+
+  return (
+    <div style={c.overlay} onClick={onFechar}>
+      <div style={c.modal} onClick={(e) => e.stopPropagation()}>
+        <div style={c.modalCab}>
+          <h2 style={c.modalTitulo}>Novo aluguer</h2>
+          <button onClick={onFechar} style={c.fechar} aria-label="Fechar">✕</button>
+        </div>
+
+        {erro && <div style={c.erro}>{erro}</div>}
+
+        <label style={c.label}>Equipamento (do stock)</label>
+        {equip ? (
+          <div style={c.equipEscolhido}>
+            <span>
+              <strong>{equip.serial_number ?? '—'}</strong>
+              <span style={{ color: 'var(--muted)' }}> · {[equip.marca, equip.modelo].filter(Boolean).join(' ') || '—'}</span>
+            </span>
+            <button style={c.btnGhost} onClick={() => { setEquip(null); setBusca('') }}>Trocar</button>
+          </div>
+        ) : (
+          <>
+            <input style={c.input} value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Procurar por serial, marca ou modelo..." autoFocus />
+            <div style={c.pickerLista}>
+              {resultados.length === 0 ? (
+                <div style={{ padding: '10px 12px', color: 'var(--muted)', fontSize: 13 }}>Nenhum equipamento &quot;Em stock&quot; encontrado.</div>
+              ) : resultados.map((e) => (
+                <button key={e.id} style={c.pickerItem} onClick={() => setEquip(e)}>
+                  <strong>{e.serial_number ?? '—'}</strong>
+                  <span style={{ color: 'var(--muted)', fontSize: 12 }}>{[e.marca, e.modelo, e.ano].filter(Boolean).join(' · ') || '—'}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        <label style={c.label}>Cliente</label>
+        <input style={c.input} list="clientes-picker-novo" value={clienteNome} onChange={(e) => aoMudarCliente(e.target.value)}
+          placeholder="Escolher cliente da lista (opcional)" />
+        <datalist id="clientes-picker-novo">
+          {clientes.map((c2) => <option key={c2.id} value={c2.nome} />)}
+        </datalist>
+        {clienteNome && !clienteId && <span style={c.notaLigacao}>Este nome não está ligado a um cliente registado (fica só como texto).</span>}
+
+        <label style={c.label}>Mercado (quadro)</label>
+        <select style={c.input} value={mercado} onChange={(e) => setMercado(e.target.value as '' | Mercado)}>
+          <option value="">Automático — pelo país do cliente{paisCliente ? ` (${paisCliente} → ${paisEhPT ? 'Nacional' : 'Internacional'})` : ' (sem país → Por classificar)'}</option>
+          <option value="nacional">🇵🇹 Nacional (forçar)</option>
+          <option value="internacional">🌍 Internacional (forçar)</option>
+        </select>
+
+        <label style={c.label}>Localização (cidade / país)</label>
+        <input style={c.input} value={local} onChange={(e) => setLocal(e.target.value)} placeholder="Ex.: Porto, Portugal" />
+
+        <div style={c.linha2}>
+          <div>
+            <label style={c.label}>Início</label>
+            <input style={c.input} type="date" value={inicio} onChange={(e) => setInicio(e.target.value)} />
+          </div>
+          <div>
+            <label style={c.label}>Valor mensal (€)</label>
+            <input style={c.input} type="number" inputMode="decimal" value={valor} onChange={(e) => setValor(e.target.value)} placeholder="0" />
+          </div>
+        </div>
+
+        <label style={c.checkLinha}>
+          <input type="checkbox" checked={renovacao} onChange={(e) => setRenovacao(e.target.checked)} />
+          Renovação automática / mensal (sem data de fim)
+        </label>
+
+        {!renovacao && (
+          <>
+            <label style={c.label}>Fim previsto</label>
+            <input style={c.input} type="date" value={fim} onChange={(e) => setFim(e.target.value)} />
+          </>
+        )}
+
+        <label style={c.label}>Notas</label>
+        <textarea style={{ ...c.input, minHeight: 70, fontFamily: 'inherit' }} value={notas} onChange={(e) => setNotas(e.target.value)} />
+
+        <div style={c.modalAcoes}>
+          <button onClick={onFechar} style={c.btnGhost}>Cancelar</button>
+          <button onClick={criar} disabled={aGuardar || !equip} style={c.btnPrimario}>{aGuardar ? 'A criar...' : 'Colocar em aluguer'}</button>
         </div>
       </div>
     </div>
@@ -577,8 +764,14 @@ const c: Record<string, React.CSSProperties> = {
   linksCruzados: { display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 14 },
   linkCruzado: { color: 'var(--primary)', textDecoration: 'none', fontWeight: 600, fontSize: 13 },
   erro: { background: 'var(--danger-bg, #fbecea)', color: 'var(--danger, #c0392b)', borderRadius: 8, padding: '8px 12px', fontSize: 14, fontWeight: 600, marginBottom: 8 },
-  modalAcoes: { display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 },
+  modalAcoes: { display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18, alignItems: 'center', flexWrap: 'wrap' },
+  modalAcoesEsq: { display: 'flex', gap: 10, marginRight: 'auto', flexWrap: 'wrap' },
   btnGhost: { background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 16px', fontWeight: 600, cursor: 'pointer' },
-  btnGhostDanger: { background: '#fff', border: '1px solid #FCA5A5', color: '#B91C1C', borderRadius: 8, padding: '10px 16px', fontWeight: 600, cursor: 'pointer', marginRight: 'auto' },
+  btnGhostDanger: { background: '#fff', border: '1px solid #FCA5A5', color: '#B91C1C', borderRadius: 8, padding: '10px 16px', fontWeight: 600, cursor: 'pointer' },
   btnPrimario: { background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 18px', fontWeight: 700, cursor: 'pointer' },
+  btnNovo: { background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 16px', fontWeight: 700, fontSize: 14, cursor: 'pointer', whiteSpace: 'nowrap' },
+  // picker de equipamento (novo aluguer)
+  pickerLista: { border: '1px solid var(--border)', borderRadius: 8, maxHeight: 180, overflowY: 'auto', marginTop: 6 },
+  pickerItem: { display: 'flex', flexDirection: 'column', gap: 2, padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid #f2f2f2', background: '#fff', width: '100%', textAlign: 'left', font: 'inherit' },
+  equipEscolhido: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, border: '1px solid var(--primary)', background: 'var(--accent-bg, #eef1f6)', borderRadius: 8, padding: '10px 12px', marginTop: 6 },
 }
