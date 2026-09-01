@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import AlugueresNav from '@/components/AlugueresNav'
@@ -47,11 +47,40 @@ function fimTexto(s: SituacaoAluguer) {
   return s.data_fim_prevista ? formatarData(s.data_fim_prevista) : '—'
 }
 
+const SEM_GRUPO = ['Sem zona', 'Sem país']
+
+// Grupo (secção) de um aluguer: nos Nacionais é a zona; nos Internacionais o país do cliente.
+function grupoDaLinha(s: SituacaoAluguer, tab: Tab): string {
+  if (tab === 'internacionais') return (s.cliente_pais ?? '').trim() || 'Sem país'
+  return (s.zona ?? '').trim() || 'Sem zona'
+}
+
+// Agrupa a lista pelas secções; "Sem zona/país" vai sempre para o fim.
+function agruparPorGrupo(lista: SituacaoAluguer[], grupoDe: (s: SituacaoAluguer) => string) {
+  const map = new Map<string, SituacaoAluguer[]>()
+  for (const s of lista) {
+    const k = grupoDe(s)
+    if (!map.has(k)) map.set(k, [])
+    map.get(k)!.push(s)
+  }
+  const chaves = Array.from(map.keys()).sort((a, b) => {
+    const aSem = SEM_GRUPO.includes(a), bSem = SEM_GRUPO.includes(b)
+    if (aSem !== bSem) return aSem ? 1 : -1
+    return a.localeCompare(b)
+  })
+  // Dentro de cada grupo, mantém os membros do mesmo pack adjacentes.
+  return chaves.map((chave) => ({
+    chave,
+    itens: [...map.get(chave)!].sort((a, b) => (a.pack ?? '').localeCompare(b.pack ?? '')),
+  }))
+}
+
 const colunasExport: ColunaExport<SituacaoAluguer>[] = [
   { cabecalho: 'Serial', valor: (l) => l.serial_number ?? '' },
   { cabecalho: 'Marca', valor: (l) => l.marca ?? '' },
   { cabecalho: 'Modelo', valor: (l) => l.modelo ?? '' },
   { cabecalho: 'Mercado', valor: (l) => ({ nacional: 'Nacional', internacional: 'Internacional', 'por-classificar': 'Por classificar' }[classificar(l)]) },
+  { cabecalho: 'Zona', valor: (l) => l.zona ?? '' },
   { cabecalho: 'Pack', valor: (l) => l.pack ?? '' },
   { cabecalho: 'Cliente', valor: (l) => clienteTexto(l) },
   { cabecalho: 'Localização', valor: (l) => localizacaoTexto(l) },
@@ -78,8 +107,11 @@ export default function SituacaoAtualPage() {
   const [carregando, setCarregando] = useState(true)
   const [pesquisa, setPesquisa] = useState('')
   const [ordenar, setOrdenar] = useState<Ordenacao>('inicio-desc')
+  const [filtroGrupo, setFiltroGrupo] = useState('')
   const [editar, setEditar] = useState<SituacaoAluguer | null>(null)
   const [novo, setNovo] = useState(false)
+
+  function mudarTab(t: Tab) { setTab(t); setFiltroGrupo('') }
 
   const carregar = useCallback(async () => {
     setCarregando(true)
@@ -95,6 +127,20 @@ export default function SituacaoAtualPage() {
     () => (Array.from(new Set(alugueres.map((a) => a.pack).filter(Boolean))) as string[]).sort((a, b) => a.localeCompare(b)),
     [alugueres],
   )
+  const zonasExistentes = useMemo(
+    () => (Array.from(new Set(alugueres.map((a) => a.zona).filter(Boolean))) as string[]).sort((a, b) => a.localeCompare(b)),
+    [alugueres],
+  )
+  // Grupos (secções) disponíveis para o filtro, conforme o separador atual.
+  const gruposDisponiveis = useMemo(() => {
+    const base = tab === 'internacionais' ? internacionais : tab === 'nacionais' ? nacionais : []
+    const chaves = Array.from(new Set(base.map((s) => grupoDaLinha(s, tab))))
+    return chaves.sort((a, b) => {
+      const aSem = SEM_GRUPO.includes(a), bSem = SEM_GRUPO.includes(b)
+      if (aSem !== bSem) return aSem ? 1 : -1
+      return a.localeCompare(b)
+    })
+  }, [tab, nacionais, internacionais])
 
   function filtrarOrdenar(lista: SituacaoAluguer[]): SituacaoAluguer[] {
     const q = pesquisa.trim().toLowerCase()
@@ -113,9 +159,12 @@ export default function SituacaoAtualPage() {
     })
   }
 
-  const listaAtual = tab === 'nacionais' ? filtrarOrdenar(nacionais)
+  const listaBase = tab === 'nacionais' ? filtrarOrdenar(nacionais)
     : tab === 'internacionais' ? filtrarOrdenar(internacionais)
     : tab === 'por-classificar' ? filtrarOrdenar(porClassificar) : []
+  const listaAtual = filtroGrupo && tab !== 'por-classificar'
+    ? listaBase.filter((s) => grupoDaLinha(s, tab) === filtroGrupo)
+    : listaBase
 
   const dispFiltrados = useMemo(() => {
     const q = pesquisa.trim().toLowerCase()
@@ -168,24 +217,30 @@ export default function SituacaoAtualPage() {
 
       {/* Aviso destacado: alugueres por classificar */}
       {porClassificar.length > 0 && tab !== 'por-classificar' && (
-        <button style={c.bannerPC} onClick={() => setTab('por-classificar')}>
+        <button style={c.bannerPC} onClick={() => mudarTab('por-classificar')}>
           ⚠ {porClassificar.length} aluguer(es) por classificar — sem país do cliente nem mercado definido. Não aparecem em Nacionais nem Internacionais. Clica para resolver.
         </button>
       )}
 
       {/* Tabs */}
       <div style={c.tabs}>
-        <button style={{ ...c.tab, ...(tab === 'nacionais' ? c.tabAtiva : {}) }} onClick={() => setTab('nacionais')}>🇵🇹 Nacionais ({nacionais.length})</button>
-        <button style={{ ...c.tab, ...(tab === 'internacionais' ? c.tabAtiva : {}) }} onClick={() => setTab('internacionais')}>🌍 Internacionais ({internacionais.length})</button>
+        <button style={{ ...c.tab, ...(tab === 'nacionais' ? c.tabAtiva : {}) }} onClick={() => mudarTab('nacionais')}>🇵🇹 Nacionais ({nacionais.length})</button>
+        <button style={{ ...c.tab, ...(tab === 'internacionais' ? c.tabAtiva : {}) }} onClick={() => mudarTab('internacionais')}>🌍 Internacionais ({internacionais.length})</button>
         {porClassificar.length > 0 && (
-          <button style={{ ...c.tab, ...c.tabPC, ...(tab === 'por-classificar' ? c.tabPCAtiva : {}) }} onClick={() => setTab('por-classificar')}>⚠ Por classificar ({porClassificar.length})</button>
+          <button style={{ ...c.tab, ...c.tabPC, ...(tab === 'por-classificar' ? c.tabPCAtiva : {}) }} onClick={() => mudarTab('por-classificar')}>⚠ Por classificar ({porClassificar.length})</button>
         )}
-        <button style={{ ...c.tab, ...(tab === 'disponiveis' ? c.tabAtiva : {}) }} onClick={() => setTab('disponiveis')}>📦 Disponíveis ({disponiveis.livres.length})</button>
+        <button style={{ ...c.tab, ...(tab === 'disponiveis' ? c.tabAtiva : {}) }} onClick={() => mudarTab('disponiveis')}>📦 Disponíveis ({disponiveis.livres.length})</button>
       </div>
 
       {/* Filtros */}
       <div style={c.filtros}>
         <input placeholder="Procurar marca, modelo, cliente, país..." value={pesquisa} onChange={(e) => setPesquisa(e.target.value)} style={c.inputPesq} />
+        {(tab === 'nacionais' || tab === 'internacionais') && gruposDisponiveis.length > 1 && (
+          <select value={filtroGrupo} onChange={(e) => setFiltroGrupo(e.target.value)} style={c.select} title={tab === 'internacionais' ? 'Filtrar por país' : 'Filtrar por zona'}>
+            <option value="">{tab === 'internacionais' ? 'Todos os países' : 'Todas as zonas'}</option>
+            {gruposDisponiveis.map((g) => <option key={g} value={g}>{g}</option>)}
+          </select>
+        )}
         {tab !== 'disponiveis' && (
           <select value={ordenar} onChange={(e) => setOrdenar(e.target.value as Ordenacao)} style={c.select} title="Ordenar">
             <option value="inicio-desc">Início (mais recente)</option>
@@ -206,13 +261,14 @@ export default function SituacaoAtualPage() {
       ) : tab === 'por-classificar' ? (
         <ZonaPorClassificar lista={listaAtual} onEditar={setEditar} onDefinir={definirMercado} />
       ) : (
-        <QuadroAlugueres lista={listaAtual} estreito={estreito} onEditar={setEditar} />
+        <QuadroAlugueres lista={listaAtual} estreito={estreito} onEditar={setEditar} grupoDe={(s) => grupoDaLinha(s, tab)} />
       )}
 
       {editar && (
         <ModalFicha
           situacao={editar}
           packsExistentes={packsExistentes}
+          zonasExistentes={zonasExistentes}
           onFechar={() => setEditar(null)}
           onGuardado={aoGuardarFicha}
           onTerminado={() => { setEditar(null); carregar() }}
@@ -221,26 +277,53 @@ export default function SituacaoAtualPage() {
       )}
 
       {novo && (
-        <ModalNovoAluguer packsExistentes={packsExistentes} onFechar={() => setNovo(false)} onCriado={() => { setNovo(false); carregar() }} />
+        <ModalNovoAluguer packsExistentes={packsExistentes} zonasExistentes={zonasExistentes} onFechar={() => setNovo(false)} onCriado={() => { setNovo(false); carregar() }} />
       )}
     </main>
   )
 }
 
 // ─────────────────────────────────────────────── QUADRO DE ALUGUERES ─────────
-function QuadroAlugueres({ lista, estreito, onEditar }: {
-  lista: SituacaoAluguer[]; estreito: boolean; onEditar: (s: SituacaoAluguer) => void
+function QuadroAlugueres({ lista, estreito, onEditar, grupoDe }: {
+  lista: SituacaoAluguer[]; estreito: boolean; onEditar: (s: SituacaoAluguer) => void; grupoDe: (s: SituacaoAluguer) => string
 }) {
   const { total: totalMensal, semValor } = totalMensalComPacks(lista)
   const numPacks = new Set(lista.filter((l) => l.pack).map((l) => l.pack)).size
-
-  // Agrupa os equipamentos do mesmo pack (ficam adjacentes); sem pack vão para o fim.
-  const ordenada = [...lista].sort((a, b) => {
-    if (!!a.pack === !!b.pack) return (a.pack ?? '').localeCompare(b.pack ?? '')
-    return a.pack ? -1 : 1
-  })
+  const grupos = agruparPorGrupo(lista, grupoDe)
 
   if (lista.length === 0) return <p style={c.estado}>Nenhum equipamento em aluguer nesta vista.</p>
+
+  // Cabeçalho de secção (divisória) com nome do grupo, nº de equipamentos e subtotal mensal.
+  function divisoria(chave: string, itens: SituacaoAluguer[]) {
+    const { total } = totalMensalComPacks(itens)
+    return (
+      <div style={c.grupoDivisoria}>
+        <span>{chave}</span>
+        <span style={c.grupoMeta}>{itens.length} equip.{total > 0 ? ` · ${formatarEuro(total)}/mês` : ''}</span>
+      </div>
+    )
+  }
+
+  function linhaEquip(s: SituacaoAluguer) {
+    const alerta = alertaDe(s)
+    return (
+      <div key={s.equipamento_id}
+        style={{ ...c.linha, ...c.linhaClicavel, ...(alerta === 'vencido' ? c.linhaVencido : alerta === 'a-terminar' ? c.linhaTerminar : {}) }}
+        onClick={() => onEditar(s)} title="Clica para completar/editar os dados do aluguer">
+        <span style={c.equip}>
+          <span style={c.equipSn}>{s.serial_number ?? '—'}</span>
+          <span style={c.equipMarca}>{[s.marca, s.modelo].filter(Boolean).join(' ') || '—'}</span>
+        </span>
+        <span>{s.pack ? <span style={c.packTag}>{s.pack}</span> : '—'}</span>
+        <span>{clienteTexto(s)}</span>
+        <span>{localizacaoTexto(s)}</span>
+        <span>{formatarData(inicioEfetivo(s))}</span>
+        <span>{duracaoTexto(inicioEfetivo(s))}</span>
+        <span>{fimTexto(s)}{alerta && <BadgeAlerta s={s} alerta={alerta} />}</span>
+        <span style={{ textAlign: 'right', fontWeight: 700 }}>{s.valor_mensal != null ? formatarEuro(s.valor_mensal) : '—'}</span>
+      </div>
+    )
+  }
 
   return (
     <>
@@ -250,7 +333,14 @@ function QuadroAlugueres({ lista, estreito, onEditar }: {
       </div>
 
       {estreito ? (
-        <div style={c.cartoes}>{ordenada.map((s) => <CartaoAluguer key={s.equipamento_id} s={s} onEditar={onEditar} />)}</div>
+        <div style={c.cartoes}>
+          {grupos.map((g) => (
+            <Fragment key={g.chave}>
+              {divisoria(g.chave, g.itens)}
+              {g.itens.map((s) => <CartaoAluguer key={s.equipamento_id} s={s} onEditar={onEditar} />)}
+            </Fragment>
+          ))}
+        </div>
       ) : (
         <div style={c.tabela}>
           <div style={{ ...c.linha, ...c.cab }}>
@@ -258,26 +348,12 @@ function QuadroAlugueres({ lista, estreito, onEditar }: {
             <span>Início</span><span>Duração</span><span>Fim previsto</span>
             <span style={{ textAlign: 'right' }}>Mensal</span>
           </div>
-          {ordenada.map((s) => {
-            const alerta = alertaDe(s)
-            return (
-              <div key={s.equipamento_id}
-                style={{ ...c.linha, ...c.linhaClicavel, ...(alerta === 'vencido' ? c.linhaVencido : alerta === 'a-terminar' ? c.linhaTerminar : {}) }}
-                onClick={() => onEditar(s)} title="Clica para completar/editar os dados do aluguer">
-                <span style={c.equip}>
-                  <span style={c.equipSn}>{s.serial_number ?? '—'}</span>
-                  <span style={c.equipMarca}>{[s.marca, s.modelo].filter(Boolean).join(' ') || '—'}</span>
-                </span>
-                <span>{s.pack ? <span style={c.packTag}>{s.pack}</span> : '—'}</span>
-                <span>{clienteTexto(s)}</span>
-                <span>{localizacaoTexto(s)}</span>
-                <span>{formatarData(inicioEfetivo(s))}</span>
-                <span>{duracaoTexto(inicioEfetivo(s))}</span>
-                <span>{fimTexto(s)}{alerta && <BadgeAlerta s={s} alerta={alerta} />}</span>
-                <span style={{ textAlign: 'right', fontWeight: 700 }}>{s.valor_mensal != null ? formatarEuro(s.valor_mensal) : '—'}</span>
-              </div>
-            )
-          })}
+          {grupos.map((g) => (
+            <Fragment key={g.chave}>
+              {divisoria(g.chave, g.itens)}
+              {g.itens.map((s) => linhaEquip(s))}
+            </Fragment>
+          ))}
         </div>
       )}
     </>
@@ -394,8 +470,8 @@ function GrupoDisp({ titulo, cor, itens, estreito, vazio }: {
 }
 
 // ─────────────────────────────────────────────── MODAL FICHA ─────────────────
-function ModalFicha({ situacao, packsExistentes, onFechar, onGuardado, onTerminado, onRecarregar }: {
-  situacao: SituacaoAluguer; packsExistentes: string[]; onFechar: () => void; onGuardado: (s: SituacaoAluguer) => void; onTerminado: () => void; onRecarregar: () => void
+function ModalFicha({ situacao, packsExistentes, zonasExistentes, onFechar, onGuardado, onTerminado, onRecarregar }: {
+  situacao: SituacaoAluguer; packsExistentes: string[]; zonasExistentes: string[]; onFechar: () => void; onGuardado: (s: SituacaoAluguer) => void; onTerminado: () => void; onRecarregar: () => void
 }) {
   const { perfil } = useAuth()
   const [clientes, setClientes] = useState<EntidadeOpc[]>([])
@@ -407,6 +483,7 @@ function ModalFicha({ situacao, packsExistentes, onFechar, onGuardado, onTermina
   const [fim, setFim] = useState(situacao.data_fim_prevista ?? '')
   const [valor, setValor] = useState(situacao.valor_mensal != null ? String(situacao.valor_mensal) : '')
   const [pack, setPack] = useState(situacao.pack ?? '')
+  const [zona, setZona] = useState(situacao.zona ?? '')
   const [local, setLocal] = useState(situacao.localizacao ?? '')
   const [notas, setNotas] = useState(situacao.notas ?? '')
   const [aGuardar, setAGuardar] = useState(false)
@@ -433,6 +510,7 @@ function ModalFicha({ situacao, packsExistentes, onFechar, onGuardado, onTermina
     setAGuardar(true)
     const autor = { id: perfil?.id ?? null, nome: perfil?.nome ?? null }
     const packTrim = pack.trim() || null
+    const zonaTrim = zona.trim() || null
     const patch: FichaPatch = {
       cliente_id: clienteId || null,
       mercado: mercado || null,
@@ -443,12 +521,13 @@ function ModalFicha({ situacao, packsExistentes, onFechar, onGuardado, onTermina
       localizacao: local.trim() || null,
       notas: notas.trim() || null,
       pack: packTrim,
+      zona: zonaTrim,
     }
     const { error } = await guardarFichaSituacao(situacao.equipamento_id, patch, autor)
     if (error) { setAGuardar(false); return setErro('Erro ao guardar: ' + error.message) }
-    // Pack: aplica valor/cliente/mercado a todos os equipamentos do mesmo pack e recarrega.
+    // Pack: aplica valor/cliente/mercado/zona a todos os equipamentos do mesmo pack e recarrega.
     if (packTrim) {
-      const { error: e2 } = await propagarPack(packTrim, { valor_mensal: valorNum, cliente_id: clienteId || null, mercado: mercado || null }, autor)
+      const { error: e2 } = await propagarPack(packTrim, { valor_mensal: valorNum, cliente_id: clienteId || null, mercado: mercado || null, zona: zonaTrim }, autor)
       setAGuardar(false)
       if (e2) return setErro('Guardado, mas falhou aplicar ao pack: ' + e2.message)
       onFechar()
@@ -466,7 +545,7 @@ function ModalFicha({ situacao, packsExistentes, onFechar, onGuardado, onTermina
       mercado: mercado || null,
       renovacao_automatica: renovacao, valor_mensal: valorNum,
       localizacao: local.trim() || null, notas: notas.trim() || null,
-      pack: packTrim,
+      pack: packTrim, zona: zonaTrim,
     })
   }
 
@@ -521,7 +600,14 @@ function ModalFicha({ situacao, packsExistentes, onFechar, onGuardado, onTermina
         <datalist id="packs-existentes">
           {packsExistentes.map((p) => <option key={p} value={p} />)}
         </datalist>
-        {pack.trim() && <span style={c.notaLigacao}>Ao guardar, o valor mensal e o cliente aplicam-se a TODOS os equipamentos deste pack.</span>}
+        {pack.trim() && <span style={c.notaLigacao}>Ao guardar, o valor mensal, o cliente e a zona aplicam-se a TODOS os equipamentos deste pack.</span>}
+
+        <label style={c.label}>Zona (secção nos Nacionais)</label>
+        <input style={c.input} list="zonas-existentes" value={zona} onChange={(e) => setZona(e.target.value)}
+          placeholder="Ex.: Lisboa, Norte, Algarve, Mensais…" />
+        <datalist id="zonas-existentes">
+          {zonasExistentes.map((z) => <option key={z} value={z} />)}
+        </datalist>
 
         <label style={c.label}>Mercado (quadro)</label>
         <select style={c.input} value={mercado} onChange={(e) => setMercado(e.target.value as '' | Mercado)}>
@@ -578,7 +664,7 @@ function ModalFicha({ situacao, packsExistentes, onFechar, onGuardado, onTermina
 }
 
 // ─────────────────────────────────────────────── NOVO ALUGUER (manual) ───────
-function ModalNovoAluguer({ packsExistentes, onFechar, onCriado }: { packsExistentes: string[]; onFechar: () => void; onCriado: () => void }) {
+function ModalNovoAluguer({ packsExistentes, zonasExistentes, onFechar, onCriado }: { packsExistentes: string[]; zonasExistentes: string[]; onFechar: () => void; onCriado: () => void }) {
   const { perfil } = useAuth()
   const [clientes, setClientes] = useState<EntidadeOpc[]>([])
   const [busca, setBusca] = useState('')
@@ -592,6 +678,7 @@ function ModalNovoAluguer({ packsExistentes, onFechar, onCriado }: { packsExiste
   const [fim, setFim] = useState('')
   const [valor, setValor] = useState('')
   const [pack, setPack] = useState('')
+  const [zona, setZona] = useState('')
   const [local, setLocal] = useState('')
   const [notas, setNotas] = useState('')
   const [aGuardar, setAGuardar] = useState(false)
@@ -641,6 +728,7 @@ function ModalNovoAluguer({ packsExistentes, onFechar, onCriado }: { packsExiste
       localizacao: local.trim() || null,
       notas: notas.trim() || null,
       pack: pack.trim() || null,
+      zona: zona.trim() || null,
     }
     setAGuardar(true)
     const r = await colocarEmAluguer({
@@ -701,6 +789,13 @@ function ModalNovoAluguer({ packsExistentes, onFechar, onCriado }: { packsExiste
           placeholder="Opcional — o mesmo nome nos equipamentos do mesmo pack" />
         <datalist id="packs-existentes-novo">
           {packsExistentes.map((p) => <option key={p} value={p} />)}
+        </datalist>
+
+        <label style={c.label}>Zona (secção nos Nacionais)</label>
+        <input style={c.input} list="zonas-existentes-novo" value={zona} onChange={(e) => setZona(e.target.value)}
+          placeholder="Opcional — Ex.: Lisboa, Norte, Algarve, Mensais…" />
+        <datalist id="zonas-existentes-novo">
+          {zonasExistentes.map((z) => <option key={z} value={z} />)}
         </datalist>
 
         <label style={c.label}>Mercado (quadro)</label>
@@ -781,6 +876,8 @@ const c: Record<string, React.CSSProperties> = {
   tabela: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 8, overflowX: 'auto' },
   linha: { display: 'grid', gridTemplateColumns: '1.5fr 0.9fr 1.1fr 1.1fr 0.9fr 0.8fr 1.1fr 0.9fr', gap: 8, padding: '10px 8px', fontSize: 13, borderBottom: '1px solid #f2f2f2', alignItems: 'center' },
   packTag: { display: 'inline-block', background: 'var(--accent-bg, #eef1f6)', border: '1px solid var(--border)', borderRadius: 6, padding: '1px 7px', fontSize: 12, fontWeight: 600, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  grupoDivisoria: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, background: 'var(--primary)', color: '#fff', padding: '7px 12px', borderRadius: 8, fontWeight: 800, fontSize: 13.5, margin: '10px 0 4px' },
+  grupoMeta: { fontWeight: 600, fontSize: 12.5, opacity: 0.9 },
   linhaDisp: { display: 'grid', gridTemplateColumns: '2fr 1.3fr 1fr', gap: 8, padding: '10px 8px', fontSize: 13, borderBottom: '1px solid #f2f2f2', alignItems: 'center' },
   cab: { fontWeight: 700, color: 'var(--muted)', fontSize: 12, borderBottom: '2px solid var(--border)' },
   linhaClicavel: { cursor: 'pointer' },

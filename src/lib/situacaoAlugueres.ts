@@ -66,6 +66,7 @@ export type SituacaoAluguer = {
   localizacao: string | null
   notas: string | null
   pack: string | null
+  zona: string | null
 }
 
 export type EquipDisponivel = {
@@ -90,6 +91,7 @@ export type FichaPatch = {
   localizacao?: string | null
   notas?: string | null
   pack?: string | null
+  zona?: string | null
 }
 export type Autor = { id: string | null; nome: string | null }
 
@@ -101,7 +103,7 @@ type FichaRow = {
   id: string; equipamento_id: string; cliente_id: string | null; mercado: Mercado | null
   data_inicio: string | null
   data_fim_prevista: string | null; renovacao_automatica: boolean; valor_mensal: number | null
-  localizacao: string | null; notas: string | null; pack: string | null
+  localizacao: string | null; notas: string | null; pack: string | null; zona: string | null
 }
 type ClienteRow = { id: string; nome: string | null; pais: string | null; cidade: string | null }
 
@@ -150,6 +152,7 @@ export async function carregarSituacaoAlugueres(): Promise<SituacaoAluguer[]> {
       localizacao: f?.localizacao ?? null,
       notas: f?.notas ?? null,
       pack: f?.pack ?? null,
+      zona: f?.zona ?? null,
     }
   })
 }
@@ -208,6 +211,7 @@ export async function propagarPack(pack: string, campos: FichaPatch, autor: Auto
   if (campos.valor_mensal != null) set.valor_mensal = campos.valor_mensal
   if (campos.cliente_id) set.cliente_id = campos.cliente_id
   if (campos.mercado) set.mercado = campos.mercado
+  if (campos.zona) set.zona = campos.zona
   if (Object.keys(set).length === 0) return { error: null }
   set.atualizado_por = autor.id
   set.atualizado_por_nome = autor.nome
