@@ -1,0 +1,24 @@
+name: Keyinvoice — sincronização diária
+
+# Sincroniza os documentos do Keyinvoice para as Contas Correntes, todos os dias
+# de madrugada. Fica aqui (e não em vercel.json) porque o plano Hobby da Vercel
+# limita o número/frequência de crons — mesma solução do leads-ingest e dos
+# pedidos de pagamento.
+#
+# A rota é idempotente (dedup por keyinvoice_doc_id) e respeita a categorização
+# feita à mão, por isso correr repetido não duplica nem desfaz.
+
+on:
+  schedule:
+    - cron: '0 5 * * *' # todos os dias às 05:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar endpoint de sincronização Keyinvoice
+        run: |
+          curl -sS --fail-with-body --max-time 290 \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://all4laser-stock.vercel.app/api/financeiro/keyinvoice/sync"
