@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { tipoDocInfo, type EntidadeTipo, type TipoDocumento } from './contasCorrentes'
 import { categorizar, CATEGORIAS, semAcentos, type CategoriaDoc } from './categorizacaoFinanceira'
+import { listarRegras, aplicarRegras } from './categoriasFin'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sincronização Keyinvoice → Contas Correntes (por importação de ficheiro).
@@ -25,7 +26,8 @@ import { categorizar, CATEGORIAS, semAcentos, type CategoriaDoc } from './catego
 export type DocKeyinvoice = {
   keyinvoice_doc_id: string
   descricao: string | null
-  categoria: CategoriaDoc | null
+  categoria: string | null            // chave de topo (heurística ou regra)
+  subcategoria_id: string | null      // preenchido por regra, se houver
   entidade_tipo: EntidadeTipo
   nome: string
   nif: string | null
@@ -178,6 +180,7 @@ function parseKeyinvoice(linhas: string[], delim: string | RegExp, header: strin
       keyinvoice_doc_id: `${tipo}|${ref}`,
       descricao,
       categoria: categorizar(descricao, ref),
+      subcategoria_id: null,
       entidade_tipo,
       nome: (cols[iNome] ?? '').trim() || '—',
       nif: normalizarNif(cols[iNif]) || null,
@@ -216,6 +219,7 @@ function parseModelo(linhas: string[], delim: string | RegExp): { docs: DocKeyin
       keyinvoice_doc_id: `${tipo}|${numero.trim()}`,
       descricao,
       categoria: parseCategoria(catRaw) ?? categorizar(descricao, numero),
+      subcategoria_id: null,
       entidade_tipo, nome: nome.trim(), nif: normalizarNif(nif) || null,
       tipo_documento: tipo, numero: numero.trim(),
       data_documento: data, data_vencimento: parseData(vencRaw ?? ''), valor,
@@ -248,14 +252,20 @@ export async function processar(docs: DocKeyinvoice[]): Promise<LinhaImport[]> {
   const idxCli = indexar(clientes)
   const idxForn = indexar(fornecedores)
   const jaLa = await jaImportados(docs.map((d) => d.keyinvoice_doc_id))
+  const regras = await listarRegras()
 
   return docs.map((d) => {
     const idx = d.entidade_tipo === 'cliente' ? idxCli : idxForn
     const nif = normalizarNif(d.nif).toLowerCase()
     const entId = (nif && idx.porNif.get(nif)) || idx.porNome.get(normalizar(d.nome)) || null
     const existente = jaLa.get(d.keyinvoice_doc_id)
+    // As regras geríveis têm prioridade sobre a heurística. Se nenhuma casar,
+    // fica a categoria proposta pela heurística/ficheiro (d.categoria).
+    const porRegra = aplicarRegras(regras, { descricao: d.descricao, documento_ref: d.numero, entidade_nome: d.nome })
     return {
       ...d,
+      categoria: porRegra?.categoria_chave ?? d.categoria,
+      subcategoria_id: porRegra?.subcategoria_id ?? null,
       cliente_id: d.entidade_tipo === 'cliente' ? entId : null,
       fornecedor_id: d.entidade_tipo === 'fornecedor' ? entId : null,
       associada: !!entId,
@@ -318,8 +328,11 @@ export async function importar(
       valor_credito: sentido === 'credito' ? l.valor : 0,
     }
     if (l.descricao) base.descricao = l.descricao
-    // A classificação corrigida à mão manda sobre a proposta do ficheiro.
-    if (!l.categoriaBloqueada) base.categoria = l.categoria
+    // A classificação corrigida à mão manda sobre a proposta do ficheiro/regras.
+    if (!l.categoriaBloqueada) {
+      base.categoria = l.categoria
+      base.subcategoria_id = l.subcategoria_id
+    }
     return base
   }
 

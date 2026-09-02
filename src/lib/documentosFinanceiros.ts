@@ -1,6 +1,5 @@
 import { supabase } from './supabase'
-import type { MovimentoCC, EntidadeTipo, TipoDocumento } from './contasCorrentes'
-import type { CategoriaDoc } from './categorizacaoFinanceira'
+import { tipoDocInfo, type MovimentoCC, type EntidadeTipo, type TipoDocumento } from './contasCorrentes'
 
 // Documentos financeiros = os movimentos (faturas/recibos/notas de crédito/…),
 // numa vista centrada no documento, com o PDF anexo. Bucket privado; o acesso é
@@ -12,7 +11,8 @@ export type FiltrosDoc = {
   texto: string // nº do documento ou nome da entidade
   entidade_tipo: '' | EntidadeTipo
   tipo_documento: '' | TipoDocumento
-  categoria: '' | CategoriaDoc | 'por_classificar'
+  // Valor plano: '' (todas) | 'por_classificar' | 'cat:<chave>' | 'sub:<id>'
+  categoria: string
   // Confirmação de pagamento no próprio documento (o campo de pagamento).
   pagamento: '' | 'pago' | 'por_confirmar'
   origem: '' | 'manual' | 'keyinvoice'
@@ -37,7 +37,8 @@ export async function listarDocumentos(f: FiltrosDoc): Promise<MovimentoCC[]> {
   if (f.entidade_tipo) q = q.eq('entidade_tipo', f.entidade_tipo)
   if (f.tipo_documento) q = q.eq('tipo_documento', f.tipo_documento)
   if (f.categoria === 'por_classificar') q = q.is('categoria', null)
-  else if (f.categoria) q = q.eq('categoria', f.categoria)
+  else if (f.categoria.startsWith('sub:')) q = q.eq('subcategoria_id', f.categoria.slice(4))
+  else if (f.categoria.startsWith('cat:')) q = q.eq('categoria', f.categoria.slice(4))
   if (f.pagamento === 'pago') q = q.eq('estado', 'liquidado')
   else if (f.pagamento === 'por_confirmar') q = q.neq('estado', 'liquidado')
   if (f.origem) q = q.eq('origem', f.origem)
@@ -57,6 +58,62 @@ export async function listarDocumentos(f: FiltrosDoc): Promise<MovimentoCC[]> {
     )
   }
   return linhas
+}
+
+// ─── Totais do filtro ativo ───────────────────────────────────────────────────
+
+export type TotaisDoc = { n: number; faturado: number; creditado: number }
+
+export function totaisDocumentos(docs: MovimentoCC[]): TotaisDoc {
+  return docs.reduce(
+    (t, m) => ({
+      n: t.n + 1,
+      faturado: t.faturado + (m.valor_debito || 0),
+      creditado: t.creditado + (m.valor_credito || 0),
+    }),
+    { n: 0, faturado: 0, creditado: 0 }
+  )
+}
+
+// ─── Export CSV (do filtro ativo) ─────────────────────────────────────────────
+
+function csvCampo(v: string | number | null | undefined): string {
+  const s = v == null ? '' : String(v)
+  return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+}
+
+// Gera o CSV dos documentos. `nomeCategoria` resolve o nome legível da categoria.
+export function exportarDocumentosCsv(docs: MovimentoCC[], nomeCategoria: (m: MovimentoCC) => string): string {
+  const cab = ['Data', 'Tipo', 'Nº documento', 'Entidade', 'Tipo entidade', 'Categoria', 'Descrição', 'Vencimento', 'Débito', 'Crédito', 'Estado', 'Pagamento', 'Origem']
+  const linhas = docs.map((m) => [
+    m.data_documento ?? '',
+    tipoDocInfo(m.tipo_documento).label,
+    m.documento_ref ?? '',
+    m.entidade_nome ?? '',
+    m.entidade_tipo,
+    nomeCategoria(m),
+    m.descricao ?? '',
+    m.data_vencimento ?? '',
+    String(m.valor_debito ?? 0).replace('.', ','),
+    String(m.valor_credito ?? 0).replace('.', ','),
+    m.estado,
+    m.data_pagamento ?? '',
+    m.origem,
+  ])
+  return [cab, ...linhas].map((r) => r.map(csvCampo).join(';')).join('\r\n')
+}
+
+// Descarrega uma string CSV como ficheiro (com BOM para o Excel abrir os acentos).
+export function descarregarCsv(conteudo: string, nomeFicheiro: string) {
+  const blob = new Blob(['﻿' + conteudo], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = nomeFicheiro
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
 }
 
 function nomeSeguro(nome: string) {
