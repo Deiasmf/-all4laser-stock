@@ -344,10 +344,21 @@ export async function importar(
     return base
   }
 
-  // Novos (dedup no lote) → insert.
+  // Novos (dedup no lote) → insert. IMPORTANTE: todas as linhas do insert em lote
+  // têm de trazer as MESMAS colunas — senão o Supabase preenche as em falta com
+  // NULL (e valor_liquidado é NOT NULL). Por isso forçamos valor_liquidado (0 por
+  // defeito; o trigger deriva o estado) e descricao em TODAS as linhas.
   const vistos = new Set<string>()
   const novos = associadas.filter((l) => !l.jaImportada && (vistos.has(l.keyinvoice_doc_id) ? false : (vistos.add(l.keyinvoice_doc_id), true)))
-  const rows = novos.map((l) => ({ ...campos(l), origem: 'keyinvoice' as const, keyinvoice_doc_id: l.keyinvoice_doc_id, criado_por: utilizador.id, criado_por_nome: utilizador.nome }))
+  const rows = novos.map((l) => ({
+    ...campos(l),
+    descricao: l.descricao ?? null,
+    valor_liquidado: typeof l.valor_liquidado === 'number' ? l.valor_liquidado : 0,
+    origem: 'keyinvoice' as const,
+    keyinvoice_doc_id: l.keyinvoice_doc_id,
+    criado_por: utilizador.id,
+    criado_por_nome: utilizador.nome,
+  }))
 
   // Existentes → update (refresca o pendente/valor e datas).
   const existentes = associadas.filter((l) => l.jaImportada)
