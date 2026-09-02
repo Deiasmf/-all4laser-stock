@@ -15,7 +15,7 @@ const CARTOES: Cartao[] = [
   { href: '/financeiro/tabelas', titulo: 'Folhas de Cálculo', icon: '📊', descricao: 'Criar tabelas do zero, guardar, exportar (Excel/PDF), anexar e enviar.' },
   { href: '/financeiro/contas-correntes', titulo: 'Contas Correntes', icon: '📈', descricao: 'Saldos por cliente e fornecedor.' },
   { href: '/financeiro/keyinvoice', titulo: 'Keyinvoice', icon: '🔗', descricao: 'Importar faturas e pró-formas, classificadas por cliente e por natureza.' },
-  { href: '/financeiro/cobrancas', titulo: 'Cobranças', icon: '📨', descricao: 'O que está por receber e os pedidos de pagamento ao cliente.' },
+  { href: '/financeiro/pedidos-pagamento', titulo: 'Pedidos de Pagamento', icon: '📨', descricao: 'O que está por receber, com o pedido de pagamento ao cliente.' },
   { href: '/financeiro/documentos', titulo: 'Documentos', icon: '🧾', descricao: 'Faturas, recibos e notas de crédito.' },
   { href: '/financeiro/cofre', titulo: 'Cofre de Documentos', icon: '🔐', descricao: 'Cartões, contas bancárias, certidões, contratos, seguros.' },
   { href: '/financeiro/recolhas', titulo: 'Recolhas', icon: '💰', descricao: 'Cobranças e recolha de equipamentos.' },

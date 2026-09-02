@@ -4,25 +4,25 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import {
-  listarEmDivida, listarCobrancas, carregarConfig, guardarConfig, enviarPedidos,
+  listarEmDivida, listarPedidos, carregarConfig, guardarConfig, enviarPedidos,
   elegivelAuto, preencherModelo, textoAtraso, ASSUNTO_PADRAO, MENSAGEM_PADRAO,
-  CONFIG_PADRAO, type DocEmDivida, type Cobranca, type ConfigCobrancas,
-} from '@/lib/cobrancas'
+  CONFIG_PADRAO, type DocEmDivida, type PedidoPagamento, type ConfigPedidos,
+} from '@/lib/pedidosPagamento'
 import { definirLembretesAuto, formatarEuro, formatarData } from '@/lib/contasCorrentes'
 import { categoriaInfo } from '@/lib/categorizacaoFinanceira'
 
-// Cobranças: o que está por receber, com pedido de pagamento ao cliente — a
-// pedido (um clique) ou automático de X em X dias, para os documentos com os
-// lembretes ligados. A lista sai da conta corrente, por isso um documento
-// desaparece daqui assim que fica liquidado.
+// Pedidos de pagamento: o que está por receber, com envio do pedido ao cliente —
+// à mão (um clique) ou automático de X em X dias, nos documentos com os lembretes
+// ligados. A lista sai da conta corrente, por isso um documento desaparece daqui
+// assim que fica liquidado.
 
 type Filtro = 'todos' | 'vencidos' | 'auto' | 'sem_email'
 
-export default function CobrancasPage() {
+export default function PedidosPagamentoPage() {
   const { perfil } = useAuth()
   const [docs, setDocs] = useState<DocEmDivida[]>([])
-  const [historico, setHistorico] = useState<Cobranca[]>([])
-  const [cfg, setCfg] = useState<ConfigCobrancas>(CONFIG_PADRAO)
+  const [historico, setHistorico] = useState<PedidoPagamento[]>([])
+  const [cfg, setCfg] = useState<ConfigPedidos>(CONFIG_PADRAO)
   const [carregando, setCarregando] = useState(true)
   const [sel, setSel] = useState<Set<string>>(new Set())
   const [filtro, setFiltro] = useState<Filtro>('todos')
@@ -33,7 +33,7 @@ export default function CobrancasPage() {
 
   const carregar = useCallback(async () => {
     setCarregando(true)
-    const [d, h, c] = await Promise.all([listarEmDivida(), listarCobrancas(30), carregarConfig()])
+    const [d, h, c] = await Promise.all([listarEmDivida(), listarPedidos(30), carregarConfig()])
     setDocs(d); setHistorico(h); setCfg(c)
     setCarregando(false)
   }, [])
@@ -117,8 +117,8 @@ export default function CobrancasPage() {
       <div style={c.topo}>
         <div>
           <Link href="/financeiro" style={c.voltar}>← Financeiro</Link>
-          <h1 style={c.titulo}>📨 Cobranças</h1>
-          <p style={c.sub}>O que está por receber e os pedidos de pagamento ao cliente.</p>
+          <h1 style={c.titulo}>📨 Pedidos de Pagamento</h1>
+          <p style={c.sub}>O que está por receber, com o pedido de pagamento ao cliente.</p>
         </div>
         <button style={c.btnSec} onClick={() => setAbrirConfig((v) => !v)}>
           ⚙️ Pedidos automáticos {cfg.lembretes_ativos ? '(ligados)' : '(desligados)'}

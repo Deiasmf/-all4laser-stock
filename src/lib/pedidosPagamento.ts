@@ -5,19 +5,20 @@ import {
 } from './contasCorrentes'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// COBRANÇAS — pedidos de pagamento ao cliente.
+// PEDIDOS DE PAGAMENTO ao cliente (o que está por receber).
 //
 // O que está por pagar é calculado a partir da conta corrente (alocação FIFO +
 // pagamento confirmado à mão): não há estado duplicado, o documento sai da lista
 // assim que fica liquidado. Cada pedido enviado fica registado em
-// financeiro_cobrancas (quem, quando, para quem, automático ou não).
+// financeiro_pedidos_pagamento (quem, quando, para quem, automático ou não) —
+// tabela distinta de financeiro_cobrancas, que é do módulo Recolhas.
 //
-// Envio manual: sempre disponível, a partir da página de Cobranças.
+// Envio manual: sempre disponível, a partir da página de Pedidos de Pagamento.
 // Envio automático: opt-in por documento (lembretes_auto) + configuração global
-// da cadência; o cron /api/financeiro/cobrancas trata do resto.
+// da cadência; o cron /api/financeiro/pedidos-pagamento trata do resto.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type ConfigCobrancas = {
+export type ConfigPedidos = {
   lembretes_ativos: boolean
   cadencia_dias: number
   dias_apos_vencimento: number
@@ -40,7 +41,7 @@ export const MENSAGEM_PADRAO = [
   'All4laser',
 ].join('\n')
 
-export const CONFIG_PADRAO: ConfigCobrancas = {
+export const CONFIG_PADRAO: ConfigPedidos = {
   lembretes_ativos: false,
   cadencia_dias: 15,
   dias_apos_vencimento: 1,
@@ -49,10 +50,10 @@ export const CONFIG_PADRAO: ConfigCobrancas = {
   mensagem_modelo: MENSAGEM_PADRAO,
 }
 
-export async function carregarConfig(): Promise<ConfigCobrancas> {
+export async function carregarConfig(): Promise<ConfigPedidos> {
   const { data } = await supabase.from('financeiro_config').select('*').maybeSingle()
   if (!data) return { ...CONFIG_PADRAO }
-  const c = data as Partial<ConfigCobrancas>
+  const c = data as Partial<ConfigPedidos>
   return {
     ...CONFIG_PADRAO,
     ...c,
@@ -61,7 +62,7 @@ export async function carregarConfig(): Promise<ConfigCobrancas> {
   }
 }
 
-export async function guardarConfig(cfg: ConfigCobrancas, porNome: string | null) {
+export async function guardarConfig(cfg: ConfigPedidos, porNome: string | null) {
   return supabase.from('financeiro_config').upsert({
     id: true,
     lembretes_ativos: cfg.lembretes_ativos,
@@ -146,7 +147,7 @@ async function contagemPedidos(ids: string[]): Promise<Map<string, { n: number; 
   const mapa = new Map<string, { n: number; ultimo: string }>()
   if (ids.length === 0) return mapa
   const { data } = await supabase
-    .from('financeiro_cobrancas')
+    .from('financeiro_pedidos_pagamento')
     .select('movimento_id, enviado_em, ok')
     .in('movimento_id', ids)
     .eq('ok', true)
@@ -169,7 +170,7 @@ export type CandidatoAuto = {
   temEmail: boolean
 }
 
-export function elegivelAuto(d: CandidatoAuto, cfg: ConfigCobrancas, agora = new Date()): boolean {
+export function elegivelAuto(d: CandidatoAuto, cfg: ConfigPedidos, agora = new Date()): boolean {
   if (!cfg.lembretes_ativos || !d.lembretes_auto || !d.temEmail) return false
   if (d.porLiquidar < Math.max(0, cfg.valor_minimo)) return false
   if (d.diasAtraso < cfg.dias_apos_vencimento) return false
@@ -207,7 +208,7 @@ export function preencherModelo(modelo: string, d: DadosPedido): string {
 
 // ─── Histórico ───────────────────────────────────────────────────────────────
 
-export type Cobranca = {
+export type PedidoPagamento = {
   id: string
   movimento_id: string | null
   cliente_id: string | null
@@ -224,13 +225,13 @@ export type Cobranca = {
   enviado_por_nome: string | null
 }
 
-export async function listarCobrancas(limite = 100): Promise<Cobranca[]> {
+export async function listarPedidos(limite = 100): Promise<PedidoPagamento[]> {
   const { data } = await supabase
-    .from('financeiro_cobrancas')
+    .from('financeiro_pedidos_pagamento')
     .select('*')
     .order('enviado_em', { ascending: false })
     .limit(limite)
-  return (data as Cobranca[]) ?? []
+  return (data as PedidoPagamento[]) ?? []
 }
 
 // ─── Envio manual (passa pela API: a chave de email vive no servidor) ────────
@@ -243,7 +244,7 @@ export async function enviarPedidos(movimentoIds: string[]): Promise<ResultadoEn
   const { data: sessao } = await supabase.auth.getSession()
   const token = sessao.session?.access_token
   if (!token) return { enviados: 0, falhas: movimentoIds.length, erros: ['Sessão expirada — volta a entrar.'] }
-  const r = await fetch('/api/financeiro/cobrancas', {
+  const r = await fetch('/api/financeiro/pedidos-pagamento', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({ movimento_ids: movimentoIds }),

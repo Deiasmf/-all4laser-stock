@@ -3,16 +3,17 @@ import { enviarEmail } from '@/lib/email'
 import { alocarFaturas, contaParaSaldo, formatarEuro, formatarData, type MovimentoCC } from '@/lib/contasCorrentes'
 import {
   elegivelAuto, preencherModelo, diasDesde, textoAtraso,
-  ASSUNTO_PADRAO, MENSAGEM_PADRAO, CONFIG_PADRAO, type ConfigCobrancas,
-} from '@/lib/cobrancas'
+  ASSUNTO_PADRAO, MENSAGEM_PADRAO, CONFIG_PADRAO, type ConfigPedidos,
+} from '@/lib/pedidosPagamento'
 
-// Pedidos de pagamento ao cliente (cobranças).
-//   POST → envio manual, disparado da página de Cobranças. Valida a sessão e
+// Pedidos de pagamento ao cliente.
+//   POST → envio manual, da página de Pedidos de Pagamento. Valida a sessão e
 //          exige admin/financeiro (a área é restrita).
 //   GET  → corrida automática (Vercel Cron, protegida por CRON_SECRET): envia
 //          apenas aos documentos com lembretes automáticos ligados, respeitando
 //          a cadência configurada. ?dryrun=1 calcula sem enviar.
-// Cada envio fica registado em financeiro_cobrancas e atualiza lembrete_ultimo.
+// Cada envio fica registado em financeiro_pedidos_pagamento (tabela distinta de
+// financeiro_cobrancas, do módulo Recolhas) e atualiza lembrete_ultimo.
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -34,9 +35,9 @@ function db(): SupabaseClient | null {
   return createClient(url, serviceKey, { auth: { persistSession: false } })
 }
 
-async function carregarConfig(sb: SupabaseClient): Promise<ConfigCobrancas> {
+async function carregarConfig(sb: SupabaseClient): Promise<ConfigPedidos> {
   const { data } = await sb.from('financeiro_config').select('*').maybeSingle()
-  const c = (data ?? {}) as Partial<ConfigCobrancas>
+  const c = (data ?? {}) as Partial<ConfigPedidos>
   return {
     ...CONFIG_PADRAO,
     ...c,
@@ -118,7 +119,7 @@ function corpoHtml(mensagem: string, c: Candidato): string {
 // Envia, regista e atualiza a data do último pedido. Devolve o resumo.
 async function enviarLote(
   sb: SupabaseClient,
-  cfg: ConfigCobrancas,
+  cfg: ConfigPedidos,
   candidatos: Candidato[],
   ctx: { automatico: boolean; porId: string | null; porNome: string | null; dryrun: boolean }
 ) {
@@ -149,7 +150,7 @@ async function enviarLote(
     if (ok) enviados++
     else { falhas++; erros.push(`${doc}: ${r.motivo ?? 'falha no envio'}`) }
 
-    await sb.from('financeiro_cobrancas').insert({
+    await sb.from('financeiro_pedidos_pagamento').insert({
       movimento_id: c.mov.id,
       cliente_id: c.mov.cliente_id,
       cliente_nome: cliente,

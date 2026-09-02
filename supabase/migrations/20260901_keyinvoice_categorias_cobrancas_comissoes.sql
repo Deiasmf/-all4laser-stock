@@ -11,7 +11,9 @@
 --      • data_pagamento / metodo_pagamento (confirmação explícita do pagamento)
 --      • lembretes_auto / lembrete_ultimo (pedidos de pagamento periódicos)
 -- 2. financeiro_config  — cadência e janela dos pedidos de pagamento (singleton).
--- 3. financeiro_cobrancas — histórico de pedidos de pagamento enviados.
+-- 3. financeiro_pedidos_pagamento — histórico de pedidos de pagamento enviados
+--    ao cliente. (Nome distinto de financeiro_cobrancas, que já existe e é do
+--    módulo Recolhas — acompanhamento manual por estado, outra coisa.)
 -- 4. tecnico_comissao_taxas — % de comissão por técnico.
 -- 5. tecnico_comissoes (+ despesas) — as faturas de serviço técnico canalizadas
 --    para a área técnica, onde se retiram deslocações/alimentação/estadia e se
@@ -122,8 +124,11 @@ create policy financeiro_config_acesso on public.financeiro_config
   with check (public.has_financeiro_access());
 
 -- ── 3. Histórico de pedidos de pagamento ────────────────────────────────────
+-- Atenção: NÃO confundir com public.financeiro_cobrancas (módulo Recolhas), que
+-- é o acompanhamento manual da cobrança por estado. Esta tabela é só o registo
+-- dos emails de pedido de pagamento enviados ao cliente.
 
-create table if not exists public.financeiro_cobrancas (
+create table if not exists public.financeiro_pedidos_pagamento (
   id                uuid primary key default gen_random_uuid(),
   movimento_id      uuid references public.financeiro_movimentos(id) on delete set null,
   cliente_id        uuid references public.clientes(id) on delete set null,
@@ -141,15 +146,15 @@ create table if not exists public.financeiro_cobrancas (
   enviado_por_nome  text
 );
 
-create index if not exists idx_fin_cobr_mov     on public.financeiro_cobrancas(movimento_id);
-create index if not exists idx_fin_cobr_cliente on public.financeiro_cobrancas(cliente_id);
-create index if not exists idx_fin_cobr_data    on public.financeiro_cobrancas(enviado_em desc);
+create index if not exists idx_fin_pp_mov     on public.financeiro_pedidos_pagamento(movimento_id);
+create index if not exists idx_fin_pp_cliente on public.financeiro_pedidos_pagamento(cliente_id);
+create index if not exists idx_fin_pp_data    on public.financeiro_pedidos_pagamento(enviado_em desc);
 
-alter table public.financeiro_cobrancas enable row level security;
-grant select, insert, update, delete on public.financeiro_cobrancas to authenticated;
-grant all on public.financeiro_cobrancas to service_role;
-drop policy if exists financeiro_cobrancas_acesso on public.financeiro_cobrancas;
-create policy financeiro_cobrancas_acesso on public.financeiro_cobrancas
+alter table public.financeiro_pedidos_pagamento enable row level security;
+grant select, insert, update, delete on public.financeiro_pedidos_pagamento to authenticated;
+grant all on public.financeiro_pedidos_pagamento to service_role;
+drop policy if exists financeiro_pedidos_pagamento_acesso on public.financeiro_pedidos_pagamento;
+create policy financeiro_pedidos_pagamento_acesso on public.financeiro_pedidos_pagamento
   for all to authenticated
   using (public.has_financeiro_access())
   with check (public.has_financeiro_access());
@@ -314,3 +319,9 @@ drop trigger if exists trg_sync_comissao_tecnica_del on public.financeiro_movime
 create trigger trg_sync_comissao_tecnica_del
   before delete on public.financeiro_movimentos
   for each row execute function public.sync_comissao_tecnica();
+
+-- Funções de trigger não têm de ser chamáveis por ninguém (o PostgREST expõe-nas
+-- como RPC). A permissão é validada na criação do trigger, por isso revogar aqui
+-- não afeta a sincronização.
+revoke all on function public.sync_comissao_tecnica() from public, anon, authenticated;
+revoke all on function public.financeiro_movimentos_normalizar() from public, anon, authenticated;
