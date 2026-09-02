@@ -23,6 +23,8 @@ export default function KeyinvoicePage() {
   const [api, setApi] = useState<{ configurada: boolean } | null>(null)
   const [aTestar, setATestar] = useState(false)
   const [teste, setTeste] = useState<{ ok: boolean; msg: string } | null>(null)
+  const [aSincronizar, setASincronizar] = useState(false)
+  const [syncMsg, setSyncMsg] = useState<{ ok: boolean; msg: string } | null>(null)
 
   const carregarSyncs = useCallback(async () => { setSyncs(await listarSyncs()) }, [])
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -50,6 +52,37 @@ export default function KeyinvoicePage() {
       setTeste({ ok: false, msg: 'Erro de rede ao testar a ligação.' })
     }
     setATestar(false)
+  }
+
+  async function sincronizar() {
+    setASincronizar(true); setSyncMsg(null); setResultado(null)
+    try {
+      const { data } = await supabase.auth.getSession()
+      const token = data.session?.access_token
+      const r = await fetch('/api/financeiro/keyinvoice/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      })
+      const j = await r.json()
+      if (!j.ok) { setSyncMsg({ ok: false, msg: j.erro || 'Falha na sincronização.' }); setASincronizar(false); return }
+      // Reutiliza o pipeline existente: associação por NIF + regras + idempotência.
+      const proc = await processar(j.docs ?? [])
+      setLinhas(proc)
+      const res = await importar(proc, { id: perfil?.id ?? null, nome: perfil?.nome ?? null })
+      setResultado(res)
+      await carregarSyncs()
+      const m = j.meta ?? {}
+      const avisos: string[] = []
+      if (m.truncado) avisos.push('leitura truncada (volta a sincronizar para continuar)')
+      if (m.settleCapped) avisos.push('estado de pagamento verificado só numa parte (corre outra vez amanhã)')
+      const extra = `${m.total ?? 0} documento(s) lidos; pagamento verificado em ${m.verificadosPagamento ?? 0}.` +
+        (avisos.length ? ` ⚠️ ${avisos.join('; ')}.` : '')
+      if (res.erro) setSyncMsg({ ok: false, msg: 'Importação: ' + res.erro })
+      else setSyncMsg({ ok: true, msg: `${res.importados} novo(s) · ${res.atualizados} atualizado(s) · ${res.semEntidade} sem entidade. ${extra}` })
+    } catch {
+      setSyncMsg({ ok: false, msg: 'Erro de rede na sincronização.' })
+    }
+    setASincronizar(false)
   }
 
   const contagens = useMemo(() => ({
@@ -118,15 +151,26 @@ export default function KeyinvoicePage() {
               {api == null ? '…' : api.configurada ? '✓ API configurada' : '○ API por configurar'}
             </span>
             {api?.configurada && (
-              <button style={c.btnSec} disabled={aTestar} onClick={testarLigacao}>
-                {aTestar ? 'A testar…' : 'Testar ligação'}
-              </button>
+              <>
+                <button style={c.btnSec} disabled={aTestar || aSincronizar} onClick={testarLigacao}>
+                  {aTestar ? 'A testar…' : 'Testar ligação'}
+                </button>
+                <button style={c.btnPrim} disabled={aSincronizar || aTestar} onClick={sincronizar}>
+                  {aSincronizar ? 'A sincronizar…' : '🔄 Sincronizar agora'}
+                </button>
+              </>
             )}
           </div>
         </div>
+        {aSincronizar && <div style={c.nota}>A ir buscar os documentos ao Keyinvoice — pode demorar um pouco na primeira vez.</div>}
         {teste && (
           <div style={{ ...c.testeMsg, ...(teste.ok ? c.testeOk : c.testeErro) }}>
             {teste.ok ? '✅ ' : '⚠️ '}{teste.msg}
+          </div>
+        )}
+        {syncMsg && (
+          <div style={{ ...c.testeMsg, ...(syncMsg.ok ? c.testeOk : c.testeErro) }}>
+            {syncMsg.ok ? '✅ ' : '⚠️ '}{syncMsg.msg}
           </div>
         )}
       </section>

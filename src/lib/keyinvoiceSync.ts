@@ -36,6 +36,9 @@ export type DocKeyinvoice = {
   data_documento: string
   data_vencimento: string | null
   valor: number
+  // Valor já liquidado (via API checkIfSettle). undefined = não determinado
+  // (não mexe no que já lá está); usado só nas faturas para o estado de pagamento.
+  valor_liquidado?: number | null
 }
 
 export type LinhaImport = DocKeyinvoice & {
@@ -328,6 +331,11 @@ export async function importar(
       valor_credito: sentido === 'credito' ? l.valor : 0,
     }
     if (l.descricao) base.descricao = l.descricao
+    // Estado de liquidação vindo da API (só faz sentido nas faturas; o trigger
+    // da BD deriva o estado de valor_liquidado vs valor_debito).
+    if (l.tipo_documento === 'fatura' && typeof l.valor_liquidado === 'number') {
+      base.valor_liquidado = l.valor_liquidado
+    }
     // A classificação corrigida à mão manda sobre a proposta do ficheiro/regras.
     if (!l.categoriaBloqueada) {
       base.categoria = l.categoria
