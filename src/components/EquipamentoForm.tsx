@@ -9,18 +9,7 @@ import {
   type Equipamento,
 } from '@/types/equipamento'
 import styles from './equipamentoForm.module.css'
-
-// Os 8 status oficiais (CLAUDE.md). Juntam-se aos que já existem nos dados.
-const STATUS_OFICIAIS = [
-  'Em stock',
-  'Aluguer nacional',
-  'Aluguer internacional',
-  'Reservado',
-  'Enviado',
-  'Prep-Logística',
-  'Prep-Técnico',
-  'Peças',
-]
+import { STATUS_OFICIAIS } from '@/lib/statusEquipamento'
 
 export type FormState = Record<string, string>
 

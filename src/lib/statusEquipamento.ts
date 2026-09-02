@@ -4,6 +4,29 @@
 // encaixa em nenhuma categoria recebe uma cor determinística (mesmo texto →
 // sempre a mesma cor), para continuar a distinguir-se visualmente.
 
+// Os 8 status oficiais (CLAUDE.md). Juntam-se aos que já existem nos dados.
+export const STATUS_OFICIAIS = [
+  'Em stock',
+  'Aluguer nacional',
+  'Aluguer internacional',
+  'Reservado',
+  'Enviado',
+  'Prep-Logística',
+  'Prep-Técnico',
+  'Peças',
+]
+
+// Verdadeiro quando o estado significa que o equipamento SAIU da empresa
+// (vendido, enviado, perdido, consignação…) — nesses casos marca-se a data de
+// saída. Os estados "em casa" (stock, reservado, preparação, peças, aluguer,
+// a verificar) ficam a falso.
+export function saiuDaEmpresa(status: string | null | undefined): boolean {
+  const t = (status ?? '').toLowerCase().trim()
+  if (!t) return false
+  const emCasa = ['stock', 'reserv', 'prep', 'peça', 'peca', 'verificar', 'aluguer', 'invent']
+  return !emCasa.some((k) => t.includes(k))
+}
+
 export type CorStatus = { fg: string; bg: string }
 
 const PALETA = {
