@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { STATUS_OFICIAIS, saiuDaEmpresa } from './statusEquipamento'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SITUAÇÃO ATUAL DOS ALUGUERES
@@ -311,20 +312,42 @@ export async function colocarEmAluguer(input: NovoAluguerInput, autor: Autor) {
   return { error: r.error ?? null }
 }
 
-// Termina o aluguer. Devolve o equipamento a "Em stock", remove a ficha e FECHA
-// as entradas em aberto na tabela `alugueres` (data_recolha = hoje), preservando
-// o histórico para a rentabilidade — tal como a "Registar recolha".
-export async function terminarAluguer(equipamentoId: string, dataRecolha?: string) {
-  const up = await supabase.from('equipamentos').update({ status: STATUS_EM_STOCK }).eq('id', equipamentoId)
+// Tira o equipamento dos alugueres. Põe o ESTADO escolhido (por defeito "Em
+// stock"; pode ser Vendido, Enviado, Perdido…), remove a ficha da Situação atual
+// e FECHA as entradas em aberto na tabela `alugueres` (data_recolha = hoje),
+// preservando o histórico para a rentabilidade — tal como a "Registar recolha".
+// Se o estado significar que o equipamento SAIU da empresa, marca a data de saída.
+export async function terminarAluguer(
+  equipamentoId: string,
+  opts: { novoStatus?: string; dataRecolha?: string } = {}
+) {
+  const hoje = new Date().toISOString().slice(0, 10)
+  const novoStatus = (opts.novoStatus ?? '').trim() || STATUS_EM_STOCK
+  const patch: Record<string, unknown> = { status: novoStatus }
+  if (saiuDaEmpresa(novoStatus)) patch.data_saida = opts.dataRecolha || hoje
+
+  const up = await supabase.from('equipamentos').update(patch).eq('id', equipamentoId)
   if (up.error) return { error: up.error }
   const del = await apagarFichaSituacao(equipamentoId)
   if (del.error) return { error: del.error }
-  const hoje = new Date().toISOString().slice(0, 10)
   const r = await supabase.from('alugueres')
-    .update({ data_recolha: dataRecolha || hoje, updated_at: new Date().toISOString() })
+    .update({ data_recolha: opts.dataRecolha || hoje, updated_at: new Date().toISOString() })
     .eq('equipamento_id', equipamentoId)
     .is('data_recolha', null)
   return { error: r.error ?? null }
+}
+
+// Estados sugeridos como destino ao tirar dos alugueres (oficiais menos os de
+// aluguer + os que já existem nos dados). "Em stock" fica em primeiro.
+export async function listarEstadosDestino(): Promise<string[]> {
+  const { data } = await supabase.from('equipamentos').select('status')
+  const existentes = new Set<string>()
+  for (const r of (data as { status: string | null }[]) ?? []) {
+    if (r.status) existentes.add(r.status)
+  }
+  const base = STATUS_OFICIAIS.filter((s) => s !== STATUS_ALUGUER_NAC && s !== STATUS_ALUGUER_INT)
+  const extra = [...existentes].filter((s) => s !== STATUS_ALUGUER_NAC && s !== STATUS_ALUGUER_INT && !base.includes(s))
+  return [...base, ...extra.sort((a, b) => a.localeCompare(b, 'pt'))]
 }
 
 // ── Helpers de datas ────────────────────────────────────────────────────────

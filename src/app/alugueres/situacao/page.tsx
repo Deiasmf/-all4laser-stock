@@ -7,10 +7,11 @@ import AlugueresNav from '@/components/AlugueresNav'
 import BotaoExportar from '@/components/BotaoExportar'
 import type { ColunaExport } from '@/lib/exportar'
 import { formatarEuro } from '@/lib/alugueres'
+import { saiuDaEmpresa } from '@/lib/statusEquipamento'
 import { listarClientesPicker, type EntidadeOpc } from '@/lib/contasCorrentes'
 import {
   carregarSituacaoAlugueres, carregarDisponiveis, guardarFichaSituacao, apagarFichaSituacao,
-  procurarEquipamentosEmStock, colocarEmAluguer, terminarAluguer, propagarPack, totalMensalComPacks,
+  procurarEquipamentosEmStock, colocarEmAluguer, terminarAluguer, listarEstadosDestino, propagarPack, totalMensalComPacks,
   STATUS_ALUGUER_NAC, STATUS_ALUGUER_INT,
   classificar, inicioEfetivo, duracaoTexto, diasAte, alertaDe,
   type SituacaoAluguer, type Disponiveis, type EquipDisponivel, type FichaPatch, type Mercado, type EquipEmStock,
@@ -488,8 +489,13 @@ function ModalFicha({ situacao, packsExistentes, zonasExistentes, onFechar, onGu
   const [notas, setNotas] = useState(situacao.notas ?? '')
   const [aGuardar, setAGuardar] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+  // "Tirar dos alugueres": escolha do destino (estado do equipamento).
+  const [terminando, setTerminando] = useState(false)
+  const [destino, setDestino] = useState('Em stock')
+  const [estadosDestino, setEstadosDestino] = useState<string[]>(['Em stock'])
 
   useEffect(() => { listarClientesPicker().then(setClientes) }, [])
+  useEffect(() => { listarEstadosDestino().then(setEstadosDestino) }, [])
 
   // Ao escrever/escolher o nome, tenta ligar a um cliente existente.
   function aoMudarCliente(nome: string) {
@@ -560,14 +566,12 @@ function ModalFicha({ situacao, packsExistentes, zonasExistentes, onFechar, onGu
     })
   }
 
-  async function terminar() {
-    const nome = [situacao.marca, situacao.modelo].filter(Boolean).join(' ') || 'este equipamento'
-    if (!window.confirm(`Terminar o aluguer de ${nome} (${situacao.serial_number ?? '—'})?\n\nO equipamento volta a "Em stock" (fica disponível para alugar), a ficha é removida e a recolha fica registada (data de hoje) na Lista / rentabilidade.`)) return
+  async function confirmarTerminar() {
     setErro(null)
     setAGuardar(true)
-    const r = await terminarAluguer(situacao.equipamento_id)
+    const r = await terminarAluguer(situacao.equipamento_id, { novoStatus: destino })
     setAGuardar(false)
-    if (r?.error) return setErro('Erro ao terminar: ' + r.error.message)
+    if (r?.error) return setErro('Erro ao tirar dos alugueres: ' + r.error.message)
     onTerminado()
   }
 
@@ -650,14 +654,37 @@ function ModalFicha({ situacao, packsExistentes, zonasExistentes, onFechar, onGu
           <Link href="/alugueres/equipamento" style={c.linkCruzado}>Rentabilidade acumulada →</Link>
         </div>
 
-        <div style={c.modalAcoes}>
-          <div style={c.modalAcoesEsq}>
-            <button onClick={terminar} disabled={aGuardar} style={c.btnGhostDanger}>Terminar aluguer</button>
-            {situacao.situacao_id && <button onClick={limpar} disabled={aGuardar} style={c.btnGhost}>Limpar</button>}
+        {terminando ? (
+          <div style={c.terminarPainel}>
+            <div style={c.terminarTitulo}>Tirar dos alugueres — para onde vai o equipamento?</div>
+            <label style={c.label}>Novo estado do equipamento</label>
+            <input style={c.input} list="estados-destino" value={destino} onChange={(e) => setDestino(e.target.value)}
+              placeholder="Ex.: Em stock, Vendido, Enviado…" />
+            <datalist id="estados-destino">
+              {estadosDestino.map((s) => <option key={s} value={s} />)}
+            </datalist>
+            <span style={c.notaLigacao}>
+              {saiuDaEmpresa(destino)
+                ? 'Sai da frota: fica com este estado e marca-se a data de saída (hoje). A ficha é removida e a recolha registada na Lista/rentabilidade.'
+                : 'Fica “em casa” com este estado. A ficha é removida e a recolha registada na Lista/rentabilidade.'}
+            </span>
+            <div style={c.modalAcoes}>
+              <button onClick={() => setTerminando(false)} disabled={aGuardar} style={c.btnGhost}>Voltar</button>
+              <button onClick={confirmarTerminar} disabled={aGuardar || !destino.trim()} style={c.btnGhostDanger}>
+                {aGuardar ? 'A processar...' : 'Confirmar saída dos alugueres'}
+              </button>
+            </div>
           </div>
-          <button onClick={onFechar} style={c.btnGhost}>Cancelar</button>
-          <button onClick={guardar} disabled={aGuardar} style={c.btnPrimario}>{aGuardar ? 'A guardar...' : 'Guardar'}</button>
-        </div>
+        ) : (
+          <div style={c.modalAcoes}>
+            <div style={c.modalAcoesEsq}>
+              <button onClick={() => setTerminando(true)} disabled={aGuardar} style={c.btnGhostDanger}>Tirar dos alugueres</button>
+              {situacao.situacao_id && <button onClick={limpar} disabled={aGuardar} style={c.btnGhost}>Limpar</button>}
+            </div>
+            <button onClick={onFechar} style={c.btnGhost}>Cancelar</button>
+            <button onClick={guardar} disabled={aGuardar} style={c.btnPrimario}>{aGuardar ? 'A guardar...' : 'Guardar'}</button>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -882,6 +909,8 @@ const c: Record<string, React.CSSProperties> = {
   cab: { fontWeight: 700, color: 'var(--muted)', fontSize: 12, borderBottom: '2px solid var(--border)' },
   linhaClicavel: { cursor: 'pointer' },
   linhaTerminar: { background: '#FFFBEB' },
+  terminarPainel: { marginTop: 12, padding: 12, border: '1px solid #FCA5A5', background: '#FEF2F2', borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 6 },
+  terminarTitulo: { fontWeight: 700, color: '#B91C1C', fontSize: 14 },
   linhaVencido: { background: '#FEF2F2' },
   equip: { display: 'flex', flexDirection: 'column', minWidth: 0 },
   equipSn: { fontWeight: 700 },
