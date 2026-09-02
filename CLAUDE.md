@@ -59,8 +59,10 @@ Fluxo completo do documento, desde a importação até à comissão do técnico.
   liquidação manual sem dupla contagem — ver `alocarFaturas`.
 - **Pedidos de Pagamento** (`/financeiro/pedidos-pagamento`): tudo o que está por
   receber, com envio do pedido ao cliente — manual (1 clique) ou automático por
-  documento (`lembretes_auto`) com cadência em `financeiro_config`. Cron nos dias
-  úteis `/api/financeiro/pedidos-pagamento` (CRON_SECRET; `?dryrun=1` para testar).
+  documento (`lembretes_auto`) com cadência em `financeiro_config`. O cron vive em
+  GitHub Actions (`.github/workflows/pedidos-pagamento.yml`, dias úteis às 10:00
+  UTC — o plano Hobby da Vercel limita os crons), a chamar
+  `/api/financeiro/pedidos-pagamento` com CRON_SECRET; `?dryrun=1` para testar.
   Histórico em `financeiro_pedidos_pagamento` — **não** confundir com
   `financeiro_cobrancas`, que é do módulo Recolhas (acompanhamento manual por estado).
 - **Comissões** (`/tecnico/comissoes`): as faturas de cliente com categoria
