@@ -11,6 +11,7 @@ export type FiltrosDoc = {
   texto: string // nº do documento ou nome da entidade
   entidade_tipo: '' | EntidadeTipo
   tipo_documento: '' | TipoDocumento
+  categoria: '' | 'sem' | string // '' = todas; 'sem' = sem categoria; senão id da categoria/subcategoria
   origem: '' | 'manual' | 'keyinvoice'
   ficheiro: '' | 'com' | 'sem'
   de: string
@@ -18,7 +19,7 @@ export type FiltrosDoc = {
 }
 
 export const FILTROS_VAZIOS: FiltrosDoc = {
-  texto: '', entidade_tipo: '', tipo_documento: '', origem: '', ficheiro: '', de: '', ate: '',
+  texto: '', entidade_tipo: '', tipo_documento: '', categoria: '', origem: '', ficheiro: '', de: '', ate: '',
 }
 
 // Lista os documentos (movimentos) já filtrados na BD sempre que possível.
@@ -31,6 +32,8 @@ export async function listarDocumentos(f: FiltrosDoc): Promise<MovimentoCC[]> {
 
   if (f.entidade_tipo) q = q.eq('entidade_tipo', f.entidade_tipo)
   if (f.tipo_documento) q = q.eq('tipo_documento', f.tipo_documento)
+  if (f.categoria === 'sem') q = q.is('categoria_id', null)
+  else if (f.categoria) q = q.or(`categoria_id.eq.${f.categoria},subcategoria_id.eq.${f.categoria}`)
   if (f.origem) q = q.eq('origem', f.origem)
   if (f.de) q = q.gte('data_documento', f.de)
   if (f.ate) q = q.lte('data_documento', f.ate)
@@ -48,6 +51,68 @@ export async function listarDocumentos(f: FiltrosDoc): Promise<MovimentoCC[]> {
     )
   }
   return linhas
+}
+
+// ─── Totais do filtro ativo ───────────────────────────────────────────────────
+
+export type TotaisDoc = { n: number; faturado: number; creditado: number }
+
+// Soma os débitos (faturas) e os créditos (recibos/NC/pagamentos) da lista.
+export function totaisDocumentos(docs: MovimentoCC[]): TotaisDoc {
+  return docs.reduce(
+    (t, m) => ({
+      n: t.n + 1,
+      faturado: t.faturado + (m.valor_debito || 0),
+      creditado: t.creditado + (m.valor_credito || 0),
+    }),
+    { n: 0, faturado: 0, creditado: 0 }
+  )
+}
+
+// ─── Export CSV (do filtro ativo) ─────────────────────────────────────────────
+
+const LABEL_TIPO_CSV: Record<string, string> = {
+  fatura: 'Fatura', nota_credito: 'Nota de crédito', recibo: 'Recibo',
+  pagamento: 'Pagamento', adiantamento: 'Adiantamento',
+}
+
+function csvCampo(v: string | number | null | undefined): string {
+  const s = v == null ? '' : String(v)
+  return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+}
+
+// Gera o CSV dos documentos (usa o mapa id→nome de categorias para a coluna).
+export function exportarDocumentosCsv(docs: MovimentoCC[], nomesCategoria: Map<string, string>): string {
+  const cab = ['Data', 'Tipo', 'Nº documento', 'Entidade', 'Tipo entidade', 'NIF', 'Categoria', 'Descrição', 'Vencimento', 'Débito', 'Crédito', 'Estado', 'Origem']
+  const linhas = docs.map((m) => [
+    m.data_documento ?? '',
+    LABEL_TIPO_CSV[m.tipo_documento] ?? m.tipo_documento,
+    m.documento_ref ?? '',
+    m.entidade_nome ?? '',
+    m.entidade_tipo,
+    '',
+    m.categoria_id ? nomesCategoria.get(m.subcategoria_id ?? m.categoria_id) ?? nomesCategoria.get(m.categoria_id) ?? '' : '',
+    m.descricao ?? '',
+    m.data_vencimento ?? '',
+    String(m.valor_debito ?? 0).replace('.', ','),
+    String(m.valor_credito ?? 0).replace('.', ','),
+    m.estado,
+    m.origem,
+  ])
+  return [cab, ...linhas].map((r) => r.map(csvCampo).join(';')).join('\r\n')
+}
+
+// Descarrega uma string CSV como ficheiro (com BOM para o Excel abrir bem os acentos).
+export function descarregarCsv(conteudo: string, nomeFicheiro: string) {
+  const blob = new Blob(['﻿' + conteudo], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = nomeFicheiro
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
 }
 
 function nomeSeguro(nome: string) {

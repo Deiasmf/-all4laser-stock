@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { tipoDocInfo, type EntidadeTipo, type TipoDocumento } from './contasCorrentes'
+import { listarRegras, aplicarRegras } from './categoriasFinanceiras'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sincronização Keyinvoice → Contas Correntes (por importação de ficheiro).
@@ -26,6 +27,7 @@ export type DocKeyinvoice = {
   data_documento: string
   data_vencimento: string | null
   valor: number
+  descricao?: string | null
 }
 
 export type LinhaImport = DocKeyinvoice & {
@@ -33,6 +35,8 @@ export type LinhaImport = DocKeyinvoice & {
   fornecedor_id: string | null
   associada: boolean
   jaImportada: boolean
+  categoria_id: string | null
+  subcategoria_id: string | null
   erro: string | null
 }
 
@@ -216,17 +220,21 @@ export async function processar(docs: DocKeyinvoice[]): Promise<LinhaImport[]> {
   const idxCli = indexar(clientes)
   const idxForn = indexar(fornecedores)
   const jaLa = await jaImportados(docs.map((d) => d.keyinvoice_doc_id))
+  const regras = await listarRegras()
 
   return docs.map((d) => {
     const idx = d.entidade_tipo === 'cliente' ? idxCli : idxForn
     const nif = normalizarNif(d.nif).toLowerCase()
     const entId = (nif && idx.porNif.get(nif)) || idx.porNome.get(normalizar(d.nome)) || null
+    const cat = aplicarRegras(regras, { descricao: d.descricao, documento_ref: d.numero, entidade_nome: d.nome })
     return {
       ...d,
       cliente_id: d.entidade_tipo === 'cliente' ? entId : null,
       fornecedor_id: d.entidade_tipo === 'fornecedor' ? entId : null,
       associada: !!entId,
       jaImportada: jaLa.has(d.keyinvoice_doc_id),
+      categoria_id: cat?.categoria_id ?? null,
+      subcategoria_id: cat?.subcategoria_id ?? null,
       erro: null,
     }
   })
@@ -254,6 +262,8 @@ export async function importar(
   const associadas = linhas.filter((l) => l.associada && !l.erro)
   const semEntidade = linhas.filter((l) => !l.associada && !l.erro).length
 
+  // Campos partilhados (valores/datas/descrição). A categoria NÃO entra aqui para
+  // não sobrepor a categorização manual ao atualizar documentos já existentes.
   const campos = (l: LinhaImport) => {
     const sentido = tipoDocInfo(l.tipo_documento).sentido
     return {
@@ -265,15 +275,24 @@ export async function importar(
       documento_ref: l.numero,
       data_documento: l.data_documento,
       data_vencimento: l.data_vencimento,
+      descricao: l.descricao ?? null,
       valor_debito: sentido === 'debito' ? l.valor : 0,
       valor_credito: sentido === 'credito' ? l.valor : 0,
     }
   }
 
-  // Novos (dedup no lote) → insert.
+  // Novos (dedup no lote) → insert (com a categoria das regras automáticas).
   const vistos = new Set<string>()
   const novos = associadas.filter((l) => !l.jaImportada && (vistos.has(l.keyinvoice_doc_id) ? false : (vistos.add(l.keyinvoice_doc_id), true)))
-  const rows = novos.map((l) => ({ ...campos(l), origem: 'keyinvoice' as const, keyinvoice_doc_id: l.keyinvoice_doc_id, criado_por: utilizador.id, criado_por_nome: utilizador.nome }))
+  const rows = novos.map((l) => ({
+    ...campos(l),
+    categoria_id: l.categoria_id,
+    subcategoria_id: l.subcategoria_id,
+    origem: 'keyinvoice' as const,
+    keyinvoice_doc_id: l.keyinvoice_doc_id,
+    criado_por: utilizador.id,
+    criado_por_nome: utilizador.nome,
+  }))
 
   // Existentes → update (refresca o pendente/valor e datas).
   const existentes = associadas.filter((l) => l.jaImportada)

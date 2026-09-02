@@ -47,6 +47,9 @@ export type MovimentoCC = {
   valor_liquidado: number
   estado: EstadoMov
   notas: string | null
+  descricao: string | null
+  categoria_id: string | null
+  subcategoria_id: string | null
   origem: OrigemMov
   keyinvoice_doc_id: string | null
   ficheiro_caminho: string | null
