@@ -19,10 +19,17 @@ export default function KeyinvoicePage() {
   const [aImportar, setAImportar] = useState(false)
   const [resultado, setResultado] = useState<ResultadoImport | null>(null)
   const [syncs, setSyncs] = useState<SyncRun[]>([])
+  const [api, setApi] = useState<{ configurada: boolean } | null>(null)
 
   const carregarSyncs = useCallback(async () => { setSyncs(await listarSyncs()) }, [])
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { carregarSyncs() }, [carregarSyncs])
+  useEffect(() => {
+    fetch('/api/financeiro/keyinvoice/status')
+      .then((r) => r.json())
+      .then((d) => setApi({ configurada: !!d.configurada }))
+      .catch(() => setApi({ configurada: false }))
+  }, [])
 
   const contagens = useMemo(() => ({
     total: linhas.length,
@@ -72,6 +79,23 @@ export default function KeyinvoicePage() {
         </div>
       </div>
 
+      {/* Estado da ligação à API */}
+      <section style={{ ...c.card, ...c.apiCard }}>
+        <div>
+          <div style={c.cardTitulo}>Sincronização automática (API)</div>
+          <p style={c.nota}>
+            {api == null
+              ? 'A verificar a configuração da API…'
+              : api.configurada
+                ? 'A chave da API está configurada no servidor. Falta ligar os métodos da API do Keyinvoice para ativar a sincronização automática.'
+                : 'Ainda sem chave de API configurada no servidor. Por agora usa a importação por ficheiro abaixo.'}
+          </p>
+        </div>
+        <span style={{ ...c.apiBadge, ...(api?.configurada ? c.apiOn : c.apiOff) }}>
+          {api == null ? '…' : api.configurada ? '✓ API configurada' : '○ API por configurar'}
+        </span>
+      </section>
+
       {/* Instruções */}
       <section style={c.card}>
         <div style={c.cardTitulo}>Como importar</div>
@@ -94,7 +118,7 @@ export default function KeyinvoicePage() {
           Cada documento é associado ao cliente e classificado por natureza (serviço técnico · aluguer · venda · outro).
           As <strong>pró-formas</strong> entram no extrato mas não contam para o saldo. As faturas de <strong>serviço técnico</strong>
           seguem automaticamente para <a href="/tecnico/comissoes" style={{ color: 'var(--primary)' }}>Técnico → Comissões</a>.
-          A ligação automática à API do Keyinvoice fica para quando houver chave de acesso — o pipeline (associação, idempotência) é o mesmo.
+          A sincronização automática por API é indicada em cima — quando estiver ativa, usará o mesmo pipeline (associação, idempotência).
         </p>
       </section>
 
@@ -242,6 +266,10 @@ const c: Record<string, React.CSSProperties> = {
   code: { background: '#f1f2f5', padding: '2px 6px', borderRadius: 6, fontSize: 12 },
   acoesTopo: { display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 4 },
   aviso2: { fontSize: 12.5, color: 'var(--muted)', background: '#F9FAFB', border: '1px dashed var(--border)', borderRadius: 8, padding: '8px 10px', margin: 0 },
+  apiCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
+  apiBadge: { fontSize: 12.5, fontWeight: 700, borderRadius: 999, padding: '5px 12px', whiteSpace: 'nowrap' },
+  apiOn: { color: '#065F46', background: '#D1FAE5' },
+  apiOff: { color: '#92400E', background: '#FEF3C7' },
   textarea: { width: '100%', minHeight: 120, padding: 12, border: '1px solid var(--border)', borderRadius: 8, font: '13px monospace', boxSizing: 'border-box', resize: 'vertical' },
   erros: { margin: 0, paddingLeft: 18, fontSize: 13, color: '#B91C1C', display: 'flex', flexDirection: 'column', gap: 2 },
   resumo: { display: 'flex', gap: 8, flexWrap: 'wrap' },
