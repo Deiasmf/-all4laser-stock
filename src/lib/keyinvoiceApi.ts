@@ -70,3 +70,40 @@ export type EmpresaKI = {
 export function obterEmpresa(): Promise<EmpresaKI> {
   return chamar<EmpresaKI>('company')
 }
+
+// ─── Documentos ────────────────────────────────────────────────────────────────
+
+export type DocListItem = {
+  DocType?: number | string
+  DocSeries?: number | string
+  DocNum?: number | string
+  Date?: string
+  IdClient?: number | string
+  VATIN?: string
+  ClientName?: string
+  GrossTotal?: number | string
+}
+
+// Lista 100 documentos do tipo indicado a partir de `offset`.
+export async function listarDocumentos(docType: number, offset = 0): Promise<DocListItem[]> {
+  const data = await chamar<{ Documents?: DocListItem[] }>('documentsList', {
+    DocType: String(docType),
+    Offset: String(offset),
+  })
+  return data?.Documents ?? []
+}
+
+// Valor ainda pendente de um documento (0 = totalmente liquidado). null se indeterminado.
+export async function valorPendente(
+  docType: number | string,
+  docNum: number | string,
+  docSeries?: number | string
+): Promise<number | null> {
+  const data = await chamar<{ Value?: number | string }>('checkIfSettle', {
+    DocType: String(docType),
+    DocNum: String(docNum),
+    ...(docSeries != null && docSeries !== '' ? { DocSeries: String(docSeries) } : {}),
+  })
+  const v = Number(data?.Value)
+  return isNaN(v) ? null : v
+}
