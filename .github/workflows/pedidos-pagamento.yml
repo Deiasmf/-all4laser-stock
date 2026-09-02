@@ -1,0 +1,24 @@
+name: Pedidos de pagamento (contas correntes)
+
+# Envia aos clientes os pedidos de pagamento em aberto, nos dias úteis às 10:00
+# UTC. Fica aqui e não em vercel.json porque o plano Hobby da Vercel limita o
+# número/frequência de crons — mesma solução do leads-ingest.
+#
+# A rota só envia aos documentos com os lembretes automáticos LIGADOS e respeita
+# a cadência configurada no Financeiro, por isso corridas repetidas não geram
+# emails a mais. Para testar sem enviar nada: acrescentar &dryrun=1 ao URL.
+
+on:
+  schedule:
+    - cron: '0 10 * * 1-5'
+  workflow_dispatch: {}
+
+jobs:
+  pedidos:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar endpoint de pedidos de pagamento
+        run: |
+          curl -sS --fail-with-body --max-time 115 \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://all4laser-stock.vercel.app/api/financeiro/pedidos-pagamento"

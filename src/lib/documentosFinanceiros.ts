@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import type { MovimentoCC, EntidadeTipo, TipoDocumento } from './contasCorrentes'
+import type { CategoriaDoc } from './categorizacaoFinanceira'
 
 // Documentos financeiros = os movimentos (faturas/recibos/notas de crédito/…),
 // numa vista centrada no documento, com o PDF anexo. Bucket privado; o acesso é
@@ -11,6 +12,9 @@ export type FiltrosDoc = {
   texto: string // nº do documento ou nome da entidade
   entidade_tipo: '' | EntidadeTipo
   tipo_documento: '' | TipoDocumento
+  categoria: '' | CategoriaDoc | 'por_classificar'
+  // Confirmação de pagamento no próprio documento (o campo de pagamento).
+  pagamento: '' | 'pago' | 'por_confirmar'
   origem: '' | 'manual' | 'keyinvoice'
   ficheiro: '' | 'com' | 'sem'
   de: string
@@ -18,7 +22,8 @@ export type FiltrosDoc = {
 }
 
 export const FILTROS_VAZIOS: FiltrosDoc = {
-  texto: '', entidade_tipo: '', tipo_documento: '', origem: '', ficheiro: '', de: '', ate: '',
+  texto: '', entidade_tipo: '', tipo_documento: '', categoria: '', pagamento: '',
+  origem: '', ficheiro: '', de: '', ate: '',
 }
 
 // Lista os documentos (movimentos) já filtrados na BD sempre que possível.
@@ -31,6 +36,10 @@ export async function listarDocumentos(f: FiltrosDoc): Promise<MovimentoCC[]> {
 
   if (f.entidade_tipo) q = q.eq('entidade_tipo', f.entidade_tipo)
   if (f.tipo_documento) q = q.eq('tipo_documento', f.tipo_documento)
+  if (f.categoria === 'por_classificar') q = q.is('categoria', null)
+  else if (f.categoria) q = q.eq('categoria', f.categoria)
+  if (f.pagamento === 'pago') q = q.eq('estado', 'liquidado')
+  else if (f.pagamento === 'por_confirmar') q = q.neq('estado', 'liquidado')
   if (f.origem) q = q.eq('origem', f.origem)
   if (f.de) q = q.gte('data_documento', f.de)
   if (f.ate) q = q.lte('data_documento', f.ate)

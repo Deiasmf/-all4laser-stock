@@ -58,6 +58,7 @@ const NAV: Seccao[] = [
           { href: '/tecnico/folhas-obra', label: 'Folhas de obra', icon: '📝' },
           { href: '/tecnico/preparacao', label: 'Em preparação', icon: '🔧' },
           { href: '/tecnico/pecas-em-falta', label: 'Peças em falta', icon: '🔩' },
+          { href: '/tecnico/comissoes', label: 'Comissões', icon: '💰' },
         ],
       },
       {
@@ -109,6 +110,7 @@ const TITULOS: { prefixo: string; titulo: string }[] = [
   { prefixo: '/admin-dept', titulo: 'Administrativo' },
   { prefixo: '/financeiro/contas-correntes', titulo: 'Contas Correntes' },
   { prefixo: '/financeiro/keyinvoice', titulo: 'Keyinvoice' },
+  { prefixo: '/financeiro/pedidos-pagamento', titulo: 'Pedidos de Pagamento' },
   { prefixo: '/financeiro/documentos', titulo: 'Documentos' },
   { prefixo: '/financeiro/cofre', titulo: 'Cofre de Documentos' },
   { prefixo: '/financeiro/alertas', titulo: 'Alertas' },
@@ -124,6 +126,7 @@ const TITULOS: { prefixo: string; titulo: string }[] = [
   { prefixo: '/comercial/leads', titulo: 'Leads' },
   { prefixo: '/comercial', titulo: 'Comercial' },
   { prefixo: '/marketing', titulo: 'Marketing' },
+  { prefixo: '/tecnico/comissoes', titulo: 'Comissões' },
   { prefixo: '/tecnico/preparacao', titulo: 'Em Preparação Técnica' },
   { prefixo: '/tecnico/pecas-em-falta', titulo: 'Peças em Falta' },
   { prefixo: '/tecnico', titulo: 'Técnico' },

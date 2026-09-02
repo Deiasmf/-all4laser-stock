@@ -1,19 +1,24 @@
 import { supabase } from './supabase'
 import { formatarEuro } from '@/types/envioPecas'
+import { categorizar, type CategoriaDoc } from './categorizacaoFinanceira'
 
 export { formatarEuro }
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
 export type EntidadeTipo = 'cliente' | 'fornecedor'
-export type TipoDocumento = 'fatura' | 'nota_credito' | 'recibo' | 'pagamento' | 'adiantamento'
+export type TipoDocumento =
+  | 'fatura' | 'pro_forma' | 'nota_credito' | 'recibo' | 'pagamento' | 'adiantamento'
 export type EstadoMov = 'pendente' | 'parcial' | 'liquidado'
 export type OrigemMov = 'manual' | 'keyinvoice'
 
 // Convenção: 'fatura' aumenta o saldo (débito); os restantes reduzem (crédito).
 // Saldo da entidade = Σdébito − Σcrédito → cliente>0 a receber; fornecedor>0 a pagar.
+// A pró-forma é a exceção: guarda-se o valor no débito, mas NÃO conta para o
+// saldo (não é documento fiscal — é uma proposta que pode nunca ser faturada).
 export const TIPOS_DOCUMENTO: { valor: TipoDocumento; label: string; sentido: 'debito' | 'credito' }[] = [
   { valor: 'fatura', label: 'Fatura', sentido: 'debito' },
+  { valor: 'pro_forma', label: 'Pró-forma', sentido: 'debito' },
   { valor: 'nota_credito', label: 'Nota de crédito', sentido: 'credito' },
   { valor: 'recibo', label: 'Recibo', sentido: 'credito' },
   { valor: 'pagamento', label: 'Pagamento', sentido: 'credito' },
@@ -47,6 +52,14 @@ export type MovimentoCC = {
   valor_liquidado: number
   estado: EstadoMov
   notas: string | null
+  descricao: string | null
+  categoria: CategoriaDoc | null      // null = por classificar
+  categoria_manual: boolean           // true = definida à mão (a reimportação respeita)
+  data_pagamento: string | null
+  metodo_pagamento: string | null
+  afeta_saldo: boolean                // false nas pró-formas
+  lembretes_auto: boolean             // pedidos de pagamento automáticos ligados
+  lembrete_ultimo: string | null
   origem: OrigemMov
   keyinvoice_doc_id: string | null
   ficheiro_caminho: string | null
@@ -59,6 +72,11 @@ export type MovimentoCC = {
 
 export function entidadeIdDe(m: MovimentoCC): string | null {
   return m.entidade_tipo === 'cliente' ? m.cliente_id : m.fornecedor_id
+}
+
+// A pró-forma aparece no extrato mas não mexe no saldo nem no aging.
+export function contaParaSaldo(m: MovimentoCC): boolean {
+  return m.tipo_documento !== 'pro_forma' && m.afeta_saldo !== false
 }
 
 // ─── Leitura / escrita ───────────────────────────────────────────────────────
@@ -97,6 +115,8 @@ export type MovimentoInput = {
   data_vencimento: string | null
   valor: number // valor único; débito/crédito derivam do tipo de documento
   notas: string | null
+  descricao?: string | null
+  categoria?: CategoriaDoc | null
 }
 
 export async function criarMovimento(
@@ -119,6 +139,9 @@ export async function criarMovimento(
     criado_por: criadoPor.id,
     criado_por_nome: criadoPor.nome,
     notas: input.notas?.trim() || null,
+    descricao: input.descricao?.trim() || null,
+    categoria: input.categoria ?? categorizar(input.descricao, input.documento_ref, input.notas),
+    categoria_manual: !!input.categoria,
   }
   return supabase.from('financeiro_movimentos').insert(linha).select().single()
 }
@@ -156,7 +179,8 @@ function agruparPorEntidade(movs: MovimentoCC[]): Map<string, MovimentoCC[]> {
 export type AlocFatura = { liquidado: number; porLiquidar: number; estado: EstadoMov }
 
 export function alocarFaturas(movsEntidade: MovimentoCC[]): Map<string, AlocFatura> {
-  const faturas = movsEntidade
+  const movs = movsEntidade.filter(contaParaSaldo)
+  const faturas = movs
     .filter((m) => m.tipo_documento === 'fatura')
     .slice()
     .sort((a, b) =>
@@ -164,14 +188,18 @@ export function alocarFaturas(movsEntidade: MovimentoCC[]): Map<string, AlocFatu
       : a.data_documento > b.data_documento ? 1
       : a.created_at < b.created_at ? -1 : 1
     )
-  let pool = movsEntidade.reduce((s, m) => s + (m.tipo_documento === 'fatura' ? 0 : m.valor_credito), 0)
+  let pool = movs.reduce((s, m) => s + (m.tipo_documento === 'fatura' ? 0 : m.valor_credito), 0)
   const out = new Map<string, AlocFatura>()
   for (const f of faturas) {
-    const aloc = Math.min(pool, f.valor_debito)
+    // Liquidação confirmada à mão na própria fatura (campo de pagamento);
+    // o que sobrar é coberto pelos créditos por ordem cronológica.
+    const manual = Math.min(Math.max(0, f.valor_liquidado ?? 0), f.valor_debito)
+    const aloc = Math.min(pool, Math.max(0, f.valor_debito - manual))
     pool -= aloc
-    const porLiq = Math.max(0, f.valor_debito - aloc)
-    const estado: EstadoMov = aloc <= 0 ? 'pendente' : porLiq <= 0 ? 'liquidado' : 'parcial'
-    out.set(f.id, { liquidado: aloc, porLiquidar: porLiq, estado })
+    const liquidado = manual + aloc
+    const porLiq = Math.max(0, f.valor_debito - liquidado)
+    const estado: EstadoMov = liquidado <= 0 ? 'pendente' : porLiq <= 0 ? 'liquidado' : 'parcial'
+    out.set(f.id, { liquidado, porLiquidar: porLiq, estado })
   }
   return out
 }
@@ -192,7 +220,7 @@ export function resumoEntidades(movs: MovimentoCC[], hoje = hojeISO()): ResumoEn
     const tipo = ms[0].entidade_tipo
     const id = entidadeIdDe(ms[0]) as string
     const nome = ms.find((m) => m.entidade_nome)?.entidade_nome ?? '—'
-    const saldo = ms.reduce((s, m) => s + m.valor_debito - m.valor_credito, 0)
+    const saldo = ms.filter(contaParaSaldo).reduce((s, m) => s + m.valor_debito - m.valor_credito, 0)
     const aloc = alocarFaturas(ms)
     let vencido = 0
     let pendentes = 0
@@ -271,10 +299,63 @@ export function extrato(movs: MovimentoCC[]): LinhaExtrato[] {
   const aloc = alocarFaturas(movs)
   let acc = 0
   return movs.map((m) => {
-    acc += m.valor_debito - m.valor_credito
+    if (contaParaSaldo(m)) acc += m.valor_debito - m.valor_credito
+    if (m.tipo_documento === 'pro_forma') {
+      // Fora do saldo: o estado é o do próprio documento (pagamento confirmado à mão).
+      const porLiq = Math.max(0, m.valor_debito - (m.valor_liquidado ?? 0))
+      return { ...m, saldoAcumulado: acc, estadoCalc: m.estado, porLiquidarCalc: porLiq }
+    }
     const a = m.tipo_documento === 'fatura' ? aloc.get(m.id) ?? null : null
     return { ...m, saldoAcumulado: acc, estadoCalc: a ? a.estado : null, porLiquidarCalc: a ? a.porLiquidar : 0 }
   })
+}
+
+// ─── Pagamento, classificação e lembretes (escrita pontual) ──────────────────
+
+// Confirma o pagamento total de uma fatura/pró-forma: liquida o valor do
+// documento e regista a data/método. O trigger da BD acerta o estado.
+export async function marcarPago(
+  m: MovimentoCC,
+  opts: { data?: string | null; metodo?: string | null } = {}
+) {
+  return supabase
+    .from('financeiro_movimentos')
+    .update({
+      valor_liquidado: m.valor_debito,
+      data_pagamento: opts.data || hojeISO(),
+      metodo_pagamento: opts.metodo?.trim() || null,
+    })
+    .eq('id', m.id)
+}
+
+// Retira a confirmação de pagamento (volta a pendente/parcial pela alocação).
+export async function marcarPorPagar(id: string) {
+  return supabase
+    .from('financeiro_movimentos')
+    .update({ valor_liquidado: 0, data_pagamento: null, metodo_pagamento: null })
+    .eq('id', id)
+}
+
+// Liquidação parcial (ex.: pagamento a conta confirmado no banco).
+export async function registarLiquidacaoParcial(id: string, valor: number) {
+  return supabase
+    .from('financeiro_movimentos')
+    .update({ valor_liquidado: Math.max(0, valor), data_pagamento: hojeISO() })
+    .eq('id', id)
+}
+
+// Classificação à mão: fixa a categoria para a reimportação não a sobrepor.
+export async function definirCategoria(id: string, categoria: CategoriaDoc | null) {
+  return supabase
+    .from('financeiro_movimentos')
+    .update({ categoria, categoria_manual: categoria !== null })
+    .eq('id', id)
+}
+
+// Liga/desliga os pedidos de pagamento automáticos de um documento.
+export async function definirLembretesAuto(ids: string[], ativo: boolean) {
+  if (ids.length === 0) return { error: null }
+  return supabase.from('financeiro_movimentos').update({ lembretes_auto: ativo }).in('id', ids)
 }
 
 // ─── Pickers de entidade (para o registo manual) ─────────────────────────────
