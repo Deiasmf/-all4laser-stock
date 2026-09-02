@@ -53,7 +53,8 @@ export type MovimentoCC = {
   estado: EstadoMov
   notas: string | null
   descricao: string | null
-  categoria: CategoriaDoc | null      // null = por classificar
+  categoria: string | null            // chave da categoria de topo; null = por classificar
+  subcategoria_id: string | null      // subcategoria opcional (financeiro_subcategorias)
   categoria_manual: boolean           // true = definida à mão (a reimportação respeita)
   data_pagamento: string | null
   metodo_pagamento: string | null
