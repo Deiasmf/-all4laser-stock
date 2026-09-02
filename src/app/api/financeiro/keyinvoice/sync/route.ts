@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { listarDocumentos, valorPendente, type DocListItem } from '@/lib/keyinvoiceApi'
+import { listarDocumentos, listarSeries, valorPendente, type DocListItem } from '@/lib/keyinvoiceApi'
 import { parseMontantePt } from '@/lib/categorizacaoFinanceira'
 import type { DocKeyinvoice } from '@/lib/keyinvoiceSync'
 import type { TipoDocumento } from '@/lib/contasCorrentes'
@@ -77,48 +77,66 @@ export async function POST(req: Request) {
 
     const tiposIgnorados: { code: number; tipo: string; erro: string }[] = []
 
-    // 1) Listagem por tipo (paginada de 100 em 100). Tolerante: se um tipo/série
-    // não for válido para a chave API, salta esse tipo e continua os restantes.
+    // 1) Por tipo → descobrir as séries activas → listar cada série (paginada).
+    // Tolerante: se um tipo/série falhar, salta e continua os restantes.
     for (const t of TIPOS) {
-      let offset = 0
-      for (let p = 0; p < MAX_PAGINAS_TIPO; p++) {
-        if (chamadas >= MAX_CHAMADAS || Date.now() - inicio > LIMITE_MS) { truncado = true; break }
-        let itens: DocListItem[]
-        try {
-          itens = await listarDocumentos(t.code, offset)
-          chamadas++
-        } catch (err) {
-          tiposIgnorados.push({ code: t.code, tipo: t.tipo, erro: err instanceof Error ? err.message : String(err) })
-          break // salta este tipo
-        }
-        await sleep(PAUSA_MS)
-        if (itens.length === 0) break
-        for (const it of itens) {
-          if (it.DocNum == null) continue
-          const data = parseData(it.Date)
-          if (!data) { ignoradosSemData++; continue }
-          const valor = Math.abs(parseMontantePt(String(it.GrossTotal ?? '0')) || 0)
-          const num = String(it.DocNum)
-          const doc: DocKeyinvoice = {
-            keyinvoice_doc_id: `ki|${t.code}|${it.DocSeries ?? ''}|${num}`,
-            descricao: null,
-            categoria: null,
-            subcategoria_id: null,
-            entidade_tipo: 'cliente',
-            nome: (it.ClientName ?? '').trim() || '—',
-            nif: (it.VATIN ?? '').trim() || null,
-            tipo_documento: t.tipo,
-            numero: num,
-            data_documento: data,
-            data_vencimento: null,
-            valor,
-            valor_liquidado: t.settle === 'paid' ? valor : undefined,
+      if (chamadas >= MAX_CHAMADAS || Date.now() - inicio > LIMITE_MS) { truncado = true; break }
+      let series
+      try {
+        series = await listarSeries(t.code)
+        chamadas++
+      } catch (err) {
+        tiposIgnorados.push({ code: t.code, tipo: t.tipo, erro: err instanceof Error ? err.message : String(err) })
+        continue
+      }
+      await sleep(PAUSA_MS)
+      // Sem séries indicadas → tenta a série por defeito da chave (docSeries undefined).
+      const idsSerie: (number | string | undefined)[] =
+        series.length > 0 ? series.map((s) => s.IdSerie) : [undefined]
+
+      for (const idSerie of idsSerie) {
+        let offset = 0
+        for (let p = 0; p < MAX_PAGINAS_TIPO; p++) {
+          if (chamadas >= MAX_CHAMADAS || Date.now() - inicio > LIMITE_MS) { truncado = true; break }
+          let itens: DocListItem[]
+          try {
+            itens = await listarDocumentos(t.code, offset, idSerie)
+            chamadas++
+          } catch (err) {
+            tiposIgnorados.push({ code: t.code, tipo: `${t.tipo}/série ${idSerie ?? '?'}`, erro: err instanceof Error ? err.message : String(err) })
+            break // salta esta série
           }
-          entradas.push({ doc, code: t.code, num, series: it.DocSeries, settle: t.settle })
-          porTipo[t.tipo] = (porTipo[t.tipo] ?? 0) + 1
+          await sleep(PAUSA_MS)
+          if (itens.length === 0) break
+          for (const it of itens) {
+            if (it.DocNum == null) continue
+            const data = parseData(it.Date)
+            if (!data) { ignoradosSemData++; continue }
+            const valor = Math.abs(parseMontantePt(String(it.GrossTotal ?? '0')) || 0)
+            const num = String(it.DocNum)
+            const serie = it.DocSeries ?? idSerie
+            const doc: DocKeyinvoice = {
+              keyinvoice_doc_id: `ki|${t.code}|${serie ?? ''}|${num}`,
+              descricao: null,
+              categoria: null,
+              subcategoria_id: null,
+              entidade_tipo: 'cliente',
+              nome: (it.ClientName ?? '').trim() || '—',
+              nif: (it.VATIN ?? '').trim() || null,
+              tipo_documento: t.tipo,
+              numero: num,
+              data_documento: data,
+              data_vencimento: null,
+              valor,
+              valor_liquidado: t.settle === 'paid' ? valor : undefined,
+            }
+            entradas.push({ doc, code: t.code, num, series: serie, settle: t.settle })
+            porTipo[t.tipo] = (porTipo[t.tipo] ?? 0) + 1
+          }
+          if (itens.length < 100) break
+          offset += 100
         }
-        if (itens.length < 100) break
-        offset += 100
+        if (truncado) break
       }
       if (truncado) break
     }

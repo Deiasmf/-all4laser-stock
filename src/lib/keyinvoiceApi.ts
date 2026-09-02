@@ -101,13 +101,27 @@ export type DocListItem = {
   GrossTotal?: number | string
 }
 
-// Lista 100 documentos do tipo indicado a partir de `offset`.
-export async function listarDocumentos(docType: number, offset = 0): Promise<DocListItem[]> {
+// Lista 100 documentos do tipo indicado a partir de `offset`. Se `docSeries` não
+// for indicada, a API usa a série definida na chave (que só serve alguns tipos).
+export async function listarDocumentos(
+  docType: number,
+  offset = 0,
+  docSeries?: number | string
+): Promise<DocListItem[]> {
   const data = await chamar<{ Documents?: DocListItem[] }>('documentsList', {
     DocType: String(docType),
     Offset: String(offset),
+    ...(docSeries != null && docSeries !== '' ? { DocSeries: String(docSeries) } : {}),
   })
   return data?.Documents ?? []
+}
+
+export type SerieDoc = { IdSerie?: number | string; Name?: string; Ref?: string; Info1?: string; Info2?: string }
+
+// Séries activas de um tipo de documento.
+export async function listarSeries(docType: number): Promise<SerieDoc[]> {
+  const data = await chamar<{ Series?: SerieDoc[] }>('listDocumentSeries', { DocType: docType })
+  return data?.Series ?? []
 }
 
 // Valor ainda pendente de um documento (0 = totalmente liquidado). null se indeterminado.
