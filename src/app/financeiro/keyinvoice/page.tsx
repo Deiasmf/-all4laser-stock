@@ -75,6 +75,9 @@ export default function KeyinvoicePage() {
       const avisos: string[] = []
       if (m.truncado) avisos.push('leitura truncada (volta a sincronizar para continuar)')
       if (m.settleCapped) avisos.push('estado de pagamento verificado só numa parte (corre outra vez amanhã)')
+      if (Array.isArray(m.tiposIgnorados) && m.tiposIgnorados.length > 0) {
+        avisos.push(`tipos saltados por série inválida: ${m.tiposIgnorados.map((x: { tipo: string; code: number }) => `${x.tipo}(${x.code})`).join(', ')}`)
+      }
       const extra = `${m.total ?? 0} documento(s) lidos; pagamento verificado em ${m.verificadosPagamento ?? 0}.` +
         (avisos.length ? ` ⚠️ ${avisos.join('; ')}.` : '')
       if (res.erro) setSyncMsg({ ok: false, msg: 'Importação: ' + res.erro })

@@ -75,13 +75,22 @@ export async function POST(req: Request) {
     const inicio = Date.now()
     const LIMITE_MS = 250_000 // corta antes do maxDuration (300s) para responder sempre
 
-    // 1) Listagem por tipo (paginada de 100 em 100).
+    const tiposIgnorados: { code: number; tipo: string; erro: string }[] = []
+
+    // 1) Listagem por tipo (paginada de 100 em 100). Tolerante: se um tipo/série
+    // não for válido para a chave API, salta esse tipo e continua os restantes.
     for (const t of TIPOS) {
       let offset = 0
       for (let p = 0; p < MAX_PAGINAS_TIPO; p++) {
         if (chamadas >= MAX_CHAMADAS || Date.now() - inicio > LIMITE_MS) { truncado = true; break }
-        const itens: DocListItem[] = await listarDocumentos(t.code, offset)
-        chamadas++
+        let itens: DocListItem[]
+        try {
+          itens = await listarDocumentos(t.code, offset)
+          chamadas++
+        } catch (err) {
+          tiposIgnorados.push({ code: t.code, tipo: t.tipo, erro: err instanceof Error ? err.message : String(err) })
+          break // salta este tipo
+        }
         await sleep(PAUSA_MS)
         if (itens.length === 0) break
         for (const it of itens) {
@@ -120,10 +129,15 @@ export async function POST(req: Request) {
     for (const e of entradas) {
       if (e.settle !== 'check') continue
       if (verificados >= MAX_SETTLE || chamadas >= MAX_CHAMADAS || Date.now() - inicio > LIMITE_MS) { settleCapped = true; break }
-      const pend = await valorPendente(e.code, e.num, e.series)
-      chamadas++; verificados++
+      try {
+        const pend = await valorPendente(e.code, e.num, e.series)
+        chamadas++; verificados++
+        if (pend != null) e.doc.valor_liquidado = Math.max(0, e.doc.valor - pend)
+      } catch {
+        // Estado deste documento fica por determinar; não aborta a corrida.
+        verificados++
+      }
       await sleep(PAUSA_MS)
-      if (pend != null) e.doc.valor_liquidado = Math.max(0, e.doc.valor - pend)
     }
 
     return Response.json({
@@ -136,6 +150,7 @@ export async function POST(req: Request) {
         settleCapped,
         truncado,
         ignoradosSemData,
+        tiposIgnorados,
         chamadas,
       },
     })
