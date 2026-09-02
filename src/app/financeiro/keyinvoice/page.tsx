@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
+import { supabase } from '@/lib/supabase'
 import {
   parseCsv, processar, importar, listarSyncs, descarregarModeloCsv, CABECALHO_CSV,
   type LinhaImport, type SyncRun, type ResultadoImport,
@@ -20,6 +21,8 @@ export default function KeyinvoicePage() {
   const [resultado, setResultado] = useState<ResultadoImport | null>(null)
   const [syncs, setSyncs] = useState<SyncRun[]>([])
   const [api, setApi] = useState<{ configurada: boolean } | null>(null)
+  const [aTestar, setATestar] = useState(false)
+  const [teste, setTeste] = useState<{ ok: boolean; msg: string } | null>(null)
 
   const carregarSyncs = useCallback(async () => { setSyncs(await listarSyncs()) }, [])
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -30,6 +33,24 @@ export default function KeyinvoicePage() {
       .then((d) => setApi({ configurada: !!d.configurada }))
       .catch(() => setApi({ configurada: false }))
   }, [])
+
+  async function testarLigacao() {
+    setATestar(true); setTeste(null)
+    try {
+      const { data } = await supabase.auth.getSession()
+      const token = data.session?.access_token
+      const r = await fetch('/api/financeiro/keyinvoice/testar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      })
+      const j = await r.json()
+      if (j.ok) setTeste({ ok: true, msg: `Ligação OK${j.empresa?.nome ? ` — ${j.empresa.nome}` : ''}${j.empresa?.nif ? ` (NIF ${j.empresa.nif})` : ''}.` })
+      else setTeste({ ok: false, msg: j.erro || 'Não foi possível ligar à API.' })
+    } catch {
+      setTeste({ ok: false, msg: 'Erro de rede ao testar a ligação.' })
+    }
+    setATestar(false)
+  }
 
   const contagens = useMemo(() => ({
     total: linhas.length,
@@ -80,20 +101,34 @@ export default function KeyinvoicePage() {
       </div>
 
       {/* Estado da ligação à API */}
-      <section style={{ ...c.card, ...c.apiCard }}>
-        <div>
-          <div style={c.cardTitulo}>Sincronização automática (API)</div>
-          <p style={c.nota}>
-            {api == null
-              ? 'A verificar a configuração da API…'
-              : api.configurada
-                ? 'A chave da API está configurada no servidor. Falta ligar os métodos da API do Keyinvoice para ativar a sincronização automática.'
-                : 'Ainda sem chave de API configurada no servidor. Por agora usa a importação por ficheiro abaixo.'}
-          </p>
+      <section style={c.card}>
+        <div style={c.apiCard}>
+          <div>
+            <div style={c.cardTitulo}>Sincronização automática (API)</div>
+            <p style={c.nota}>
+              {api == null
+                ? 'A verificar a configuração da API…'
+                : api.configurada
+                  ? 'A chave da API está configurada no servidor. Testa a ligação ao Keyinvoice.'
+                  : 'Ainda sem chave de API configurada no servidor. Por agora usa a importação por ficheiro abaixo.'}
+            </p>
+          </div>
+          <div style={c.apiAcoes}>
+            <span style={{ ...c.apiBadge, ...(api?.configurada ? c.apiOn : c.apiOff) }}>
+              {api == null ? '…' : api.configurada ? '✓ API configurada' : '○ API por configurar'}
+            </span>
+            {api?.configurada && (
+              <button style={c.btnSec} disabled={aTestar} onClick={testarLigacao}>
+                {aTestar ? 'A testar…' : 'Testar ligação'}
+              </button>
+            )}
+          </div>
         </div>
-        <span style={{ ...c.apiBadge, ...(api?.configurada ? c.apiOn : c.apiOff) }}>
-          {api == null ? '…' : api.configurada ? '✓ API configurada' : '○ API por configurar'}
-        </span>
+        {teste && (
+          <div style={{ ...c.testeMsg, ...(teste.ok ? c.testeOk : c.testeErro) }}>
+            {teste.ok ? '✅ ' : '⚠️ '}{teste.msg}
+          </div>
+        )}
       </section>
 
       {/* Instruções */}
@@ -266,10 +301,14 @@ const c: Record<string, React.CSSProperties> = {
   code: { background: '#f1f2f5', padding: '2px 6px', borderRadius: 6, fontSize: 12 },
   acoesTopo: { display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 4 },
   aviso2: { fontSize: 12.5, color: 'var(--muted)', background: '#F9FAFB', border: '1px dashed var(--border)', borderRadius: 8, padding: '8px 10px', margin: 0 },
-  apiCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
+  apiCard: { display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
+  apiAcoes: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
   apiBadge: { fontSize: 12.5, fontWeight: 700, borderRadius: 999, padding: '5px 12px', whiteSpace: 'nowrap' },
   apiOn: { color: '#065F46', background: '#D1FAE5' },
   apiOff: { color: '#92400E', background: '#FEF3C7' },
+  testeMsg: { fontSize: 13.5, borderRadius: 8, padding: '9px 12px' },
+  testeOk: { background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#065F46' },
+  testeErro: { background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C' },
   textarea: { width: '100%', minHeight: 120, padding: 12, border: '1px solid var(--border)', borderRadius: 8, font: '13px monospace', boxSizing: 'border-box', resize: 'vertical' },
   erros: { margin: 0, paddingLeft: 18, fontSize: 13, color: '#B91C1C', display: 'flex', flexDirection: 'column', gap: 2 },
   resumo: { display: 'flex', gap: 8, flexWrap: 'wrap' },
