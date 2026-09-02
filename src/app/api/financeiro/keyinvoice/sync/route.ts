@@ -27,6 +27,9 @@ const TIPOS: { code: number; tipo: TipoDocumento; settle: 'check' | 'paid' | 'no
 const MAX_PAGINAS_TIPO = 100 // 100 docs/página → até 10 000 por tipo
 const MAX_CHAMADAS = 4000    // margem sob o limite diário de 5000
 const MAX_SETTLE = 1500      // teto de checkIfSettle por corrida
+const PAUSA_MS = 80          // intervalo entre chamadas (não sobrecarregar a API)
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 function parseData(s: string | undefined | null): string | null {
   const t = (s ?? '').trim()
@@ -69,14 +72,17 @@ export async function POST(req: Request) {
     let chamadas = 0
     let ignoradosSemData = 0
     let truncado = false
+    const inicio = Date.now()
+    const LIMITE_MS = 250_000 // corta antes do maxDuration (300s) para responder sempre
 
     // 1) Listagem por tipo (paginada de 100 em 100).
     for (const t of TIPOS) {
       let offset = 0
       for (let p = 0; p < MAX_PAGINAS_TIPO; p++) {
-        if (chamadas >= MAX_CHAMADAS) { truncado = true; break }
+        if (chamadas >= MAX_CHAMADAS || Date.now() - inicio > LIMITE_MS) { truncado = true; break }
         const itens: DocListItem[] = await listarDocumentos(t.code, offset)
         chamadas++
+        await sleep(PAUSA_MS)
         if (itens.length === 0) break
         for (const it of itens) {
           if (it.DocNum == null) continue
@@ -113,9 +119,10 @@ export async function POST(req: Request) {
     let settleCapped = false
     for (const e of entradas) {
       if (e.settle !== 'check') continue
-      if (verificados >= MAX_SETTLE || chamadas >= MAX_CHAMADAS) { settleCapped = true; break }
+      if (verificados >= MAX_SETTLE || chamadas >= MAX_CHAMADAS || Date.now() - inicio > LIMITE_MS) { settleCapped = true; break }
       const pend = await valorPendente(e.code, e.num, e.series)
       chamadas++; verificados++
+      await sleep(PAUSA_MS)
       if (pend != null) e.doc.valor_liquidado = Math.max(0, e.doc.valor - pend)
     }
 
@@ -133,6 +140,7 @@ export async function POST(req: Request) {
       },
     })
   } catch (e) {
+    console.error('[keyinvoice/sync]', e)
     return Response.json({ ok: false, erro: e instanceof Error ? e.message : 'Erro desconhecido.' })
   }
 }

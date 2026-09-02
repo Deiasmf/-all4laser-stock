@@ -21,18 +21,35 @@ function apiKey(): string {
   return k
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+// POST resiliente: timeout por tentativa + repetição em falhas de rede (a API do
+// Keyinvoice ocasionalmente fecha a ligação em séries de chamadas rápidas).
 async function postJson(headers: Record<string, string>, body: unknown): Promise<Resposta> {
-  const res = await fetch(ENDPOINT, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...headers },
-    body: JSON.stringify(body),
-  })
-  const texto = await res.text()
-  let j: Resposta
-  try { j = JSON.parse(texto) as Resposta } catch {
-    throw new Error(`Resposta inválida do Keyinvoice (HTTP ${res.status}).`)
+  const TENTATIVAS = 3
+  let ultimoErro: unknown = null
+  for (let t = 0; t < TENTATIVAS; t++) {
+    try {
+      const res = await fetch(ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(30000),
+      })
+      const texto = await res.text()
+      try { return JSON.parse(texto) as Resposta } catch {
+        throw new Error(`Resposta inválida do Keyinvoice (HTTP ${res.status}).`)
+      }
+    } catch (e) {
+      ultimoErro = e
+      // Erro de parsing/HTTP não vale a pena repetir; falhas de rede sim.
+      const msg = e instanceof Error ? e.message : String(e)
+      if (msg.startsWith('Resposta inválida')) throw e
+      if (t < TENTATIVAS - 1) await sleep(600 * (t + 1))
+    }
   }
-  return j
+  const m = ultimoErro instanceof Error ? ultimoErro.message : 'fetch failed'
+  throw new Error(`Falha de rede a contactar o Keyinvoice (${m}).`)
 }
 
 // Autentica e devolve o Sid (com cache). Renova quando faltam <300s.
