@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import { listarDocumentos, listarSeries, valorPendente, type DocListItem } from '@/lib/keyinvoiceApi'
+import { listarDocumentos, listarSeries, valorPendente, obterDocumento, type DocListItem, type DocLinha } from '@/lib/keyinvoiceApi'
 import { parseMontantePt, semAcentos } from '@/lib/categorizacaoFinanceira'
 import { aplicarRegras, type RegraCat } from '@/lib/categoriasFin'
 import type { DocKeyinvoice } from '@/lib/keyinvoiceSync'
@@ -25,12 +25,20 @@ const TIPOS: { code: number; tipo: TipoDocumento; settle: 'check' | 'paid' | 'no
   { code: 8,  tipo: 'fatura',       settle: 'check' }, // Nota de Débito
   { code: 7,  tipo: 'nota_credito', settle: 'none'  }, // Nota de Crédito
   { code: 6,  tipo: 'nota_credito', settle: 'none'  }, // Devolução
+  { code: 13, tipo: 'pro_forma',    settle: 'none'  }, // Encomendas de Clientes → pró-forma
 ]
 
 const MAX_PAGINAS_TIPO = 100 // 100 docs/página → até 10 000 por tipo
 const MAX_CHAMADAS = 4000    // margem sob o limite diário de 5000
 const MAX_SETTLE = 1500      // teto de checkIfSettle por corrida
+const MAX_DETALHE = 1500     // teto de getDocument (líquido + descrição das faturas)
 const PAUSA_MS = 80          // intervalo entre chamadas (não sobrecarregar a API)
+
+// Descrição concatenada das linhas de um documento (para categorizar + pesquisar).
+function descricaoDeLinhas(linhas: DocLinha[]): string | null {
+  const partes = linhas.map((l) => String(l.ProductName ?? l.IdProduct ?? '').trim()).filter(Boolean)
+  return partes.length ? partes.join(' | ') : null
+}
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -48,6 +56,8 @@ export type SyncMeta = {
   porTipo: Record<string, number>
   verificadosPagamento: number
   settleCapped: boolean
+  detalhados: number
+  detalheCapped: boolean
   truncado: boolean
   ignoradosSemData: number
   tiposIgnorados: { code: number; tipo: string; erro: string }[]
@@ -143,9 +153,29 @@ async function buscarDocumentos(): Promise<{ docs: DocKeyinvoice[]; meta: SyncMe
     await sleep(PAUSA_MS)
   }
 
+  // 3) Detalhe das faturas (getDocument): líquido sem IVA (base das comissões) +
+  //    descrição das linhas (categorização + pesquisa). Teto e orçamento de tempo.
+  let detalhados = 0
+  let detalheCapped = false
+  for (const e of entradas) {
+    if (e.doc.tipo_documento !== 'fatura') continue
+    if (detalhados >= MAX_DETALHE || chamadas >= MAX_CHAMADAS || Date.now() - inicio > LIMITE_MS) { detalheCapped = true; break }
+    try {
+      const det = await obterDocumento(e.code, e.num, e.series)
+      chamadas++; detalhados++
+      const liquido = Number(det.NetTotal)
+      if (!isNaN(liquido)) e.doc.valor_liquido = liquido
+      const desc = descricaoDeLinhas(det.Lines ?? [])
+      if (desc) e.doc.descricao = desc
+    } catch {
+      detalhados++
+    }
+    await sleep(PAUSA_MS)
+  }
+
   return {
     docs: entradas.map((e) => e.doc),
-    meta: { total: entradas.length, porTipo, verificadosPagamento: verificados, settleCapped, truncado, ignoradosSemData, tiposIgnorados, chamadas },
+    meta: { total: entradas.length, porTipo, verificadosPagamento: verificados, settleCapped, detalhados, detalheCapped, truncado, ignoradosSemData, tiposIgnorados, chamadas },
   }
 }
 
@@ -168,15 +198,19 @@ async function persistir(
     }
   }
 
-  // Clientes (associação por NIF, depois nome).
-  const { data: cli } = await sb.from('clientes').select('id, nome, nif').limit(5000)
+  // Clientes (associação por NIF, depois nome) + categoria-defeito por cliente.
+  const { data: cli } = await sb.from('clientes')
+    .select('id, nome, nif, categoria_defeito, subcategoria_defeito_id').limit(5000)
   const porNif = new Map<string, string>()
   const porNome = new Map<string, string>()
-  for (const c of (cli as { id: string; nome: string | null; nif: string | null }[]) ?? []) {
+  const defeitos = new Map<string, { categoria_chave: string; subcategoria_id: string | null }>()
+  type CliRow = { id: string; nome: string | null; nif: string | null; categoria_defeito: string | null; subcategoria_defeito_id: string | null }
+  for (const c of (cli as CliRow[]) ?? []) {
     if (!c.nome) continue
     const nif = normNif(c.nif)
     if (nif) porNif.set(nif, c.id)
     porNome.set(norm(c.nome), c.id)
+    if (c.categoria_defeito) defeitos.set(c.id, { categoria_chave: c.categoria_defeito, subcategoria_id: c.subcategoria_defeito_id })
   }
 
   const { data: regrasData } = await sb.from('financeiro_regras_categoria').select('*').order('ordem').order('created_at')
@@ -192,8 +226,12 @@ async function persistir(
     vistos.add(d.keyinvoice_doc_id)
     const entId = porNif.get(normNif(d.nif)) || porNome.get(norm(d.nome)) || null
     if (!entId) { semEntidade++; continue }
-    const cat = aplicarRegras(regras, { descricao: d.descricao, documento_ref: d.numero, entidade_nome: d.nome })
-      ?? { categoria_chave: d.categoria ?? null, subcategoria_id: null }
+    // Precedência: regra por descrição > categoria-defeito do cliente > heurística.
+    // (o manual respeita-se no update, abaixo). A categoria-defeito marca auto=true.
+    const porRegra = aplicarRegras(regras, { descricao: d.descricao, documento_ref: d.numero, entidade_nome: d.nome })
+    const def = defeitos.get(entId)
+    const auto = !porRegra && !!def
+    const cat = porRegra ?? def ?? { categoria_chave: d.categoria ?? null, subcategoria_id: null }
     const sentido = tipoDocInfo(d.tipo_documento).sentido
     const base: Record<string, unknown> = {
       entidade_tipo: 'cliente', cliente_id: entId, fornecedor_id: null, entidade_nome: d.nome,
@@ -203,18 +241,20 @@ async function persistir(
     }
     const ex = existentes.get(d.keyinvoice_doc_id)
     const liquidado = d.tipo_documento === 'fatura' && typeof d.valor_liquidado === 'number' ? d.valor_liquidado : null
+    const liquido = typeof d.valor_liquido === 'number' ? d.valor_liquido : null
     if (!ex) {
       insertRows.push({
         ...base,
-        categoria: cat.categoria_chave, subcategoria_id: cat.subcategoria_id,
-        valor_liquidado: liquidado ?? 0,
+        categoria: cat.categoria_chave, subcategoria_id: cat.subcategoria_id, categoria_auto: auto,
+        valor_liquidado: liquidado ?? 0, valor_liquido: liquido,
         origem: 'keyinvoice', keyinvoice_doc_id: d.keyinvoice_doc_id,
         criado_por_nome: 'Sincronização automática',
       })
     } else {
       const upd: Record<string, unknown> = { ...base }
-      if (!ex.categoria_manual) { upd.categoria = cat.categoria_chave; upd.subcategoria_id = cat.subcategoria_id }
+      if (!ex.categoria_manual) { upd.categoria = cat.categoria_chave; upd.subcategoria_id = cat.subcategoria_id; upd.categoria_auto = auto }
       if (liquidado != null) upd.valor_liquidado = liquidado
+      if (liquido != null) upd.valor_liquido = liquido
       updates.push({ id: d.keyinvoice_doc_id, upd })
     }
   }

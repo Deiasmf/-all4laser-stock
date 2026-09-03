@@ -39,6 +39,8 @@ export type DocKeyinvoice = {
   // Valor já liquidado (via API checkIfSettle). undefined = não determinado
   // (não mexe no que já lá está); usado só nas faturas para o estado de pagamento.
   valor_liquidado?: number | null
+  // Total sem IVA (getDocument.NetTotal). Base das comissões. undefined = não obtido.
+  valor_liquido?: number | null
 }
 
 export type LinhaImport = DocKeyinvoice & {
@@ -48,6 +50,8 @@ export type LinhaImport = DocKeyinvoice & {
   jaImportada: boolean
   // Já existe na app com categoria fixada à mão → a importação não lhe toca.
   categoriaBloqueada: boolean
+  // Categoria herdada da categoria-defeito do cliente (marca "automática", por rever).
+  categoriaAuto: boolean
   erro: string | null
 }
 
@@ -233,11 +237,19 @@ function parseModelo(linhas: string[], delim: string | RegExp): { docs: DocKeyin
 
 // ─── Matching de entidades (por NIF, depois por nome) ────────────────────────
 
-type EntRef = { id: string; nome: string; nif: string | null }
+type EntRef = {
+  id: string; nome: string; nif: string | null
+  categoria_defeito?: string | null
+  subcategoria_defeito_id?: string | null
+}
 
 async function carregarEntidades(tabela: 'clientes' | 'fornecedores'): Promise<EntRef[]> {
-  const { data } = await supabase.from(tabela).select('id, nome, nif').limit(5000)
-  return ((data as EntRef[]) ?? []).filter((e) => e.nome)
+  // Só os clientes têm categoria-defeito (Item 3).
+  const cols = tabela === 'clientes'
+    ? 'id, nome, nif, categoria_defeito, subcategoria_defeito_id'
+    : 'id, nome, nif'
+  const { data } = await supabase.from(tabela).select(cols).limit(5000)
+  return ((data as unknown as EntRef[]) ?? []).filter((e) => e.nome)
 }
 
 export async function processar(docs: DocKeyinvoice[]): Promise<LinhaImport[]> {
@@ -254,6 +266,11 @@ export async function processar(docs: DocKeyinvoice[]): Promise<LinhaImport[]> {
   }
   const idxCli = indexar(clientes)
   const idxForn = indexar(fornecedores)
+  // Categoria-defeito por cliente (id → categoria/subcategoria).
+  const defeitos = new Map<string, { categoria_chave: string; subcategoria_id: string | null }>()
+  for (const c of clientes) {
+    if (c.categoria_defeito) defeitos.set(c.id, { categoria_chave: c.categoria_defeito, subcategoria_id: c.subcategoria_defeito_id ?? null })
+  }
   const jaLa = await jaImportados(docs.map((d) => d.keyinvoice_doc_id))
   const regras = await listarRegras()
 
@@ -262,18 +279,20 @@ export async function processar(docs: DocKeyinvoice[]): Promise<LinhaImport[]> {
     const nif = normalizarNif(d.nif).toLowerCase()
     const entId = (nif && idx.porNif.get(nif)) || idx.porNome.get(normalizar(d.nome)) || null
     const existente = jaLa.get(d.keyinvoice_doc_id)
-    // As regras geríveis têm prioridade sobre a heurística. Se nenhuma casar,
-    // fica a categoria proposta pela heurística/ficheiro (d.categoria).
+    // Precedência: regra por descrição > categoria-defeito do cliente > heurística/ficheiro.
     const porRegra = aplicarRegras(regras, { descricao: d.descricao, documento_ref: d.numero, entidade_nome: d.nome })
+    const def = d.entidade_tipo === 'cliente' && entId ? defeitos.get(entId) : undefined
+    const auto = !porRegra && !!def
     return {
       ...d,
-      categoria: porRegra?.categoria_chave ?? d.categoria,
-      subcategoria_id: porRegra?.subcategoria_id ?? null,
+      categoria: porRegra?.categoria_chave ?? def?.categoria_chave ?? d.categoria,
+      subcategoria_id: porRegra?.subcategoria_id ?? def?.subcategoria_id ?? null,
       cliente_id: d.entidade_tipo === 'cliente' ? entId : null,
       fornecedor_id: d.entidade_tipo === 'fornecedor' ? entId : null,
       associada: !!entId,
       jaImportada: !!existente,
       categoriaBloqueada: !!existente?.categoria_manual,
+      categoriaAuto: auto,
       erro: null,
     }
   })
@@ -336,10 +355,14 @@ export async function importar(
     if (l.tipo_documento === 'fatura' && typeof l.valor_liquidado === 'number') {
       base.valor_liquidado = l.valor_liquidado
     }
+    // Líquido sem IVA (getDocument.NetTotal) — base das comissões. Só quando veio
+    // da API; a importação por ficheiro não o traz e não deve apagá-lo.
+    if (typeof l.valor_liquido === 'number') base.valor_liquido = l.valor_liquido
     // A classificação corrigida à mão manda sobre a proposta do ficheiro/regras.
     if (!l.categoriaBloqueada) {
       base.categoria = l.categoria
       base.subcategoria_id = l.subcategoria_id
+      base.categoria_auto = l.categoriaAuto
     }
     return base
   }
@@ -353,7 +376,9 @@ export async function importar(
   const rows = novos.map((l) => ({
     ...campos(l),
     descricao: l.descricao ?? null,
+    categoria_auto: l.categoriaBloqueada ? false : l.categoriaAuto,
     valor_liquidado: typeof l.valor_liquidado === 'number' ? l.valor_liquidado : 0,
+    valor_liquido: typeof l.valor_liquido === 'number' ? l.valor_liquido : null,
     origem: 'keyinvoice' as const,
     keyinvoice_doc_id: l.keyinvoice_doc_id,
     criado_por: utilizador.id,

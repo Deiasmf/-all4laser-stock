@@ -257,9 +257,11 @@ export async function categorizarMovimentos(
   subcategoria_id: string | null
 ): Promise<{ ok: boolean; erro?: string }> {
   if (ids.length === 0) return { ok: true }
+  // Ação manual = documento revisto: fixa categoria_manual e limpa a marca
+  // "automática" (categoria_auto) para sair da lista de "por rever".
   const { error } = await supabase
     .from('financeiro_movimentos')
-    .update({ categoria: categoria_chave, subcategoria_id, categoria_manual: categoria_chave !== null })
+    .update({ categoria: categoria_chave, subcategoria_id, categoria_manual: categoria_chave !== null, categoria_auto: false })
     .in('id', ids)
   return error ? { ok: false, erro: error.message } : { ok: true }
 }

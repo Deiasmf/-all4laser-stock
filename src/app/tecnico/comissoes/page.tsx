@@ -105,9 +105,9 @@ export default function ComissoesPage() {
 
       {/* Indicadores */}
       <div style={s.cards}>
-        <div style={s.card}><span style={s.cardTit}>Faturado</span><span style={s.cardVal}>{formatarEuro(resumo.faturado)}</span><span style={s.cardNota}>{resumo.n} documento(s)</span></div>
+        <div style={s.card}><span style={s.cardTit}>Faturado (líquido)</span><span style={s.cardVal}>{formatarEuro(resumo.faturado)}</span><span style={s.cardNota}>{resumo.n} documento(s) · sem IVA</span></div>
         <div style={s.card}><span style={s.cardTit}>Despesas</span><span style={s.cardVal}>−{formatarEuro(resumo.despesas)}</span><span style={s.cardNota}>deslocações, alimentação, estadia</span></div>
-        <div style={s.card}><span style={s.cardTit}>Base elegível</span><span style={s.cardVal}>{formatarEuro(resumo.base)}</span><span style={s.cardNota}>faturado − despesas</span></div>
+        <div style={s.card}><span style={s.cardTit}>Base elegível</span><span style={s.cardVal}>{formatarEuro(resumo.base)}</span><span style={s.cardNota}>líquido − despesas</span></div>
         <div style={s.card}><span style={s.cardTit}>Comissões</span><span style={{ ...s.cardVal, color: 'var(--primary)' }}>{formatarEuro(resumo.comissoes)}</span><span style={s.cardNota}>{resumo.porApurar} por apurar</span></div>
         <div style={s.card}><span style={s.cardTit}>A pagar</span><span style={s.cardVal}>{formatarEuro(resumo.porPagar)}</span><span style={s.cardNota}>apuradas e ainda não pagas</span></div>
       </div>
@@ -117,7 +117,7 @@ export default function ComissoesPage() {
         <section style={s.painel}>
           <div style={s.painelTit}>Percentagem de comissão por técnico</div>
           <p style={s.nota}>
-            A comissão é <strong>(fatura − despesas) × %</strong>. A percentagem fica gravada na linha ao apurar,
+            A comissão é <strong>(líquido da fatura, sem IVA − despesas) × %</strong>. A percentagem fica gravada na linha ao apurar,
             por isso alterá-la aqui não reescreve o que já foi apurado.
             {!isFinanceiro && ' Só a administração/financeiro pode alterar estes valores.'}
           </p>
@@ -296,7 +296,7 @@ function Conta({ c }: { c: ComissaoCalc }) {
   const r = calcularComissao(c.valor_documento, c.despesas, c.percentagem)
   return (
     <div style={s.conta}>
-      <div style={s.contaLinha}><span>Fatura</span><span>{formatarEuro(c.valor_documento)}</span></div>
+      <div style={s.contaLinha}><span>Fatura (líquido)</span><span>{formatarEuro(c.valor_documento)}</span></div>
       <div style={s.contaLinha}><span>Despesas</span><span>−{formatarEuro(r.totalDespesas)}</span></div>
       <div style={{ ...s.contaLinha, ...s.contaBase }}><span>Base elegível</span><span>{formatarEuro(r.base)}</span></div>
       <div style={s.contaLinha}><span>Percentagem</span><span>{c.percentagem == null ? '—' : `${c.percentagem}%`}</span></div>

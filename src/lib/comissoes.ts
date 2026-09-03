@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { formatarEuro, formatarData } from './contasCorrentes'
+import { formatarEuro, formatarData, compararEmissaoDesc } from './contasCorrentes'
 import { extrairDespesas, type TipoDespesa } from './categorizacaoFinanceira'
 
 export { formatarEuro, formatarData }
@@ -13,8 +13,12 @@ export { formatarEuro, formatarData }
 // alimentação e estadia — e a comissão sai por aplicação da taxa do técnico
 // sobre o valor elegível:
 //
-//     base     = valor da fatura − despesas
+//     base     = valor LÍQUIDO da fatura (sem IVA) − despesas
 //     comissão = base × percentagem
+//
+// O valor_documento da comissão é o líquido (financeiro_movimentos.valor_liquido,
+// vindo do getDocument.NetTotal); se o líquido não estiver disponível o trigger
+// cai para o valor com IVA (valor_debito).
 //
 // A percentagem fica gravada na linha (snapshot): mudar a taxa não reescreve o
 // que já foi apurado.
@@ -131,7 +135,9 @@ export async function listarComissoes(f: FiltrosComissao = FILTROS_COMISSAO_VAZI
         .toLowerCase().includes(termo)
     )
   }
-  return linhas
+  // Ordem por defeito: emissão mais recente primeiro, com o nº como desempate
+  // numérico dentro da série (igual às restantes listagens de faturas).
+  return linhas.sort(compararEmissaoDesc)
 }
 
 export type ResumoComissoes = {

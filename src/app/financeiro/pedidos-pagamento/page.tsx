@@ -5,10 +5,11 @@ import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import {
   listarEmDivida, listarPedidos, carregarConfig, guardarConfig, enviarPedidos,
-  elegivelAuto, preencherModelo, textoAtraso, ASSUNTO_PADRAO, MENSAGEM_PADRAO,
-  CONFIG_PADRAO, type DocEmDivida, type PedidoPagamento, type ConfigPedidos,
+  elegivelAuto, preencherModelo, textoAtraso, correspondePesquisa, ASSUNTO_PADRAO,
+  MENSAGEM_PADRAO, CONFIG_PADRAO, type DocEmDivida, type PedidoPagamento, type ConfigPedidos,
 } from '@/lib/pedidosPagamento'
 import { definirLembretesAuto, formatarEuro, formatarData } from '@/lib/contasCorrentes'
+import { definirContactoCliente } from '@/lib/clientes'
 import { categoriaInfo } from '@/lib/categorizacaoFinanceira'
 
 // Pedidos de pagamento: o que está por receber, com envio do pedido ao cliente —
@@ -26,6 +27,11 @@ export default function PedidosPagamentoPage() {
   const [carregando, setCarregando] = useState(true)
   const [sel, setSel] = useState<Set<string>>(new Set())
   const [filtro, setFiltro] = useState<Filtro>('todos')
+  const [pesquisa, setPesquisa] = useState('')
+  // Preenchimento inline do email (cliente sem email a bloquear o envio).
+  const [emailCliente, setEmailCliente] = useState<string | null>(null) // cliente_id em edição
+  const [emailValor, setEmailValor] = useState('')
+  const [emailAGravar, setEmailAGravar] = useState(false)
   const [aEnviar, setAEnviar] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [abrirConfig, setAbrirConfig] = useState(false)
@@ -41,11 +47,11 @@ export default function PedidosPagamentoPage() {
   useEffect(() => { carregar() }, [carregar])
 
   const visiveis = useMemo(() => docs.filter((d) => {
-    if (filtro === 'vencidos') return d.diasAtraso > 0
-    if (filtro === 'auto') return d.movimento.lembretes_auto
-    if (filtro === 'sem_email') return !d.clienteEmail
-    return true
-  }), [docs, filtro])
+    if (filtro === 'vencidos' && d.diasAtraso <= 0) return false
+    if (filtro === 'auto' && !d.movimento.lembretes_auto) return false
+    if (filtro === 'sem_email' && d.clienteEmail) return false
+    return correspondePesquisa(d, pesquisa)
+  }), [docs, filtro, pesquisa])
 
   const totais = useMemo(() => ({
     total: docs.reduce((s, d) => s + d.porLiquidar, 0),
@@ -86,6 +92,25 @@ export default function PedidosPagamentoPage() {
     setSel(new Set())
     await carregar()
     setAEnviar(false)
+  }
+
+  function abrirEmail(clienteId: string | null) {
+    if (!clienteId) return
+    setEmailCliente(clienteId); setEmailValor(''); setMsg(null)
+  }
+
+  // Grava o email na ficha do cliente e desbloqueia o envio, sem sair da página.
+  async function guardarEmail(clienteId: string) {
+    const email = emailValor.trim()
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { setMsg('Email inválido.'); return }
+    setEmailAGravar(true); setMsg(null)
+    const { error } = await definirContactoCliente(clienteId, { email })
+    setEmailAGravar(false)
+    if (error) { setMsg('Erro ao guardar o email: ' + error.message); return }
+    // Reflete já em todas as faturas do mesmo cliente (podem ser várias na lista).
+    setDocs((prev) => prev.map((d) => d.movimento.cliente_id === clienteId ? { ...d, clienteEmail: email } : d))
+    setEmailCliente(null)
+    setMsg('Email guardado ✓ — já podes enviar o pedido.')
   }
 
   async function alternarAuto(d: DocEmDivida) {
@@ -183,6 +208,12 @@ export default function PedidosPagamentoPage() {
         {([['todos', 'Todos'], ['vencidos', 'Vencidos'], ['auto', 'Com automático'], ['sem_email', 'Sem email']] as [Filtro, string][]).map(([v, l]) => (
           <button key={v} style={{ ...c.chip, ...(filtro === v ? c.chipOn : {}) }} onClick={() => setFiltro(v)}>{l}</button>
         ))}
+        <input
+          value={pesquisa}
+          onChange={(e) => setPesquisa(e.target.value)}
+          placeholder="Procurar por cliente, valor (ex: 1250) ou nº de fatura…"
+          style={c.pesquisa}
+        />
         <span style={{ flex: 1 }} />
         {sel.size > 0 && (
           <>
@@ -224,7 +255,24 @@ export default function PedidosPagamentoPage() {
                 </span>
                 <span>
                   <Link href={`/financeiro/contas-correntes/cliente/${m.cliente_id}`} style={c.link}>{m.entidade_nome ?? '—'}</Link>
-                  <span style={c.emailLinha}>{d.clienteEmail ?? '⚠️ sem email'}</span>
+                  {d.clienteEmail ? (
+                    <span style={c.emailLinha}>{d.clienteEmail}</span>
+                  ) : emailCliente === m.cliente_id ? (
+                    <span style={c.emailInline}>
+                      <input
+                        type="email" autoFocus value={emailValor} placeholder="email@cliente.pt"
+                        onChange={(e) => setEmailValor(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && m.cliente_id) guardarEmail(m.cliente_id) }}
+                        style={c.emailInput}
+                      />
+                      <button style={c.emailOk} disabled={emailAGravar} onClick={() => m.cliente_id && guardarEmail(m.cliente_id)}>✓</button>
+                      <button style={c.emailX} onClick={() => setEmailCliente(null)}>✕</button>
+                    </span>
+                  ) : (
+                    <button style={c.semEmailBtn} onClick={() => abrirEmail(m.cliente_id)} title="Adicionar email para poder enviar">
+                      ⚠️ sem email — adicionar
+                    </button>
+                  )}
                 </span>
                 <span>
                   {m.documento_ref ?? '—'}
@@ -307,6 +355,7 @@ const c: Record<string, React.CSSProperties> = {
   acoes: { display: 'flex', gap: 10, alignItems: 'center' },
   ok: { color: '#065F46', fontSize: 13, fontWeight: 600 },
   filtros: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 },
+  pesquisa: { padding: '7px 12px', border: '1px solid #ccc', borderRadius: 999, fontSize: 13, minWidth: 240, flex: '0 1 320px' },
   chip: { background: '#fff', border: '1px solid var(--border)', borderRadius: 999, padding: '6px 14px', fontSize: 13, cursor: 'pointer' },
   chipOn: { background: 'var(--primary)', color: '#fff', borderColor: 'var(--primary)', fontWeight: 700 },
   selInfo: { fontSize: 13, color: 'var(--muted)' },
@@ -320,6 +369,11 @@ const c: Record<string, React.CSSProperties> = {
   muted: { color: 'var(--muted)', fontSize: 13 },
   link: { color: 'var(--primary)', textDecoration: 'none', fontWeight: 600, display: 'block' },
   emailLinha: { display: 'block', fontSize: 11.5, color: 'var(--muted)' },
+  semEmailBtn: { display: 'block', background: 'transparent', border: 'none', padding: '2px 0', fontSize: 11.5, color: '#B45309', fontWeight: 600, cursor: 'pointer', textAlign: 'left', textDecoration: 'underline' },
+  emailInline: { display: 'flex', gap: 4, alignItems: 'center', marginTop: 3 },
+  emailInput: { padding: '4px 8px', border: '1px solid #ccc', borderRadius: 6, fontSize: 12, minWidth: 150, flex: 1 },
+  emailOk: { background: '#D1FAE5', color: '#065F46', border: '1px solid #6EE7B7', borderRadius: 6, padding: '3px 8px', fontWeight: 700, cursor: 'pointer' },
+  emailX: { background: '#fff', color: '#6B7280', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' },
   badge: { fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '2px 8px', marginLeft: 6, whiteSpace: 'nowrap' },
   atraso: { display: 'block', fontSize: 11.5 },
   toggle: { background: '#F3F4F6', color: '#6B7280', border: '1px solid var(--border)', borderRadius: 999, padding: '3px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' },

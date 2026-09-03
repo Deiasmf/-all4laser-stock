@@ -89,6 +89,20 @@ export async function eliminarCliente(id: string) {
   return supabase.from('clientes').delete().eq('id', id)
 }
 
+// Atualização mínima de um dado de contacto (email/telefone/NIF) sem carregar a
+// ficha inteira — para desbloquear ações à mão (ex.: enviar pedido de pagamento a
+// um cliente sem email). Grava só os campos indicados.
+export async function definirContactoCliente(
+  id: string,
+  patch: { email?: string | null; telefone?: string | null; nif?: string | null }
+) {
+  const limpo: Record<string, string | null> = { atualizado_em: new Date().toISOString() }
+  if ('email' in patch) limpo.email = patch.email?.trim() || null
+  if ('telefone' in patch) limpo.telefone = patch.telefone?.trim() || null
+  if ('nif' in patch) limpo.nif = patch.nif?.trim() || null
+  return supabase.from('clientes').update(limpo).eq('id', id)
+}
+
 // ─── Histórico do cliente ────────────────────────────────────────────────────
 // Alugueres, reservas e notas ligam por cliente_id; contratos só têm o nome.
 

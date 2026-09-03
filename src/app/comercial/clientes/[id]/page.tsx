@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth'
 import ClienteForm from '@/components/ClienteForm'
 import { limparRascunho } from '@/lib/useFormDraft'
 import BotaoPdf from '@/components/BotaoPdf'
+import CategoriaDefeitoCliente from '@/components/CategoriaDefeitoCliente'
 import { obterCliente, atualizarCliente, eliminarCliente, historicoCliente } from '@/lib/clientes'
 import type { Cliente, ClienteInput, HistoricoItem } from '@/types/cliente'
 
@@ -26,7 +27,7 @@ function fmt(d: string | null) {
 export default function FichaClientePage() {
   const params = useParams()
   const router = useRouter()
-  const { isAdmin } = useAuth()
+  const { isAdmin, isFinanceiro } = useAuth()
   const id = params.id as string
 
   const [cliente, setCliente] = useState<Cliente | null>(null)
@@ -184,6 +185,7 @@ export default function FichaClientePage() {
             <p style={s.texto}>{cliente.observacoes}</p>
           </Bloco>
         )}
+        {isFinanceiro && <CategoriaDefeitoCliente clienteId={cliente.id} />}
       </div>
 
       <h2 style={s.subtitulo}>Histórico ({historico.length})</h2>
