@@ -13,8 +13,12 @@ export { formatarEuro, formatarData }
 // alimentação e estadia — e a comissão sai por aplicação da taxa do técnico
 // sobre o valor elegível:
 //
-//     base     = valor da fatura − despesas
+//     base     = valor LÍQUIDO da fatura (sem IVA) − despesas
 //     comissão = base × percentagem
+//
+// O valor_documento da comissão é o líquido (financeiro_movimentos.valor_liquido,
+// vindo do getDocument.NetTotal); se o líquido não estiver disponível o trigger
+// cai para o valor com IVA (valor_debito).
 //
 // A percentagem fica gravada na linha (snapshot): mudar a taxa não reescreve o
 // que já foi apurado.

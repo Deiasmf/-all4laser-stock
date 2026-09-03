@@ -41,11 +41,16 @@ export async function GET(req: Request) {
     valor: Number(l.NetValue ?? 0) || 0,
   }))
 
-  // Descrição concatenada das linhas → persiste no movimento (idempotente).
+  // Descrição concatenada das linhas + líquido sem IVA → persiste no movimento
+  // (idempotente). O líquido é a base das comissões técnicas.
   const descricao = linhas.map((l) => l.descricao).filter(Boolean).join(' | ') || null
-  if (descricao) {
-    await auth.sb.from('financeiro_movimentos').update({ descricao }).eq('keyinvoice_doc_id', id)
+  const liquido = Number(doc.NetTotal)
+  const patch: Record<string, unknown> = {}
+  if (descricao) patch.descricao = descricao
+  if (!isNaN(liquido)) patch.valor_liquido = liquido
+  if (Object.keys(patch).length > 0) {
+    await auth.sb.from('financeiro_movimentos').update(patch).eq('keyinvoice_doc_id', id)
   }
 
-  return Response.json({ ok: true, linhas, descricao })
+  return Response.json({ ok: true, linhas, descricao, valor_liquido: isNaN(liquido) ? null : liquido })
 }

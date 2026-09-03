@@ -39,6 +39,8 @@ export type DocKeyinvoice = {
   // Valor já liquidado (via API checkIfSettle). undefined = não determinado
   // (não mexe no que já lá está); usado só nas faturas para o estado de pagamento.
   valor_liquidado?: number | null
+  // Total sem IVA (getDocument.NetTotal). Base das comissões. undefined = não obtido.
+  valor_liquido?: number | null
 }
 
 export type LinhaImport = DocKeyinvoice & {
@@ -353,6 +355,9 @@ export async function importar(
     if (l.tipo_documento === 'fatura' && typeof l.valor_liquidado === 'number') {
       base.valor_liquidado = l.valor_liquidado
     }
+    // Líquido sem IVA (getDocument.NetTotal) — base das comissões. Só quando veio
+    // da API; a importação por ficheiro não o traz e não deve apagá-lo.
+    if (typeof l.valor_liquido === 'number') base.valor_liquido = l.valor_liquido
     // A classificação corrigida à mão manda sobre a proposta do ficheiro/regras.
     if (!l.categoriaBloqueada) {
       base.categoria = l.categoria
@@ -373,6 +378,7 @@ export async function importar(
     descricao: l.descricao ?? null,
     categoria_auto: l.categoriaBloqueada ? false : l.categoriaAuto,
     valor_liquidado: typeof l.valor_liquidado === 'number' ? l.valor_liquidado : 0,
+    valor_liquido: typeof l.valor_liquido === 'number' ? l.valor_liquido : null,
     origem: 'keyinvoice' as const,
     keyinvoice_doc_id: l.keyinvoice_doc_id,
     criado_por: utilizador.id,

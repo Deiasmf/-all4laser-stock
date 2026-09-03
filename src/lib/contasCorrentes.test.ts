@@ -6,7 +6,7 @@ function mov(p: Partial<MovimentoCC>): MovimentoCC {
     id: 'm', entidade_tipo: 'cliente', cliente_id: 'c1', fornecedor_id: null,
     entidade_nome: 'Clínica Exemplo', tipo_documento: 'fatura', documento_ref: 'FT1',
     data_documento: '2026-01-10', data_vencimento: null, valor_debito: 0, valor_credito: 0,
-    valor_liquidado: 0, estado: 'pendente', notas: null, descricao: null, categoria: null,
+    valor_liquidado: 0, valor_liquido: null, estado: 'pendente', notas: null, descricao: null, categoria: null,
     subcategoria_id: null, categoria_manual: false, categoria_auto: false,
     data_pagamento: null, metodo_pagamento: null, afeta_saldo: true,
     lembretes_auto: false, lembrete_ultimo: null, origem: 'keyinvoice', keyinvoice_doc_id: null,

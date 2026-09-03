@@ -50,6 +50,7 @@ export type MovimentoCC = {
   valor_debito: number
   valor_credito: number
   valor_liquidado: number
+  valor_liquido: number | null       // total sem IVA (NetTotal Keyinvoice); base das comissões
   estado: EstadoMov
   notas: string | null
   descricao: string | null
