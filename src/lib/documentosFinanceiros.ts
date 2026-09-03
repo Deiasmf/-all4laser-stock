@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { tipoDocInfo, type MovimentoCC, type EntidadeTipo, type TipoDocumento } from './contasCorrentes'
+import { tipoDocInfo, compararEmissaoDesc, type MovimentoCC, type EntidadeTipo, type TipoDocumento } from './contasCorrentes'
 
 // Documentos financeiros = os movimentos (faturas/recibos/notas de crédito/…),
 // numa vista centrada no documento, com o PDF anexo. Bucket privado; o acesso é
@@ -57,7 +57,9 @@ export async function listarDocumentos(f: FiltrosDoc): Promise<MovimentoCC[]> {
       `${m.documento_ref ?? ''} ${m.entidade_nome ?? ''}`.toLowerCase().includes(termo)
     )
   }
-  return linhas
+  // Ordem por defeito: emissão mais recente primeiro, com o nº como desempate
+  // numérico dentro da série (a ordenação da BD por data não resolve FT../9 vs /10).
+  return linhas.sort(compararEmissaoDesc)
 }
 
 // ─── Totais do filtro ativo ───────────────────────────────────────────────────
@@ -149,4 +151,58 @@ export async function removerFicheiro(movimentoId: string, caminho: string) {
 export async function urlAssinado(caminho: string, segundos = 60): Promise<string | null> {
   const { data } = await supabase.storage.from(BUCKET_FIN_DOCS).createSignedUrl(caminho, segundos)
   return data?.signedUrl ?? null
+}
+
+// ─── Detalhe de fatura (linhas + PDF) via API do Keyinvoice ──────────────────
+
+export type LinhaDoc = {
+  descricao: string
+  idProduto: string | null
+  qtd: number
+  precoUnit: number
+  desconto: number
+  iva: number
+  valor: number
+}
+
+async function tokenSessao(): Promise<string | null> {
+  const { data } = await supabase.auth.getSession()
+  return data.session?.access_token ?? null
+}
+
+// Só as faturas sincronizadas por API (keyinvoice_doc_id "ki|…") têm detalhe.
+export function temDetalheApi(m: Pick<MovimentoCC, 'keyinvoice_doc_id'>): boolean {
+  return !!m.keyinvoice_doc_id?.startsWith('ki|')
+}
+
+// Busca as linhas do documento; grava a descrição concatenada no movimento.
+export async function obterDetalheDoc(
+  keyinvoiceDocId: string
+): Promise<{ ok: boolean; linhas?: LinhaDoc[]; descricao?: string | null; erro?: string }> {
+  const token = await tokenSessao()
+  if (!token) return { ok: false, erro: 'Sem sessão.' }
+  const res = await fetch(`/api/financeiro/keyinvoice/documento?id=${encodeURIComponent(keyinvoiceDocId)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  const j = await res.json().catch(() => ({}))
+  if (!res.ok || !j.ok) return { ok: false, erro: j.erro ?? 'Falha a obter o detalhe.' }
+  return { ok: true, linhas: j.linhas ?? [], descricao: j.descricao ?? null }
+}
+
+// Busca o PDF (com token) e devolve um blob URL para pré-visualizar num iframe.
+// Quem chama deve libertar com URL.revokeObjectURL quando fechar o painel.
+export async function obterPdfBlobUrl(
+  keyinvoiceDocId: string
+): Promise<{ ok: boolean; url?: string; erro?: string }> {
+  const token = await tokenSessao()
+  if (!token) return { ok: false, erro: 'Sem sessão.' }
+  const res = await fetch(`/api/financeiro/keyinvoice/documento/pdf?id=${encodeURIComponent(keyinvoiceDocId)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}))
+    return { ok: false, erro: j.erro ?? 'Sem PDF.' }
+  }
+  const blob = await res.blob()
+  return { ok: true, url: URL.createObjectURL(blob) }
 }

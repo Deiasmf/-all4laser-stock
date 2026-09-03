@@ -1,8 +1,9 @@
 import { supabase } from './supabase'
 import {
   listarMovimentos, alocarFaturas, entidadeIdDe, hojeISO, contaParaSaldo,
-  formatarEuro, formatarData, type MovimentoCC,
+  compararEmissaoDesc, formatarEuro, formatarData, type MovimentoCC,
 } from './contasCorrentes'
+import { semAcentos } from './categorizacaoFinanceira'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PEDIDOS DE PAGAMENTO ao cliente (o que está por receber).
@@ -130,7 +131,33 @@ export async function listarEmDivida(hoje = hojeISO()): Promise<DocEmDivida[]> {
       nPedidos: pedidos.get(m.id)?.n ?? 0,
       ultimoPedido: pedidos.get(m.id)?.ultimo ?? m.lembrete_ultimo ?? null,
     }))
-    .sort((a, b) => b.diasAtraso - a.diasAtraso || b.porLiquidar - a.porLiquidar)
+    // Ordem por defeito: emissão mais recente primeiro (ponto 1), como as
+    // restantes listagens de faturas. O atraso vê-se na coluna/indicadores.
+    .sort((a, b) => compararEmissaoDesc(a.movimento, b.movimento))
+}
+
+// ─── Pesquisa (nome do cliente OU valor OU nº de fatura) ─────────────────────
+
+// Só os dígitos de um termo (para casar valores: "1.250,00 €" ~ "1250").
+function soDigitos(s: string): string {
+  return s.replace(/\D/g, '')
+}
+
+// Verdadeiro se o documento casa o termo de pesquisa. Tolerante:
+//  - nome do cliente e nº de documento: sem acentos, sem maiúsculas, por inclusão
+//  - valor: dígitos do termo dentro do valor em dívida ou do total da fatura
+export function correspondePesquisa(d: DocEmDivida, termo: string): boolean {
+  const t = termo.trim()
+  if (!t) return true
+  const alvo = semAcentos(`${d.movimento.entidade_nome ?? ''} ${d.movimento.documento_ref ?? ''}`).toLowerCase()
+  if (alvo.includes(semAcentos(t).toLowerCase())) return true
+  const dig = soDigitos(t)
+  if (dig.length >= 2) {
+    for (const v of [d.porLiquidar, d.movimento.valor_debito]) {
+      if (String(Math.trunc(v)).includes(dig) || Math.round(v * 100).toString().includes(dig)) return true
+    }
+  }
+  return false
 }
 
 async function emailsDosClientes(ids: string[]): Promise<Map<string, string | null>> {

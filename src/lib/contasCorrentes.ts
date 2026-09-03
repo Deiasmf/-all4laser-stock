@@ -56,6 +56,7 @@ export type MovimentoCC = {
   categoria: string | null            // chave da categoria de topo; null = por classificar
   subcategoria_id: string | null      // subcategoria opcional (financeiro_subcategorias)
   categoria_manual: boolean           // true = definida à mão (a reimportação respeita)
+  categoria_auto: boolean             // true = pré-categorizada pelo defeito do cliente, por rever
   data_pagamento: string | null
   metodo_pagamento: string | null
   afeta_saldo: boolean                // false nas pró-formas
@@ -75,6 +76,46 @@ export function entidadeIdDe(m: MovimentoCC): string | null {
   return m.entidade_tipo === 'cliente' ? m.cliente_id : m.fornecedor_id
 }
 
+// ─── Ordenação por emissão (data + nº do documento) ──────────────────────────
+// A referência ("FT 2026/1", "FT2026/101", "FTA 2026/9") divide-se em SÉRIE
+// (tudo menos a última sequência de dígitos) e SEQUÊNCIA (o último número). A
+// sequência tem de ser comparada como NÚMERO — senão "FT2026/9" viria depois de
+// "FT2026/10" (ordenação alfabética). Documentos sem nº vão para o fim.
+export function parseNumeroDoc(ref: string | null | undefined): { serie: string; seq: number } {
+  const s = (ref ?? '').trim()
+  const m = s.match(/(\d+)\s*$/)
+  if (!m) return { serie: s.toLowerCase(), seq: -1 }
+  const seq = Number(m[1])
+  const serie = s.slice(0, m.index).replace(/[\s/–-]+$/, '').trim().toLowerCase()
+  return { serie, seq: isNaN(seq) ? -1 : seq }
+}
+
+// Chaves mínimas para ordenar por emissão (serve movimentos, comissões, etc.).
+export type OrdenavelPorEmissao = {
+  documento_ref: string | null
+  data_documento: string | null
+  created_at: string
+}
+
+// Comparador por defeito das listagens de faturas: emissão mais recente primeiro
+// (data desc; dentro da mesma data, série igual → nº numérico desc). Estável por
+// created_at. Usar com [...arr].sort(compararEmissaoDesc).
+export function compararEmissaoDesc(a: OrdenavelPorEmissao, b: OrdenavelPorEmissao): number {
+  const dd = (b.data_documento ?? '').localeCompare(a.data_documento ?? '')
+  if (dd !== 0) return dd
+  const na = parseNumeroDoc(a.documento_ref)
+  const nb = parseNumeroDoc(b.documento_ref)
+  if (na.serie === nb.serie && na.seq !== nb.seq) return nb.seq - na.seq
+  if (na.serie !== nb.serie) return na.serie.localeCompare(nb.serie)
+  return (b.created_at ?? '').localeCompare(a.created_at ?? '')
+}
+
+// Variante ascendente para o extrato (conta corrente), onde o saldo é acumulado
+// e a leitura tem de ser cronológica; o nº serve de desempate numérico crescente.
+export function compararEmissaoAsc(a: OrdenavelPorEmissao, b: OrdenavelPorEmissao): number {
+  return -compararEmissaoDesc(a, b)
+}
+
 // A pró-forma aparece no extrato mas não mexe no saldo nem no aging.
 export function contaParaSaldo(m: MovimentoCC): boolean {
   return m.tipo_documento !== 'pro_forma' && m.afeta_saldo !== false
@@ -90,7 +131,7 @@ export async function listarMovimentos(tipo?: EntidadeTipo): Promise<MovimentoCC
     .order('created_at', { ascending: true })
   if (tipo) q = q.eq('entidade_tipo', tipo)
   const { data } = await q
-  return (data as MovimentoCC[]) ?? []
+  return ((data as MovimentoCC[]) ?? []).sort(compararEmissaoAsc)
 }
 
 export async function movimentosDaEntidade(tipo: EntidadeTipo, id: string): Promise<MovimentoCC[]> {
@@ -102,7 +143,7 @@ export async function movimentosDaEntidade(tipo: EntidadeTipo, id: string): Prom
     .eq(col, id)
     .order('data_documento', { ascending: true })
     .order('created_at', { ascending: true })
-  return (data as MovimentoCC[]) ?? []
+  return ((data as MovimentoCC[]) ?? []).sort(compararEmissaoAsc)
 }
 
 export type MovimentoInput = {

@@ -4,9 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
   listarDocumentos, anexarFicheiro, removerFicheiro, urlAssinado,
-  totaisDocumentos, exportarDocumentosCsv, descarregarCsv,
+  totaisDocumentos, exportarDocumentosCsv, descarregarCsv, temDetalheApi,
   FILTROS_VAZIOS, type FiltrosDoc,
 } from '@/lib/documentosFinanceiros'
+import DetalheFaturaModal from './DetalheFaturaModal'
 import {
   TIPOS_DOCUMENTO, tipoDocInfo, formatarEuro, formatarData,
   marcarPago, marcarPorPagar, type MovimentoCC,
@@ -16,6 +17,7 @@ import {
   mapaCategorias, mapaSubcategorias, nomeCategoriaDe, categorizarMovimentos,
   type CategoriaFin, type Subcategoria,
 } from '@/lib/categoriasFin'
+import { faturasSemCategoriaCliente, definirCategoriaDefeitoCliente } from '@/lib/clientesCategoria'
 
 export default function DocumentosPage() {
   const [docs, setDocs] = useState<MovimentoCC[]>([])
@@ -27,6 +29,11 @@ export default function DocumentosPage() {
   const [msg, setMsg] = useState<string | null>(null)
   const [sel, setSel] = useState<Set<string>>(new Set())
   const [catMassa, setCatMassa] = useState('__x__')
+  const [detalheIdx, setDetalheIdx] = useState<number | null>(null)
+  // Proposta "aplicar às restantes X faturas sem categoria deste cliente".
+  const [proposta, setProposta] = useState<
+    { clienteId: string; clienteNome: string; value: string; label: string; ids: string[] } | null
+  >(null)
 
   const carregar = useCallback(async () => {
     setCarregando(true)
@@ -66,15 +73,39 @@ export default function DocumentosPage() {
     else setMsg('Não foi possível abrir o ficheiro.')
   }
 
-  // Classificar 1 documento (dropdown plano na linha).
+  // Classificar 1 documento (dropdown plano na linha ou no painel de detalhe).
   async function categorizarUm(m: MovimentoCC, value: string) {
     const { categoria_chave, subcategoria_id } = resolverValor(value, subs, cats)
     setATrabalhar(m.id); setMsg(null)
     const r = await categorizarMovimentos([m.id], categoria_chave, subcategoria_id)
-    if (!r.ok) setMsg('Erro ao classificar: ' + (r.erro ?? ''))
-    else setDocs((prev) => prev.map((d) => d.id === m.id
-      ? { ...d, categoria: categoria_chave, subcategoria_id, categoria_manual: categoria_chave !== null } : d))
+    if (!r.ok) { setMsg('Erro ao classificar: ' + (r.erro ?? '')); setATrabalhar(null); return }
+    setDocs((prev) => prev.map((d) => d.id === m.id
+      ? { ...d, categoria: categoria_chave, subcategoria_id, categoria_manual: categoria_chave !== null, categoria_auto: false } : d))
     setATrabalhar(null)
+    // Memória por cliente: se catalogou (não "por classificar") uma fatura de um
+    // cliente com outras faturas sem categoria, propõe aplicar às restantes.
+    if (categoria_chave && m.cliente_id) {
+      const ids = await faturasSemCategoriaCliente(m.cliente_id, m.id)
+      if (ids.length > 0) {
+        const label = catMap.get(categoria_chave)?.label ?? 'esta categoria'
+        setProposta({ clienteId: m.cliente_id, clienteNome: m.entidade_nome ?? 'este cliente', value, label, ids })
+      }
+    }
+  }
+
+  // "Aplicar a todas": categoriza as restantes faturas do cliente e grava a
+  // categoria-defeito na ficha (as futuras entram pré-categorizadas).
+  async function aplicarPropostaATodas() {
+    if (!proposta) return
+    const { categoria_chave, subcategoria_id } = resolverValor(proposta.value, subs, cats)
+    const alvo = proposta.ids
+    const r = await categorizarMovimentos(alvo, categoria_chave, subcategoria_id)
+    if (!r.ok) { setMsg('Erro: ' + (r.erro ?? '')); return }
+    await definirCategoriaDefeitoCliente(proposta.clienteId, categoria_chave, subcategoria_id)
+    setDocs((prev) => prev.map((d) => alvo.includes(d.id)
+      ? { ...d, categoria: categoria_chave, subcategoria_id, categoria_manual: true, categoria_auto: false } : d))
+    setMsg(`✅ ${alvo.length} fatura(s) → ${proposta.label}. Categoria-defeito guardada para ${proposta.clienteNome}.`)
+    setProposta(null)
   }
 
   async function alternarPagamento(m: MovimentoCC) {
@@ -139,6 +170,19 @@ export default function DocumentosPage() {
       </div>
 
       {msg && <div style={c.aviso}>{msg} <button style={c.fecharAviso} onClick={() => setMsg(null)}>✕</button></div>}
+
+      {proposta && (
+        <div style={c.proposta}>
+          <span>
+            Aplicar <strong>{proposta.label}</strong> às restantes <strong>{proposta.ids.length}</strong> fatura(s) sem
+            categoria de <strong>{proposta.clienteNome}</strong>?
+          </span>
+          <span style={c.propostaAcoes}>
+            <button style={c.btnPrimario} onClick={aplicarPropostaATodas}>Aplicar a todas</button>
+            <button style={c.btnGhost} onClick={() => setProposta(null)}>Só a esta</button>
+          </span>
+        </div>
+      )}
 
       {/* Filtros */}
       <div style={c.filtros}>
@@ -227,7 +271,7 @@ export default function DocumentosPage() {
             <span style={{ textAlign: 'center' }}>Origem</span>
             <span style={{ textAlign: 'center' }}>Ficheiro</span>
           </div>
-          {docs.map((m) => {
+          {docs.map((m, idx) => {
             const valor = m.valor_debito || m.valor_credito
             const ocupado = aTrabalhar === m.id
             const cat = m.categoria ? catMap.get(m.categoria) : null
@@ -240,7 +284,13 @@ export default function DocumentosPage() {
                   <input type="checkbox" checked={sel.has(m.id)} onChange={() => alternarSel(m.id)} />
                 </span>
                 <span style={c.muted}>{formatarData(m.data_documento)}</span>
-                <span>{tipoDocInfo(m.tipo_documento).label}{m.documento_ref ? ` ${m.documento_ref}` : ''}</span>
+                <span>
+                  <button style={c.docBtn} onClick={() => setDetalheIdx(idx)} title="Ver detalhe / catalogar">
+                    {tipoDocInfo(m.tipo_documento).label}{m.documento_ref ? ` ${m.documento_ref}` : ''}
+                  </button>
+                  {m.categoria_auto && <span style={c.autoTag} title="Categoria automática — por rever">auto</span>}
+                  {temDetalheApi(m) && <span style={c.lupa} title="Tem linhas e PDF">🔍</span>}
+                </span>
                 <span>{m.entidade_nome ?? '—'}<span style={c.entTipo}> · {m.entidade_tipo}</span></span>
                 <span style={{ textAlign: 'right', fontWeight: 700 }}>{formatarEuro(valor)}</span>
                 <span>
@@ -288,6 +338,19 @@ export default function DocumentosPage() {
           })}
         </div>
       )}
+
+      {detalheIdx !== null && docs[detalheIdx] && (
+        <DetalheFaturaModal
+          doc={docs[detalheIdx]}
+          opcoes={opcoes}
+          temAnterior={detalheIdx > 0}
+          temSeguinte={detalheIdx < docs.length - 1}
+          ocupado={aTrabalhar === docs[detalheIdx].id}
+          onNav={(dir) => setDetalheIdx((i) => (i === null ? i : Math.min(docs.length - 1, Math.max(0, i + dir))))}
+          onClose={() => setDetalheIdx(null)}
+          onCategorizar={categorizarUm}
+        />
+      )}
     </main>
   )
 }
@@ -302,6 +365,8 @@ const c: Record<string, React.CSSProperties> = {
   btnPrimario: { background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 18px', fontWeight: 700, cursor: 'pointer', textDecoration: 'none', whiteSpace: 'nowrap' },
   aviso: { background: '#fff8e6', border: '1px solid #e6c34a', borderRadius: 8, padding: '10px 12px', fontSize: 14, marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
   fecharAviso: { background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 14 },
+  proposta: { background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 10, padding: '10px 14px', fontSize: 14, marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
+  propostaAcoes: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' },
   filtros: { display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' },
   input: { padding: 9, border: '1px solid #ccc', borderRadius: 8, fontSize: 14 },
   dataLabel: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--muted)' },
@@ -320,6 +385,9 @@ const c: Record<string, React.CSSProperties> = {
   linhaSel: { background: '#F5F3FF' },
   cab: { fontWeight: 700, color: 'var(--muted)', fontSize: 12, borderBottom: '2px solid var(--border)' },
   muted: { color: 'var(--muted)', fontSize: 13 },
+  docBtn: { background: 'transparent', border: 'none', color: 'var(--primary)', fontWeight: 700, cursor: 'pointer', fontSize: 13.5, padding: 0, textAlign: 'left', textDecoration: 'underline' },
+  autoTag: { marginLeft: 6, fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '1px 6px', color: '#92400E', background: '#FEF3C7', border: '1px solid #FCD34D', verticalAlign: 'middle' },
+  lupa: { marginLeft: 6, fontSize: 11, opacity: 0.6 },
   entTipo: { color: 'var(--muted)', fontSize: 12 },
   badge: { fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '2px 8px', whiteSpace: 'nowrap' },
   badgeManual: { color: '#374151', background: '#E5E7EB' },

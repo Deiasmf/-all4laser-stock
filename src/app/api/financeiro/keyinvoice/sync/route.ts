@@ -168,15 +168,19 @@ async function persistir(
     }
   }
 
-  // Clientes (associação por NIF, depois nome).
-  const { data: cli } = await sb.from('clientes').select('id, nome, nif').limit(5000)
+  // Clientes (associação por NIF, depois nome) + categoria-defeito por cliente.
+  const { data: cli } = await sb.from('clientes')
+    .select('id, nome, nif, categoria_defeito, subcategoria_defeito_id').limit(5000)
   const porNif = new Map<string, string>()
   const porNome = new Map<string, string>()
-  for (const c of (cli as { id: string; nome: string | null; nif: string | null }[]) ?? []) {
+  const defeitos = new Map<string, { categoria_chave: string; subcategoria_id: string | null }>()
+  type CliRow = { id: string; nome: string | null; nif: string | null; categoria_defeito: string | null; subcategoria_defeito_id: string | null }
+  for (const c of (cli as CliRow[]) ?? []) {
     if (!c.nome) continue
     const nif = normNif(c.nif)
     if (nif) porNif.set(nif, c.id)
     porNome.set(norm(c.nome), c.id)
+    if (c.categoria_defeito) defeitos.set(c.id, { categoria_chave: c.categoria_defeito, subcategoria_id: c.subcategoria_defeito_id })
   }
 
   const { data: regrasData } = await sb.from('financeiro_regras_categoria').select('*').order('ordem').order('created_at')
@@ -192,8 +196,12 @@ async function persistir(
     vistos.add(d.keyinvoice_doc_id)
     const entId = porNif.get(normNif(d.nif)) || porNome.get(norm(d.nome)) || null
     if (!entId) { semEntidade++; continue }
-    const cat = aplicarRegras(regras, { descricao: d.descricao, documento_ref: d.numero, entidade_nome: d.nome })
-      ?? { categoria_chave: d.categoria ?? null, subcategoria_id: null }
+    // Precedência: regra por descrição > categoria-defeito do cliente > heurística.
+    // (o manual respeita-se no update, abaixo). A categoria-defeito marca auto=true.
+    const porRegra = aplicarRegras(regras, { descricao: d.descricao, documento_ref: d.numero, entidade_nome: d.nome })
+    const def = defeitos.get(entId)
+    const auto = !porRegra && !!def
+    const cat = porRegra ?? def ?? { categoria_chave: d.categoria ?? null, subcategoria_id: null }
     const sentido = tipoDocInfo(d.tipo_documento).sentido
     const base: Record<string, unknown> = {
       entidade_tipo: 'cliente', cliente_id: entId, fornecedor_id: null, entidade_nome: d.nome,
@@ -206,14 +214,14 @@ async function persistir(
     if (!ex) {
       insertRows.push({
         ...base,
-        categoria: cat.categoria_chave, subcategoria_id: cat.subcategoria_id,
+        categoria: cat.categoria_chave, subcategoria_id: cat.subcategoria_id, categoria_auto: auto,
         valor_liquidado: liquidado ?? 0,
         origem: 'keyinvoice', keyinvoice_doc_id: d.keyinvoice_doc_id,
         criado_por_nome: 'Sincronização automática',
       })
     } else {
       const upd: Record<string, unknown> = { ...base }
-      if (!ex.categoria_manual) { upd.categoria = cat.categoria_chave; upd.subcategoria_id = cat.subcategoria_id }
+      if (!ex.categoria_manual) { upd.categoria = cat.categoria_chave; upd.subcategoria_id = cat.subcategoria_id; upd.categoria_auto = auto }
       if (liquidado != null) upd.valor_liquidado = liquidado
       updates.push({ id: d.keyinvoice_doc_id, upd })
     }

@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { formatarEuro, formatarData } from './contasCorrentes'
+import { formatarEuro, formatarData, compararEmissaoDesc } from './contasCorrentes'
 import { extrairDespesas, type TipoDespesa } from './categorizacaoFinanceira'
 
 export { formatarEuro, formatarData }
@@ -131,7 +131,9 @@ export async function listarComissoes(f: FiltrosComissao = FILTROS_COMISSAO_VAZI
         .toLowerCase().includes(termo)
     )
   }
-  return linhas
+  // Ordem por defeito: emissão mais recente primeiro, com o nº como desempate
+  // numérico dentro da série (igual às restantes listagens de faturas).
+  return linhas.sort(compararEmissaoDesc)
 }
 
 export type ResumoComissoes = {

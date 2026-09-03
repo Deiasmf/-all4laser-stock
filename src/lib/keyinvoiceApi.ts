@@ -124,6 +124,61 @@ export async function listarSeries(docType: number): Promise<SerieDoc[]> {
   return data?.Series ?? []
 }
 
+// keyinvoice_doc_id dos documentos sincronizados por API: "ki|DocType|DocSeries|DocNum".
+// (Os importados por ficheiro usam "tipo|ref" e não têm este detalhe.)
+export function parseKiDocId(
+  id: string | null | undefined
+): { docType: string; docSeries: string; docNum: string } | null {
+  const p = (id ?? '').split('|')
+  if (p.length !== 4 || p[0] !== 'ki' || !p[3]) return null
+  return { docType: p[1], docSeries: p[2], docNum: p[3] }
+}
+
+// Uma linha do documento (getDocument → Data.Lines[]).
+export type DocLinha = {
+  DocLin?: string | number
+  IdProduct?: string
+  ProductName?: string
+  UnitPrice?: string | number
+  Qty?: string | number
+  Discount?: string | number
+  TaxValue?: string | number
+  NetValue?: string | number
+}
+
+export type DocumentoDetalhe = DocListItem & {
+  NetTotal?: string | number
+  TaxTotal?: string | number
+  Lines?: DocLinha[]
+}
+
+// Detalhe completo de um documento (cabeçalho + linhas com descrição/qtd/valor).
+export async function obterDocumento(
+  docType: number | string,
+  docNum: number | string,
+  docSeries?: number | string
+): Promise<DocumentoDetalhe> {
+  return chamar<DocumentoDetalhe>('getDocument', {
+    DocType: String(docType),
+    DocNum: String(docNum),
+    ...(docSeries != null && docSeries !== '' ? { DocSeries: String(docSeries) } : {}),
+  })
+}
+
+// PDF do documento em base64 (Data.DocumentBinary). '' se indisponível.
+export async function obterDocumentoPdfBase64(
+  docType: number | string,
+  docNum: number | string,
+  docSeries?: number | string
+): Promise<string> {
+  const data = await chamar<{ DocumentBinary?: string }>('getDocumentPDF', {
+    DocType: String(docType),
+    DocNum: String(docNum),
+    ...(docSeries != null && docSeries !== '' ? { DocSeries: String(docSeries) } : {}),
+  })
+  return data?.DocumentBinary ?? ''
+}
+
 // Valor ainda pendente de um documento (0 = totalmente liquidado). null se indeterminado.
 export async function valorPendente(
   docType: number | string,
