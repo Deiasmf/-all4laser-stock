@@ -32,7 +32,7 @@ const MAX_PAGINAS_TIPO = 100 // 100 docs/página → até 10 000 por tipo
 const MAX_CHAMADAS = 4000    // margem sob o limite diário de 5000
 const MAX_SETTLE = 1500      // teto de checkIfSettle por corrida
 const MAX_DETALHE = 1500     // teto de getDocument (líquido + descrição das faturas)
-const PAUSA_MS = 80          // intervalo entre chamadas (não sobrecarregar a API)
+const PAUSA_MS = 40          // intervalo entre chamadas (não sobrecarregar a API)
 
 // Descrição concatenada das linhas de um documento (para categorizar + pesquisar).
 function descricaoDeLinhas(linhas: DocLinha[]): string | null {
@@ -65,7 +65,13 @@ export type SyncMeta = {
 }
 
 // ─── Busca dos documentos à API (partilhada por POST e GET) ──────────────────
-async function buscarDocumentos(): Promise<{ docs: DocKeyinvoice[]; meta: SyncMeta }> {
+// `jaDetalhados`: keyinvoice_doc_id de faturas que já têm líquido + descrição
+// gravados. Como esses valores são imutáveis num documento fechado, saltamos o
+// getDocument dessas faturas — o custo do detalhe passa a ser só das faturas NOVAS,
+// e a sincronização deixa de crescer sem limite (evita o timeout do cron).
+async function buscarDocumentos(
+  jaDetalhados: Set<string> = new Set()
+): Promise<{ docs: DocKeyinvoice[]; meta: SyncMeta }> {
   type Entrada = { doc: DocKeyinvoice; code: number; num: string; series: string | number | undefined; settle: 'check' | 'paid' | 'none' }
   const entradas: Entrada[] = []
   const porTipo: Record<string, number> = {}
@@ -73,7 +79,7 @@ async function buscarDocumentos(): Promise<{ docs: DocKeyinvoice[]; meta: SyncMe
   let ignoradosSemData = 0
   let truncado = false
   const inicio = Date.now()
-  const LIMITE_MS = 250_000
+  const LIMITE_MS = 230_000
   const tiposIgnorados: { code: number; tipo: string; erro: string }[] = []
 
   // 1) Por tipo → séries activas → listar cada série (paginada). Tolerante.
@@ -159,6 +165,7 @@ async function buscarDocumentos(): Promise<{ docs: DocKeyinvoice[]; meta: SyncMe
   let detalheCapped = false
   for (const e of entradas) {
     if (e.doc.tipo_documento !== 'fatura') continue
+    if (jaDetalhados.has(e.doc.keyinvoice_doc_id)) continue // líquido + descrição já gravados (imutáveis)
     if (detalhados >= MAX_DETALHE || chamadas >= MAX_CHAMADAS || Date.now() - inicio > LIMITE_MS) { detalheCapped = true; break }
     try {
       const det = await obterDocumento(e.code, e.num, e.series)
@@ -187,14 +194,17 @@ async function persistir(
   sb: SupabaseClient,
   docs: DocKeyinvoice[]
 ): Promise<{ importados: number; atualizados: number; semEntidade: number; erro?: string }> {
-  // Documentos já existentes (respeitar categoria fixada à mão).
+  // Documentos já existentes: respeitar categoria fixada à mão e reter o detalhe
+  // (descrição/líquido) já gravado — quando a sincronização salta o getDocument de
+  // uma fatura já detalhada, o doc vem sem esses campos e não os podemos apagar.
   const ids = docs.map((d) => d.keyinvoice_doc_id)
-  const existentes = new Map<string, { categoria_manual: boolean }>()
+  type ExRow = { categoria_manual: boolean; descricao: string | null; valor_liquido: number | null }
+  const existentes = new Map<string, ExRow>()
   for (let i = 0; i < ids.length; i += 500) {
     const { data } = await sb.from('financeiro_movimentos')
-      .select('keyinvoice_doc_id, categoria_manual').in('keyinvoice_doc_id', ids.slice(i, i + 500))
-    for (const r of (data as { keyinvoice_doc_id: string; categoria_manual: boolean | null }[]) ?? []) {
-      existentes.set(r.keyinvoice_doc_id, { categoria_manual: !!r.categoria_manual })
+      .select('keyinvoice_doc_id, categoria_manual, descricao, valor_liquido').in('keyinvoice_doc_id', ids.slice(i, i + 500))
+    for (const r of (data as { keyinvoice_doc_id: string; categoria_manual: boolean | null; descricao: string | null; valor_liquido: number | null }[]) ?? []) {
+      existentes.set(r.keyinvoice_doc_id, { categoria_manual: !!r.categoria_manual, descricao: r.descricao, valor_liquido: r.valor_liquido })
     }
   }
 
@@ -226,9 +236,12 @@ async function persistir(
     vistos.add(d.keyinvoice_doc_id)
     const entId = porNif.get(normNif(d.nif)) || porNome.get(norm(d.nome)) || null
     if (!entId) { semEntidade++; continue }
+    const ex = existentes.get(d.keyinvoice_doc_id)
+    // Descrição efectiva: a nova (do getDocument) ou, se saltámos o detalhe, a já gravada.
+    const descricao = d.descricao ?? ex?.descricao ?? null
     // Precedência: regra por descrição > categoria-defeito do cliente > heurística.
     // (o manual respeita-se no update, abaixo). A categoria-defeito marca auto=true.
-    const porRegra = aplicarRegras(regras, { descricao: d.descricao, documento_ref: d.numero, entidade_nome: d.nome })
+    const porRegra = aplicarRegras(regras, { descricao, documento_ref: d.numero, entidade_nome: d.nome })
     const def = defeitos.get(entId)
     const auto = !porRegra && !!def
     const cat = porRegra ?? def ?? { categoria_chave: d.categoria ?? null, subcategoria_id: null }
@@ -236,12 +249,11 @@ async function persistir(
     const base: Record<string, unknown> = {
       entidade_tipo: 'cliente', cliente_id: entId, fornecedor_id: null, entidade_nome: d.nome,
       tipo_documento: d.tipo_documento, documento_ref: d.numero,
-      data_documento: d.data_documento, data_vencimento: d.data_vencimento, descricao: d.descricao ?? null,
+      data_documento: d.data_documento, data_vencimento: d.data_vencimento, descricao,
       valor_debito: sentido === 'debito' ? d.valor : 0, valor_credito: sentido === 'credito' ? d.valor : 0,
     }
-    const ex = existentes.get(d.keyinvoice_doc_id)
     const liquidado = d.tipo_documento === 'fatura' && typeof d.valor_liquidado === 'number' ? d.valor_liquidado : null
-    const liquido = typeof d.valor_liquido === 'number' ? d.valor_liquido : null
+    const liquido = typeof d.valor_liquido === 'number' ? d.valor_liquido : (ex?.valor_liquido ?? null)
     if (!ex) {
       insertRows.push({
         ...base,
@@ -322,7 +334,19 @@ export async function GET(req: Request) {
   const sb = createClient(url, serviceKey, { auth: { persistSession: false } })
 
   try {
-    const { docs, meta } = await buscarDocumentos()
+    // Faturas já detalhadas (líquido + descrição) → saltar o getDocument delas.
+    const jaDetalhados = new Set<string>()
+    for (let offset = 0; ; offset += 1000) {
+      const { data } = await sb.from('financeiro_movimentos')
+        .select('keyinvoice_doc_id')
+        .eq('origem', 'keyinvoice').eq('tipo_documento', 'fatura')
+        .not('valor_liquido', 'is', null).not('descricao', 'is', null)
+        .range(offset, offset + 999)
+      const rows = (data as { keyinvoice_doc_id: string | null }[]) ?? []
+      for (const r of rows) if (r.keyinvoice_doc_id) jaDetalhados.add(r.keyinvoice_doc_id)
+      if (rows.length < 1000) break
+    }
+    const { docs, meta } = await buscarDocumentos(jaDetalhados)
     const r = await persistir(sb, docs)
     await sb.from('financeiro_keyinvoice_sync').insert({
       recurso: 'sync_api_cron',
