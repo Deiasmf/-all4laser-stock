@@ -337,33 +337,76 @@ function detetarDelim(l: string): string {
 }
 
 const MAPA_LINHA: Record<string, LinhaNegocio> = {
-  venda: 'venda', aluguer: 'aluguer', 'assistencia tecnica': 'assistencia',
-  assistencia: 'assistencia', formacao: 'formacao', institucional: 'institucional',
+  venda: 'venda', sale: 'venda', sales: 'venda',
+  aluguer: 'aluguer', rental: 'aluguer', rent: 'aluguer',
+  'assistencia tecnica': 'assistencia', assistencia: 'assistencia',
+  'technical assistance': 'assistencia', 'technical service': 'assistencia', service: 'assistencia',
+  formacao: 'formacao', training: 'formacao', 'formacao/training': 'formacao',
+  institucional: 'institucional', institutional: 'institucional', corporate: 'institucional',
 }
 const MAPA_OBJETIVO: Record<string, ObjetivoPost> = {
-  notoriedade: 'notoriedade', educacao: 'educacao', prova: 'prova',
-  captacao: 'captacao', conversao: 'conversao', retencao: 'retencao',
+  notoriedade: 'notoriedade', awareness: 'notoriedade',
+  educacao: 'educacao', education: 'educacao',
+  prova: 'prova', proof: 'prova',
+  captacao: 'captacao', acquisition: 'captacao', 'lead gen': 'captacao', leads: 'captacao',
+  conversao: 'conversao', conversion: 'conversao',
+  retencao: 'retencao', retention: 'retencao',
 }
 const MAPA_PLATAFORMA: Record<string, Plataforma> = {
   'instagram feed': 'instagram_feed', 'instagram': 'instagram_feed', 'ig': 'instagram_feed',
-  'instagram story': 'instagram_story', 'story': 'instagram_story',
-  'instagram reel': 'instagram_reel', 'reel': 'instagram_reel',
-  facebook: 'facebook', fb: 'facebook', linkedin: 'linkedin',
+  'instagram post': 'instagram_feed', feed: 'instagram_feed',
+  'instagram story': 'instagram_story', 'story': 'instagram_story', stories: 'instagram_story',
+  'instagram stories': 'instagram_story', 'ig story': 'instagram_story',
+  'instagram reel': 'instagram_reel', 'reel': 'instagram_reel', reels: 'instagram_reel', 'ig reel': 'instagram_reel',
+  facebook: 'facebook', fb: 'facebook', 'facebook post': 'facebook', linkedin: 'linkedin', 'linked in': 'linkedin',
 }
 const MAPA_FORMATO: Record<string, FormatoVariante> = {
-  imagem: 'imagem', carrossel: 'carrossel', video: 'video', reel: 'reel',
-  story: 'story', documento: 'documento', texto: 'texto',
+  imagem: 'imagem', image: 'imagem', foto: 'imagem', photo: 'imagem',
+  carrossel: 'carrossel', carousel: 'carrossel',
+  video: 'video', reel: 'reel', story: 'story',
+  documento: 'documento', document: 'documento', pdf: 'documento',
+  texto: 'texto', text: 'texto',
 }
-// Sinónimos de cabeçalho → campo canónico.
+// Sinónimos de cabeçalho → campo canónico (PT e EN — o plano é bilingue).
 const CAMPOS: Record<string, string> = {
-  data: 'data', hora: 'hora', plataforma: 'plataforma', rede: 'plataforma',
-  'titulo interno': 'titulo', titulo: 'titulo', tema: 'tema',
-  'linha de negocio': 'linha', linha: 'linha', objetivo: 'objetivo',
-  marca: 'marca', modelo: 'modelo', mercado: 'mercado', idioma: 'idioma',
-  formato: 'formato', copy: 'copy', texto: 'copy', legenda: 'copy',
-  cta: 'cta', url: 'url', link: 'url', hashtags: 'hashtags',
-  'link canva': 'canva', canva: 'canva', 'organico/pago': 'promo', promocao: 'promo',
-  orcamento: 'orcamento', 'orcamento proposto': 'orcamento', notas: 'notas',
+  // data / hora
+  data: 'data', date: 'data', dia: 'data', hora: 'hora', time: 'hora', horas: 'hora',
+  // plataforma / rede
+  plataforma: 'plataforma', platform: 'plataforma', rede: 'plataforma',
+  'rede social': 'plataforma', 'social network': 'plataforma', network: 'plataforma',
+  canal: 'plataforma', channel: 'plataforma',
+  // título
+  'titulo interno': 'titulo', titulo: 'titulo', title: 'titulo', 'internal title': 'titulo',
+  'titulo da publicacao': 'titulo', 'titulo publicacao': 'titulo', post: 'titulo', publicacao: 'titulo',
+  // tema
+  tema: 'tema', theme: 'tema', topic: 'tema', topico: 'tema',
+  // linha de negócio
+  'linha de negocio': 'linha', linha: 'linha', 'business line': 'linha', 'line of business': 'linha',
+  // objetivo
+  objetivo: 'objetivo', objective: 'objetivo', goal: 'objetivo', 'objetivo do post': 'objetivo',
+  // marca / modelo
+  marca: 'marca', brand: 'marca', modelo: 'modelo', model: 'modelo',
+  // mercado / idioma
+  mercado: 'mercado', market: 'mercado', idioma: 'idioma', language: 'idioma', lingua: 'idioma', lang: 'idioma',
+  // formato
+  formato: 'formato', format: 'formato', tipo: 'formato', type: 'formato',
+  // copy / texto
+  copy: 'copy', texto: 'copy', text: 'copy', legenda: 'copy', caption: 'copy',
+  conteudo: 'copy', content: 'copy', 'texto/copy': 'copy',
+  // cta / url
+  cta: 'cta', 'call to action': 'cta', 'chamada para acao': 'cta',
+  url: 'url', link: 'url', 'url de destino': 'url', 'destination url': 'url', ligacao: 'url',
+  // hashtags
+  hashtags: 'hashtags', hashtag: 'hashtags', tags: 'hashtags',
+  // canva
+  'link canva': 'canva', canva: 'canva', 'canva link': 'canva', 'design canva': 'canva',
+  // orgânico/pago
+  'organico/pago': 'promo', 'organico / pago': 'promo', promocao: 'promo', 'organic/paid': 'promo',
+  promocaopaga: 'promo', 'organic / paid': 'promo',
+  // orçamento
+  orcamento: 'orcamento', 'orcamento proposto': 'orcamento', budget: 'orcamento', 'proposed budget': 'orcamento',
+  // notas
+  notas: 'notas', notes: 'notas', observacoes: 'notas', obs: 'notas',
 }
 
 export type LinhaImport = {
@@ -399,6 +442,17 @@ function dataHoraParaIso(data: string, hora: string): string | null {
   return isNaN(dt.getTime()) ? null : dt.toISOString()
 }
 
+// Mapeia um cabeçalho a um campo canónico. Tenta o texto todo e, se falhar,
+// cada parte de um cabeçalho bilingue ("Título Interno / Internal Title").
+function mapearHeader(h: string): string {
+  const n = semAcentos(h).toLowerCase().trim()
+  if (CAMPOS[n]) return CAMPOS[n]
+  for (const parte of n.split(/[/\n|()]+/).map((p) => p.trim())) {
+    if (parte && CAMPOS[parte]) return CAMPOS[parte]
+  }
+  return ''
+}
+
 // Limpa uma célula: tira espaços, aspas envolventes e aspas duplicadas ("" → ").
 function descell(s: string): string {
   let t = (s ?? '').trim()
@@ -412,22 +466,41 @@ export function parsePlanoCsv(texto: string): { linhas: LinhaImport[]; erroGeral
     return { linhas: [], erroGeral: 'Isto parece um ficheiro Excel (.xlsx). Abre-o no Excel/Sheets e guarda como CSV (Ficheiro → Guardar como → CSV) e volta a carregar.' }
   }
   const limpo = texto.replace(/^﻿/, '')            // remove BOM do Excel
-  const linhas = limpo.split(/\r?\n/).filter((l) => l.trim() !== '')
-  if (linhas.length < 2) return { linhas: [], erroGeral: 'Ficheiro vazio ou sem linhas de dados.' }
-  const delim = detetarDelim(linhas[0])
-  const brutos = linhas[0].split(delim).map(descell)
-  const header = brutos.map((h) => CAMPOS[semAcento(h)] ?? '')
-  const idx = (campo: string) => header.indexOf(campo)
-  if (idx('titulo') < 0 || idx('plataforma') < 0) {
-    const faltam = [idx('titulo') < 0 ? '“título interno”' : null, idx('plataforma') < 0 ? '“plataforma”' : null].filter(Boolean).join(' e ')
-    return { linhas: [], erroGeral: `Faltam colunas obrigatórias: ${faltam}. Cabeçalhos lidos: ${brutos.join(' | ') || '(nenhum)'}.` }
+  const todas = limpo.split(/\r?\n/)
+  if (todas.filter((l) => l.trim() !== '').length < 2) {
+    return { linhas: [], erroGeral: 'Ficheiro vazio ou sem linhas de dados.' }
   }
+
+  // A linha de cabeçalho pode não ser a 1ª (há ficheiros com título/banner por
+  // cima). Procuramos a primeira linha que mapeia "título" E "plataforma".
+  let headerRow = -1, delim = ',', header: string[] = []
+  let melhor = { n: 0, brutos: [] as string[] }
+  for (let i = 0; i < Math.min(todas.length, 40); i++) {
+    if (!todas[i].trim()) continue
+    const d = detetarDelim(todas[i])
+    const brutos = todas[i].split(d).map(descell)
+    const mapa = brutos.map(mapearHeader)
+    const n = mapa.filter(Boolean).length
+    if (n > melhor.n) melhor = { n, brutos }
+    if (mapa.includes('titulo') && mapa.includes('plataforma')) {
+      headerRow = i; delim = d; header = mapa; break
+    }
+  }
+  if (headerRow < 0) {
+    return { linhas: [], erroGeral: `Não encontrei a linha de cabeçalho com “título interno” e “plataforma”. Linha mais parecida: ${melhor.brutos.filter(Boolean).join(' | ') || '(nenhuma)'}.` }
+  }
+  const idx = (campo: string) => header.indexOf(campo)
   const cel = (cols: string[], campo: string) => { const i = idx(campo); return i >= 0 ? descell(cols[i] ?? '') : '' }
 
   const out: LinhaImport[] = []
-  for (let i = 1; i < linhas.length; i++) {
-    const cols = linhas[i].split(delim)
+  for (let i = headerRow + 1; i < todas.length; i++) {
+    if (!todas[i].trim()) continue
+    const cols = todas[i].split(delim)
+    // Salta linhas totalmente vazias (só separadores) ou de secção sem dados.
+    if (cols.every((c) => descell(c) === '')) continue
     const titulo = cel(cols, 'titulo')
+    // Linha sem título nem plataforma preenchidos = separador/subtítulo → ignora.
+    if (!titulo && !cel(cols, 'plataforma')) continue
     const platRaw = semAcento(cel(cols, 'plataforma'))
     const plataforma = MAPA_PLATAFORMA[platRaw] ?? null
     const promo = semAcento(cel(cols, 'promo'))
@@ -447,7 +520,7 @@ export function parsePlanoCsv(texto: string): { linhas: LinhaImport[]; erroGeral
       copy: cel(cols, 'copy') || null, cta: cel(cols, 'cta') || null, url: cel(cols, 'url') || null,
       hashtags: cel(cols, 'hashtags').split(/[\s,]+/).map((h) => h.replace(/^#/, '')).filter(Boolean),
       canva_url: cel(cols, 'canva') || null,
-      paga: promo.includes('pag'),
+      paga: promo.includes('pag') || promo.includes('paid'),
       orcamento: orcRaw && !isNaN(Number(orcRaw)) ? Number(orcRaw) : null,
       notas: [cel(cols, 'tema'), cel(cols, 'notas')].filter(Boolean).join(' — ') || null,
       data_agendada: dataAg, erros,
