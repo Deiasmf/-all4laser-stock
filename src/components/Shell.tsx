@@ -51,7 +51,18 @@ const NAV: Seccao[] = [
           { href: '/comercial/reservas-portal', label: 'Reservas Portal', icon: '📅' },
         ],
       },
-      { href: '/marketing', label: 'Marketing', icon: '📣' },
+      {
+        href: '/marketing', label: 'Marketing', icon: '📣',
+        filhos: [
+          { href: '/marketing/dashboard', label: 'Dashboard', icon: '📊' },
+          { href: '/marketing/calendario', label: 'Calendário', icon: '🗓️' },
+          { href: '/marketing/publicacoes', label: 'Publicações', icon: '📝' },
+          { href: '/marketing/campanhas', label: 'Campanhas', icon: '📣' },
+          { href: '/marketing/biblioteca', label: 'Biblioteca', icon: '🖼️' },
+          { href: '/marketing/relatorios', label: 'Relatórios', icon: '📈' },
+          { href: '/marketing/configuracoes', label: 'Configurações', icon: '⚙️' },
+        ],
+      },
       {
         href: '/tecnico', label: 'Técnico', icon: '🔧',
         filhos: [
@@ -125,6 +136,13 @@ const TITULOS: { prefixo: string; titulo: string }[] = [
   { prefixo: '/comercial/registos', titulo: 'Registos de Clientes' },
   { prefixo: '/comercial/leads', titulo: 'Leads' },
   { prefixo: '/comercial', titulo: 'Comercial' },
+  { prefixo: '/marketing/dashboard', titulo: 'Marketing · Dashboard' },
+  { prefixo: '/marketing/calendario', titulo: 'Marketing · Calendário' },
+  { prefixo: '/marketing/publicacoes', titulo: 'Publicações' },
+  { prefixo: '/marketing/campanhas', titulo: 'Campanhas de Marketing' },
+  { prefixo: '/marketing/biblioteca', titulo: 'Biblioteca de Conteúdos' },
+  { prefixo: '/marketing/relatorios', titulo: 'Relatórios de Marketing' },
+  { prefixo: '/marketing/configuracoes', titulo: 'Marketing · Configurações' },
   { prefixo: '/marketing', titulo: 'Marketing' },
   { prefixo: '/tecnico/comissoes', titulo: 'Comissões' },
   { prefixo: '/tecnico/preparacao', titulo: 'Em Preparação Técnica' },
