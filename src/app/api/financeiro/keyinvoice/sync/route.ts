@@ -79,7 +79,7 @@ async function buscarDocumentos(
   let ignoradosSemData = 0
   let truncado = false
   const inicio = Date.now()
-  const LIMITE_MS = 230_000
+  const LIMITE_MS = 200_000
   const tiposIgnorados: { code: number; tipo: string; erro: string }[] = []
 
   // 1) Por tipo → séries activas → listar cada série (paginada). Tolerante.
@@ -276,9 +276,17 @@ async function persistir(
     const { error } = await sb.from('financeiro_movimentos').insert(insertRows)
     if (error) erro = error.message; else importados = insertRows.length
   }
-  if (!erro) {
-    for (const u of updates) {
-      const { error } = await sb.from('financeiro_movimentos').update(u.upd).eq('keyinvoice_doc_id', u.id)
+  // Updates em lotes concorrentes: a BD (Supabase, eu-west-1) está longe da função
+  // (Vercel, iad1), pelo que cada update é uma ida-e-volta transatlântica (~90ms).
+  // Em série, centenas de updates gastam ~1 min e estouram o maxDuration; em lotes
+  // de CONC concorrentes o tempo cai para segundos.
+  const CONC = 15
+  for (let i = 0; i < updates.length && !erro; i += CONC) {
+    const lote = updates.slice(i, i + CONC)
+    const res = await Promise.all(
+      lote.map((u) => sb.from('financeiro_movimentos').update(u.upd).eq('keyinvoice_doc_id', u.id))
+    )
+    for (const { error } of res) {
       if (error) { erro = error.message; break }
       atualizados++
     }
