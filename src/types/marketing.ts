@@ -206,6 +206,33 @@ export type PropostaPaga = {
   created_at: string
 }
 
+export type TipoMedia = 'imagem' | 'video' | 'documento' | 'canva_link'
+export type EstadoMedia = 'rascunho' | 'aprovado' | 'expirado' | 'arquivado'
+export const TIPO_MEDIA_LABEL: Record<TipoMedia, string> = {
+  imagem: 'Imagem', video: 'Vídeo', documento: 'Documento', canva_link: 'Ligação Canva',
+}
+export type MediaAsset = {
+  id: string
+  nome_interno: string
+  tipo: TipoMedia
+  caminho: string | null
+  thumbnail_caminho: string | null
+  canva_url: string | null
+  marca: string | null
+  modelo: string | null
+  campaign_id: string | null
+  mercado: string | null
+  idioma: string | null
+  origem: string | null
+  proprietario_nome: string | null
+  direitos: string | null
+  direitos_validade: string | null
+  versao: string | null
+  etiquetas: string[]
+  estado: EstadoMedia
+  created_at: string
+}
+
 // Detalhe agregado de uma publicação (para o ecrã de detalhe).
 export type PostDetalhe = Post & {
   variantes: Variante[]

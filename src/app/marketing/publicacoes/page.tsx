@@ -44,7 +44,10 @@ export default function PublicacoesPage() {
           <Link href="/marketing" style={s.voltar}>← Marketing</Link>
           <h1 style={s.titulo}>Publicações</h1>
         </div>
-        <Link href="/marketing/publicacoes/novo" style={s.btnNovo}>+ Nova publicação</Link>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Link href="/marketing/publicacoes/importar" style={s.btnImportar}>⬆ Importar plano</Link>
+          <Link href="/marketing/publicacoes/novo" style={s.btnNovo}>+ Nova publicação</Link>
+        </div>
       </div>
 
       <input style={s.pesquisa} placeholder="Pesquisar por título, número ou campanha…" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -104,6 +107,7 @@ const s: Record<string, React.CSSProperties> = {
   voltar: { fontSize: 13, color: 'var(--muted)', textDecoration: 'none' },
   titulo: { fontSize: 24, fontWeight: 700, color: 'var(--primary)', marginTop: 4 },
   btnNovo: { background: 'var(--primary)', color: '#fff', borderRadius: 8, padding: '10px 16px', fontWeight: 700, textDecoration: 'none' },
+  btnImportar: { background: 'transparent', color: 'var(--primary)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', fontWeight: 600, textDecoration: 'none' },
   pesquisa: { width: '100%', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8, font: 'inherit', marginBottom: 12 },
   pills: { display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 },
   pill: { border: '1px solid var(--border)', background: '#fff', borderRadius: 999, padding: '6px 14px', fontSize: 13, cursor: 'pointer', color: 'var(--muted)' },
