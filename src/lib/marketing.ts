@@ -1,7 +1,7 @@
 import { supabase } from './supabase'
 import type {
   Campanha, CampanhaInput, Post, PostInput, PostDetalhe, Variante, VarianteInput,
-  PostEquipamento, ComplianceItem, Aprovacao, PropostaPaga, EstadoPost,
+  PostEquipamento, ComplianceItem, Aprovacao, PropostaPaga, EstadoPost, Plataforma,
 } from '@/types/marketing'
 import { CHECKLIST_ITENS } from '@/types/marketing'
 
@@ -317,4 +317,80 @@ export async function aprovarProposta(id: string, postId: string, autor: Autor, 
 
 export async function rejeitarProposta(id: string) {
   return supabase.from('marketing_paid_proposals').update({ estado: 'rejeitada' }).eq('id', id)
+}
+
+// ═══ CALENDÁRIO ═════════════════════════════════════════════════════════════
+export type AgendadaItem = {
+  id: string; post_id: string; titulo_post: string; plataforma: Plataforma
+  estado: string; data_agendada: string; mercados: string[]
+}
+
+export async function listarAgendadas(): Promise<AgendadaItem[]> {
+  const { data } = await supabase.from('marketing_post_variants')
+    .select('id, post_id, plataforma, estado, data_agendada, marketing_posts(titulo_interno, mercados)')
+    .not('data_agendada', 'is', null)
+    .order('data_agendada')
+    .limit(1000)
+  type Row = {
+    id: string; post_id: string; plataforma: Plataforma; estado: string; data_agendada: string
+    marketing_posts: { titulo_interno: string; mercados: string[] } | null
+  }
+  return ((data as unknown as Row[]) ?? []).map((r) => ({
+    id: r.id, post_id: r.post_id, plataforma: r.plataforma, estado: r.estado,
+    data_agendada: r.data_agendada,
+    titulo_post: r.marketing_posts?.titulo_interno ?? '—',
+    mercados: r.marketing_posts?.mercados ?? [],
+  }))
+}
+
+// ═══ DASHBOARD ══════════════════════════════════════════════════════════════
+export type ProximaVariante = {
+  id: string; post_id: string; plataforma: Plataforma; titulo_post: string
+  data_agendada: string
+}
+export type MarketingDashboard = {
+  porEstado: Record<string, number>
+  agendadas7: number
+  agendadas30: number
+  candidatasPagas: number
+  campanhasAtivas: number
+  proximas: ProximaVariante[]
+}
+
+export async function dashboardMarketing(): Promise<MarketingDashboard> {
+  const agora = new Date()
+  const em7 = new Date(agora.getTime() + 7 * 864e5).toISOString()
+  const em30 = new Date(agora.getTime() + 30 * 864e5).toISOString()
+  const isoAgora = agora.toISOString()
+
+  const [posts, variantes, propostas, campanhas] = await Promise.all([
+    supabase.from('marketing_posts').select('estado_global, estrategia_promocao').is('deleted_at', null).limit(5000),
+    supabase.from('marketing_post_variants')
+      .select('id, post_id, plataforma, data_agendada, marketing_posts(titulo_interno)')
+      .not('data_agendada', 'is', null).gte('data_agendada', isoAgora)
+      .order('data_agendada').limit(200),
+    supabase.from('marketing_paid_proposals').select('estado').eq('estado', 'proposta'),
+    supabase.from('marketing_campaigns').select('id').eq('estado', 'ativa').is('deleted_at', null),
+  ])
+
+  const porEstado: Record<string, number> = {}
+  for (const p of (posts.data as { estado_global: string }[] ?? [])) {
+    porEstado[p.estado_global] = (porEstado[p.estado_global] ?? 0) + 1
+  }
+  type VRow = { id: string; post_id: string; plataforma: Plataforma; data_agendada: string; marketing_posts: { titulo_interno: string } | null }
+  const vs = (variantes.data as unknown as VRow[]) ?? []
+  const agendadas7 = vs.filter((v) => v.data_agendada <= em7).length
+  const agendadas30 = vs.filter((v) => v.data_agendada <= em30).length
+  const proximas: ProximaVariante[] = vs.slice(0, 8).map((v) => ({
+    id: v.id, post_id: v.post_id, plataforma: v.plataforma,
+    titulo_post: v.marketing_posts?.titulo_interno ?? '—', data_agendada: v.data_agendada,
+  }))
+
+  return {
+    porEstado,
+    agendadas7, agendadas30,
+    candidatasPagas: (propostas.data as unknown[])?.length ?? 0,
+    campanhasAtivas: (campanhas.data as unknown[])?.length ?? 0,
+    proximas,
+  }
 }
