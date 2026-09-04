@@ -399,16 +399,30 @@ function dataHoraParaIso(data: string, hora: string): string | null {
   return isNaN(dt.getTime()) ? null : dt.toISOString()
 }
 
+// Limpa uma célula: tira espaços, aspas envolventes e aspas duplicadas ("" → ").
+function descell(s: string): string {
+  let t = (s ?? '').trim()
+  if (t.length >= 2 && t.startsWith('"') && t.endsWith('"')) t = t.slice(1, -1).replace(/""/g, '"')
+  return t.trim()
+}
+
 export function parsePlanoCsv(texto: string): { linhas: LinhaImport[]; erroGeral: string | null } {
-  const linhas = texto.split(/\r?\n/).filter((l) => l.trim() !== '')
+  // Ficheiro .xlsx (binário zip "PK") não é CSV — dar mensagem clara.
+  if (texto.startsWith('PK') || texto.includes('[Content_Types].xml')) {
+    return { linhas: [], erroGeral: 'Isto parece um ficheiro Excel (.xlsx). Abre-o no Excel/Sheets e guarda como CSV (Ficheiro → Guardar como → CSV) e volta a carregar.' }
+  }
+  const limpo = texto.replace(/^﻿/, '')            // remove BOM do Excel
+  const linhas = limpo.split(/\r?\n/).filter((l) => l.trim() !== '')
   if (linhas.length < 2) return { linhas: [], erroGeral: 'Ficheiro vazio ou sem linhas de dados.' }
   const delim = detetarDelim(linhas[0])
-  const header = linhas[0].split(delim).map((h) => CAMPOS[semAcento(h)] ?? '')
+  const brutos = linhas[0].split(delim).map(descell)
+  const header = brutos.map((h) => CAMPOS[semAcento(h)] ?? '')
   const idx = (campo: string) => header.indexOf(campo)
   if (idx('titulo') < 0 || idx('plataforma') < 0) {
-    return { linhas: [], erroGeral: 'Faltam colunas obrigatórias: “título interno” e “plataforma”.' }
+    const faltam = [idx('titulo') < 0 ? '“título interno”' : null, idx('plataforma') < 0 ? '“plataforma”' : null].filter(Boolean).join(' e ')
+    return { linhas: [], erroGeral: `Faltam colunas obrigatórias: ${faltam}. Cabeçalhos lidos: ${brutos.join(' | ') || '(nenhum)'}.` }
   }
-  const cel = (cols: string[], campo: string) => { const i = idx(campo); return i >= 0 ? (cols[i] ?? '').trim() : '' }
+  const cel = (cols: string[], campo: string) => { const i = idx(campo); return i >= 0 ? descell(cols[i] ?? '') : '' }
 
   const out: LinhaImport[] = []
   for (let i = 1; i < linhas.length; i++) {
