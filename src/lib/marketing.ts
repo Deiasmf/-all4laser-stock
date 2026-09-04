@@ -2,8 +2,12 @@ import { supabase } from './supabase'
 import type {
   Campanha, CampanhaInput, Post, PostInput, PostDetalhe, Variante, VarianteInput,
   PostEquipamento, ComplianceItem, Aprovacao, PropostaPaga, EstadoPost, Plataforma,
+  LinhaNegocio, ObjetivoPost, FormatoVariante,
 } from '@/types/marketing'
 import { CHECKLIST_ITENS } from '@/types/marketing'
+import type { MediaAsset, TipoMedia } from '@/types/marketing'
+import { comprimirImagem } from './mediaUpload'
+import { semAcentos } from './categorizacaoFinanceira'
 
 export type Autor = { id: string; nome: string | null }
 
@@ -317,6 +321,238 @@ export async function aprovarProposta(id: string, postId: string, autor: Autor, 
 
 export async function rejeitarProposta(id: string) {
   return supabase.from('marketing_paid_proposals').update({ estado: 'rejeitada' }).eq('id', id)
+}
+
+// ═══ IMPORTAÇÃO DO PLANO EDITORIAL (CSV) ════════════════════════════════════
+// Aceita o CSV do plano set–dez (também serve um export de Excel guardado como
+// CSV). Colunas suportadas (§17): data, hora, plataforma, título interno, tema,
+// linha de negócio, objetivo, marca, modelo, mercado, idioma, formato, copy,
+// CTA, URL, hashtags, link Canva, orgânico/pago, orçamento, notas.
+const semAcento = (s: string) => semAcentos(s).toLowerCase().trim()
+
+function detetarDelim(l: string): string {
+  if (l.includes('\t')) return '\t'
+  if (l.includes(';')) return ';'
+  return ','
+}
+
+const MAPA_LINHA: Record<string, LinhaNegocio> = {
+  venda: 'venda', aluguer: 'aluguer', 'assistencia tecnica': 'assistencia',
+  assistencia: 'assistencia', formacao: 'formacao', institucional: 'institucional',
+}
+const MAPA_OBJETIVO: Record<string, ObjetivoPost> = {
+  notoriedade: 'notoriedade', educacao: 'educacao', prova: 'prova',
+  captacao: 'captacao', conversao: 'conversao', retencao: 'retencao',
+}
+const MAPA_PLATAFORMA: Record<string, Plataforma> = {
+  'instagram feed': 'instagram_feed', 'instagram': 'instagram_feed', 'ig': 'instagram_feed',
+  'instagram story': 'instagram_story', 'story': 'instagram_story',
+  'instagram reel': 'instagram_reel', 'reel': 'instagram_reel',
+  facebook: 'facebook', fb: 'facebook', linkedin: 'linkedin',
+}
+const MAPA_FORMATO: Record<string, FormatoVariante> = {
+  imagem: 'imagem', carrossel: 'carrossel', video: 'video', reel: 'reel',
+  story: 'story', documento: 'documento', texto: 'texto',
+}
+// Sinónimos de cabeçalho → campo canónico.
+const CAMPOS: Record<string, string> = {
+  data: 'data', hora: 'hora', plataforma: 'plataforma', rede: 'plataforma',
+  'titulo interno': 'titulo', titulo: 'titulo', tema: 'tema',
+  'linha de negocio': 'linha', linha: 'linha', objetivo: 'objetivo',
+  marca: 'marca', modelo: 'modelo', mercado: 'mercado', idioma: 'idioma',
+  formato: 'formato', copy: 'copy', texto: 'copy', legenda: 'copy',
+  cta: 'cta', url: 'url', link: 'url', hashtags: 'hashtags',
+  'link canva': 'canva', canva: 'canva', 'organico/pago': 'promo', promocao: 'promo',
+  orcamento: 'orcamento', 'orcamento proposto': 'orcamento', notas: 'notas',
+}
+
+export type LinhaImport = {
+  linha: number
+  titulo: string
+  plataforma: Plataforma | null
+  linha_negocio: LinhaNegocio | null
+  objetivo: ObjetivoPost | null
+  marca: string | null; modelo: string | null; mercado: string | null; idioma: string | null
+  formato: FormatoVariante | null
+  copy: string | null; cta: string | null; url: string | null
+  hashtags: string[]
+  canva_url: string | null
+  paga: boolean
+  orcamento: number | null
+  notas: string | null
+  data_agendada: string | null
+  erros: string[]
+}
+
+function dataHoraParaIso(data: string, hora: string): string | null {
+  const d = data.trim(); if (!d) return null
+  let iso: string
+  if (/^\d{4}-\d{2}-\d{2}/.test(d)) iso = d.slice(0, 10)
+  else {
+    const m = d.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/)
+    if (!m) return null
+    iso = `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`
+  }
+  const h = (hora || '').trim().match(/^(\d{1,2}):(\d{2})/)
+  const hhmm = h ? `${h[1].padStart(2, '0')}:${h[2]}` : '09:00'
+  const dt = new Date(`${iso}T${hhmm}`)          // hora local do browser (Lisboa)
+  return isNaN(dt.getTime()) ? null : dt.toISOString()
+}
+
+export function parsePlanoCsv(texto: string): { linhas: LinhaImport[]; erroGeral: string | null } {
+  const linhas = texto.split(/\r?\n/).filter((l) => l.trim() !== '')
+  if (linhas.length < 2) return { linhas: [], erroGeral: 'Ficheiro vazio ou sem linhas de dados.' }
+  const delim = detetarDelim(linhas[0])
+  const header = linhas[0].split(delim).map((h) => CAMPOS[semAcento(h)] ?? '')
+  const idx = (campo: string) => header.indexOf(campo)
+  if (idx('titulo') < 0 || idx('plataforma') < 0) {
+    return { linhas: [], erroGeral: 'Faltam colunas obrigatórias: “título interno” e “plataforma”.' }
+  }
+  const cel = (cols: string[], campo: string) => { const i = idx(campo); return i >= 0 ? (cols[i] ?? '').trim() : '' }
+
+  const out: LinhaImport[] = []
+  for (let i = 1; i < linhas.length; i++) {
+    const cols = linhas[i].split(delim)
+    const titulo = cel(cols, 'titulo')
+    const platRaw = semAcento(cel(cols, 'plataforma'))
+    const plataforma = MAPA_PLATAFORMA[platRaw] ?? null
+    const promo = semAcento(cel(cols, 'promo'))
+    const orcRaw = cel(cols, 'orcamento').replace(/[€\s]/g, '').replace(',', '.')
+    const dataAg = dataHoraParaIso(cel(cols, 'data'), cel(cols, 'hora'))
+    const erros: string[] = []
+    if (!titulo) erros.push('sem título')
+    if (!plataforma) erros.push(`plataforma inválida: “${cel(cols, 'plataforma')}”`)
+    if (cel(cols, 'data') && !dataAg) erros.push('data inválida')
+    out.push({
+      linha: i + 1, titulo, plataforma,
+      linha_negocio: MAPA_LINHA[semAcento(cel(cols, 'linha'))] ?? null,
+      objetivo: MAPA_OBJETIVO[semAcento(cel(cols, 'objetivo'))] ?? null,
+      marca: cel(cols, 'marca') || null, modelo: cel(cols, 'modelo') || null,
+      mercado: cel(cols, 'mercado') || null, idioma: cel(cols, 'idioma') || null,
+      formato: MAPA_FORMATO[semAcento(cel(cols, 'formato'))] ?? null,
+      copy: cel(cols, 'copy') || null, cta: cel(cols, 'cta') || null, url: cel(cols, 'url') || null,
+      hashtags: cel(cols, 'hashtags').split(/[\s,]+/).map((h) => h.replace(/^#/, '')).filter(Boolean),
+      canva_url: cel(cols, 'canva') || null,
+      paga: promo.includes('pag'),
+      orcamento: orcRaw && !isNaN(Number(orcRaw)) ? Number(orcRaw) : null,
+      notas: [cel(cols, 'tema'), cel(cols, 'notas')].filter(Boolean).join(' — ') || null,
+      data_agendada: dataAg, erros,
+    })
+  }
+  return { linhas: out, erroGeral: null }
+}
+
+export type ResultadoImport = { criados: number; ignorados: number; falhados: number; detalhe: string[] }
+
+// Importa as linhas válidas como publicações em rascunho (nunca publica nem
+// aprova). Dedup por (título + plataforma + data agendada) para reimportar sem
+// duplicar. Cada linha = 1 publicação + 1 variante.
+export async function importarPlano(linhas: LinhaImport[], autor: Autor): Promise<ResultadoImport> {
+  const res: ResultadoImport = { criados: 0, ignorados: 0, falhados: 0, detalhe: [] }
+
+  // Chaves já existentes (para idempotência).
+  const { data: existRaw } = await supabase.from('marketing_post_variants')
+    .select('plataforma, data_agendada, marketing_posts(titulo_interno)').limit(5000)
+  const chave = (t: string, p: string, d: string | null) => `${semAcento(t)}|${p}|${d ?? ''}`
+  const vistos = new Set(
+    ((existRaw as unknown as { plataforma: string; data_agendada: string | null; marketing_posts: { titulo_interno: string } | null }[]) ?? [])
+      .map((r) => chave(r.marketing_posts?.titulo_interno ?? '', r.plataforma, r.data_agendada)),
+  )
+
+  for (const l of linhas) {
+    if (l.erros.length > 0 || !l.plataforma) { res.falhados++; continue }
+    const k = chave(l.titulo, l.plataforma, l.data_agendada)
+    if (vistos.has(k)) { res.ignorados++; continue }
+    try {
+      const post = await criarPost({
+        titulo_interno: l.titulo, linha_negocio: l.linha_negocio, objetivo: l.objetivo,
+        mercados: l.mercado ? [l.mercado] : [], idioma_base: l.idioma, canva_url: l.canva_url,
+        notas_internas: l.notas, estrategia_promocao: l.paga ? 'candidata_paga' : 'organica',
+      }, autor)
+      if (post.error || !post.data) { res.falhados++; continue }
+      await criarVariante(post.data.id, {
+        plataforma: l.plataforma, formato: l.formato, idioma: l.idioma, texto: l.copy,
+        cta: l.cta, url_destino: l.url, hashtags: l.hashtags, data_agendada: l.data_agendada,
+      }, autor)
+      vistos.add(k); res.criados++
+    } catch {
+      res.falhados++
+    }
+  }
+  return res
+}
+
+// ═══ BIBLIOTECA DE MEDIA ════════════════════════════════════════════════════
+export const BUCKET_MARKETING = 'marketing-media'
+const nomeSeguro = (n: string) => n.normalize('NFD').replace(/[^\w.\-]/g, '_')
+
+export async function listarMediaAssets(): Promise<MediaAsset[]> {
+  const { data } = await supabase.from('marketing_media_assets')
+    .select('*').is('deleted_at', null).order('created_at', { ascending: false }).limit(2000)
+  return (data as MediaAsset[]) ?? []
+}
+
+export type MediaMeta = {
+  nome_interno: string
+  marca?: string | null
+  modelo?: string | null
+  campaign_id?: string | null
+  mercado?: string | null
+  idioma?: string | null
+  origem?: string | null
+  direitos?: string | null
+  direitos_validade?: string | null
+  etiquetas?: string[]
+}
+
+// Carrega um ficheiro para o bucket privado e cria o registo na biblioteca.
+export async function carregarMediaAsset(file: File, meta: MediaMeta, autor: Autor) {
+  const otimizado = await comprimirImagem(file)
+  const tipo: TipoMedia = otimizado.type.startsWith('image/') ? 'imagem'
+    : otimizado.type.startsWith('video/') ? 'video' : 'documento'
+  const caminho = `${new Date().getFullYear()}/${Date.now()}-${nomeSeguro(otimizado.name)}`
+  const up = await supabase.storage.from(BUCKET_MARKETING).upload(caminho, otimizado)
+  if (up.error) return { data: null, error: up.error }
+  return supabase.from('marketing_media_assets').insert({
+    nome_interno: meta.nome_interno.trim() || otimizado.name,
+    tipo, caminho,
+    marca: limpar(meta.marca), modelo: limpar(meta.modelo),
+    campaign_id: meta.campaign_id || null, mercado: limpar(meta.mercado), idioma: limpar(meta.idioma),
+    origem: limpar(meta.origem), direitos: limpar(meta.direitos),
+    direitos_validade: meta.direitos_validade || null, etiquetas: meta.etiquetas ?? [],
+    estado: 'rascunho', proprietario_id: autor.id, proprietario_nome: autor.nome,
+    criado_por: autor.id, criado_por_nome: autor.nome,
+  }).select('*').single()
+}
+
+// Regista uma ligação Canva (sem ficheiro).
+export async function criarLinkCanva(canvaUrl: string, meta: MediaMeta, autor: Autor) {
+  return supabase.from('marketing_media_assets').insert({
+    nome_interno: meta.nome_interno.trim() || 'Design Canva',
+    tipo: 'canva_link', canva_url: canvaUrl.trim(),
+    marca: limpar(meta.marca), modelo: limpar(meta.modelo), campaign_id: meta.campaign_id || null,
+    mercado: limpar(meta.mercado), idioma: limpar(meta.idioma), etiquetas: meta.etiquetas ?? [],
+    estado: 'rascunho', proprietario_id: autor.id, proprietario_nome: autor.nome,
+    criado_por: autor.id, criado_por_nome: autor.nome,
+  }).select('*').single()
+}
+
+// URL assinada (bucket privado) para pré-visualizar/descarregar.
+export async function urlAssinadaMedia(caminho: string, segundos = 3600): Promise<string | null> {
+  const { data } = await supabase.storage.from(BUCKET_MARKETING).createSignedUrl(caminho, segundos)
+  return data?.signedUrl ?? null
+}
+
+export async function atualizarEstadoMedia(id: string, estado: MediaAsset['estado']) {
+  return supabase.from('marketing_media_assets').update({ estado }).eq('id', id)
+}
+
+// Elimina (soft delete) e remove o ficheiro do bucket para não deixar órfãos.
+export async function apagarMediaAsset(asset: MediaAsset, autor: Autor) {
+  if (asset.caminho) await supabase.storage.from(BUCKET_MARKETING).remove([asset.caminho])
+  return supabase.from('marketing_media_assets')
+    .update({ deleted_at: new Date().toISOString(), deleted_by: autor.id, deleted_by_nome: autor.nome })
+    .eq('id', asset.id)
 }
 
 // ═══ CALENDÁRIO ═════════════════════════════════════════════════════════════
