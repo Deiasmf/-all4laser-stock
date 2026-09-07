@@ -6,10 +6,12 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 import { parsePlanoCsv, importarPlano, type LinhaImport, type ResultadoImport } from '@/lib/marketing'
 import { PLATAFORMA_LABEL } from '@/types/marketing'
+import ImportarPlanoAI from '@/components/ImportarPlanoAI'
 
 export default function ImportarPlanoPage() {
   const router = useRouter()
   const { perfil } = useAuth()
+  const [modo, setModo] = useState<'ai' | 'csv'>('ai')
   const [linhas, setLinhas] = useState<LinhaImport[] | null>(null)
   const [erroGeral, setErroGeral] = useState<string | null>(null)
   const [aImportar, setAImportar] = useState(false)
@@ -42,6 +44,15 @@ export default function ImportarPlanoPage() {
     <main style={s.page}>
       <Link href="/marketing/publicacoes" style={s.voltar}>← Publicações</Link>
       <h1 style={s.titulo}>Importar plano editorial</h1>
+
+      <div style={s.abas}>
+        <button onClick={() => setModo('ai')} style={{ ...s.aba, ...(modo === 'ai' ? s.abaOn : {}) }}>✨ Por IA (documento/texto)</button>
+        <button onClick={() => setModo('csv')} style={{ ...s.aba, ...(modo === 'csv' ? s.abaOn : {}) }}>Por CSV</button>
+      </div>
+
+      {modo === 'ai' && <ImportarPlanoAI />}
+
+      {modo === 'csv' && (<>
       <p style={s.sub}>
         Carrega o CSV do plano (as colunas suportadas: data, hora, plataforma, título interno, tema,
         linha de negócio, objetivo, marca, modelo, mercado, idioma, formato, copy, CTA, URL, hashtags,
@@ -99,6 +110,7 @@ export default function ImportarPlanoPage() {
           </div>
         </>
       )}
+      </>)}
     </main>
   )
 }
@@ -106,7 +118,10 @@ export default function ImportarPlanoPage() {
 const s: Record<string, React.CSSProperties> = {
   page: { maxWidth: 900, margin: '0 auto', padding: 20 },
   voltar: { fontSize: 13, color: 'var(--muted)', textDecoration: 'none' },
-  titulo: { fontSize: 24, fontWeight: 700, color: 'var(--primary)', margin: '4px 0 8px' },
+  titulo: { fontSize: 24, fontWeight: 700, color: 'var(--primary)', margin: '4px 0 12px' },
+  abas: { display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' },
+  aba: { border: '1px solid var(--border)', background: '#fff', borderRadius: 999, padding: '8px 16px', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', color: 'var(--muted)' },
+  abaOn: { background: 'var(--primary)', color: '#fff', borderColor: 'var(--primary)' },
   sub: { color: 'var(--muted)', fontSize: 13.5, marginBottom: 16, lineHeight: 1.5 },
   textarea: { width: '100%', minHeight: 120, marginTop: 8, padding: 10, border: '1px solid var(--border)', borderRadius: 8, font: 'inherit', fontSize: 13 },
   resumo: { background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 10, padding: 14, marginTop: 12 },

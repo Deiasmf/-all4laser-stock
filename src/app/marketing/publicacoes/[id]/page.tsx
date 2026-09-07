@@ -13,9 +13,11 @@ import {
 import { mensagemErro } from '@/lib/erros'
 import PostForm from '@/components/PostForm'
 import VarianteEditor from '@/components/VarianteEditor'
+import PostAnexos from '@/components/PostAnexos'
+import PostPartilha from '@/components/PostPartilha'
 import {
   ESTADO_POST_LABEL, PLATAFORMA_LABEL, FORMATO_LABEL, ESTRATEGIA_LABEL,
-  CHECKLIST_ITENS,
+  CHECKLIST_ITENS, CANAL_LABEL, CANAL_EMOJI,
 } from '@/types/marketing'
 import type { PostDetalhe, PostInput, Campanha, EstadoPost } from '@/types/marketing'
 
@@ -116,6 +118,34 @@ export default function PublicacaoDetalhe({ params }: { params: Promise<{ id: st
           }}>Pedir alterações</button>}
           {!terminal && <button style={btn.sec} onClick={() => { if (confirm('Cancelar esta publicação?')) acao(() => cancelarPost(id, autor)) }}>Cancelar</button>}
         </div>
+      )}
+
+      {/* Conteúdo e media (modelo simples MVP) — o coração da publicação */}
+      {!editar && (
+        <Seccao titulo="Conteúdo e media">
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+            {post.canais.length > 0
+              ? post.canais.map((c) => <span key={c} style={s.tag}>{CANAL_EMOJI[c] ?? ''} {CANAL_LABEL[c as keyof typeof CANAL_LABEL] ?? c}</span>)
+              : <span style={{ color: 'var(--muted)', fontSize: 13.5 }}>Sem canais definidos.</span>}
+            {post.data_prevista && <span style={s.tag}>📅 {formatarDataSimples(post.data_prevista)}</span>}
+          </div>
+
+          <BlocoTexto rotulo="Texto — Português" texto={post.texto_pt} />
+          <BlocoTexto rotulo="Texto — English" texto={post.texto_en} />
+          {post.hashtags.length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={s.blocoRotulo}>Hashtags</div>
+              <div style={{ fontSize: 14, color: '#3A3870' }}>{post.hashtags.map((h) => `#${h}`).join(' ')}</div>
+            </div>
+          )}
+
+          <div style={s.blocoRotulo}>Imagens e vídeos</div>
+          <PostAnexos postId={id} autor={autor} podeEditar={!terminal} onMudou={recarregar} />
+
+          <div style={{ borderTop: '1px solid var(--border)', margin: '16px 0 14px' }} />
+          <div style={s.blocoRotulo}>Partilha rápida</div>
+          <PostPartilha post={post} anexos={post.anexos} publicacoes={post.publicacoes} autor={autor} onMudou={recarregar} />
+        </Seccao>
       )}
 
       {/* Detalhes / edição */}
@@ -371,6 +401,21 @@ function Seccao({ titulo, acao, children }: { titulo: string; acao?: React.React
 function Campo({ r, v }: { r: string; v: string }) {
   return (<><dt style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 600 }}>{r}</dt><dd style={{ margin: 0, fontSize: 14 }}>{v}</dd></>)
 }
+function BlocoTexto({ rotulo, texto }: { rotulo: string; texto: string | null }) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={s.blocoRotulo}>{rotulo}</div>
+      {texto
+        ? <p style={{ margin: 0, fontSize: 14, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{texto}</p>
+        : <p style={{ margin: 0, fontSize: 13.5, color: 'var(--muted)', fontStyle: 'italic' }}>— vazio —</p>}
+    </div>
+  )
+}
+function formatarDataSimples(d: string | null) {
+  if (!d) return '—'
+  const dt = new Date(d + (d.length === 10 ? 'T00:00:00' : ''))
+  return isNaN(dt.getTime()) ? d : dt.toLocaleDateString('pt-PT')
+}
 function Badge({ estado }: { estado: EstadoPost }) {
   const cor: Partial<Record<EstadoPost, { c: string; bg: string }>> = {
     draft: { c: '#3A3870', bg: '#EEEDFB' }, in_review: { c: '#92400E', bg: '#FEF3C7' },
@@ -388,6 +433,7 @@ const s: Record<string, React.CSSProperties> = {
   acoes: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', padding: 12, background: '#fff', border: '1px solid var(--border)', borderRadius: 10 },
   aviso: { fontSize: 13, color: '#92400E' },
   dl: { display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '10px 18px', margin: 0 },
+  blocoRotulo: { fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--muted)', fontWeight: 700, marginBottom: 5 },
   variante: { border: '1px solid var(--border)', borderRadius: 10, padding: 12, marginBottom: 10 },
   vazio: { color: 'var(--muted)', fontSize: 13.5 },
   input: { width: '100%', padding: '9px 11px', border: '1px solid var(--border)', borderRadius: 8, font: 'inherit', background: '#fff' },
