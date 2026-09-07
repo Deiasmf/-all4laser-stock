@@ -42,6 +42,12 @@ export default function ImportarPlanoAI() {
   async function analisar() {
     setErro(null); setResultado(null)
     if (!texto.trim() && !ficheiro) { setErro('Cola o texto do plano ou escolhe um ficheiro (PDF/imagem).'); return }
+    // A plataforma limita o tamanho do pedido (~4,5 MB). base64 aumenta ~33%, por
+    // isso avisamos já aqui (com margem) em vez de deixar o servidor cortar.
+    if (ficheiro && ficheiro.size > 3 * 1024 * 1024) {
+      setErro('O ficheiro é demasiado grande (máx. ~3 MB). Exporta o plano num PDF mais leve, ou copia o texto e cola na caixa acima.')
+      return
+    }
     setAAnalisar(true)
     try {
       const { data: s } = await supabase.auth.getSession()
@@ -57,8 +63,19 @@ export default function ImportarPlanoAI() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenSessao}` },
         body: JSON.stringify(corpo),
       })
-      const json = await resp.json()
-      if (!resp.ok || !json.ok) { setErro(json.erro || 'Falha na análise.'); setAAnalisar(false); return }
+      // A resposta pode NÃO ser JSON (ex.: erro da plataforma por ficheiro grande
+      // ou timeout devolve texto/HTML) — ler como texto e tentar interpretar.
+      const bruto = await resp.text()
+      let json: { ok?: boolean; erro?: string; posts?: unknown[] } | null = null
+      try { json = bruto ? JSON.parse(bruto) : null } catch { json = null }
+      if (!resp.ok || !json?.ok) {
+        setAAnalisar(false)
+        if (json?.erro) { setErro(json.erro); return }
+        if (resp.status === 413) { setErro('O ficheiro é demasiado grande para enviar. Usa um PDF mais leve ou cola o texto.'); return }
+        if (resp.status === 504 || resp.status === 408) { setErro('A análise demorou demasiado. Tenta um plano mais pequeno (por partes) ou cola só o texto.'); return }
+        setErro(`Não foi possível analisar (erro ${resp.status}). Tenta colar o texto do plano em vez do ficheiro.`)
+        return
+      }
 
       const detetados = (json.posts ?? []) as {
         titulo_interno: string; data_prevista: string | null; canais: string[]
