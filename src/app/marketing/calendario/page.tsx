@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { listarPostsCalendario, atualizarDataPrevista, type PostCalendario } from '@/lib/marketing'
@@ -26,8 +26,12 @@ export default function CalendarioPage() {
   const [erro, setErro] = useState<string | null>(null)
   const [carregando, setCarregando] = useState(true)
   const [ref, setRef] = useState(() => { const d = new Date(); return { ano: d.getFullYear(), mes: d.getMonth() } })
-  const [sobre, setSobre] = useState<string | null>(null) // dia sob o cursor a arrastar
+  const [sobre, setSobre] = useState<string | null>(null) // dia sob o dedo/cursor a arrastar
   const { emoji: emojiCanal } = resolverCanais(useCanais())
+  // Arrastar com Pointer Events (funciona em rato E toque).
+  const arrasto = useRef<{ id: string; titulo: string; startX: number; startY: number; moved: boolean } | null>(null)
+  const alvoRef = useRef<string | null>(null)
+  const [fantasma, setFantasma] = useState<{ x: number; y: number; titulo: string } | null>(null)
 
   const recarregar = useCallback(() => {
     setCarregando(true)
@@ -55,6 +59,33 @@ export default function CalendarioPage() {
     if (error) { setErro('Não foi possível mover: ' + error.message); recarregar() }
   }
 
+  // ── Arrastar (rato + toque) via Pointer Events ──────────────────────────────
+  function iniciarArrasto(e: React.PointerEvent, it: PostCalendario) {
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    arrasto.current = { id: it.id, titulo: it.titulo_interno, startX: e.clientX, startY: e.clientY, moved: false }
+  }
+  function moverArrasto(e: React.PointerEvent) {
+    const a = arrasto.current
+    if (!a) return
+    if (!a.moved && Math.hypot(e.clientX - a.startX, e.clientY - a.startY) < 8) return // ainda é um toque
+    a.moved = true
+    const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null
+    const dia = el?.closest('[data-dia]')?.getAttribute('data-dia') ?? null
+    alvoRef.current = dia
+    setSobre(dia)
+    setFantasma({ x: e.clientX, y: e.clientY, titulo: a.titulo })
+  }
+  function terminarArrasto(it: PostCalendario) {
+    const a = arrasto.current; arrasto.current = null
+    const alvo = alvoRef.current; alvoRef.current = null
+    setFantasma(null); setSobre(null)
+    if (a?.moved) { if (alvo) largarEm(alvo, it.id) }   // arrastou → move
+    else router.push(`/marketing/publicacoes/${it.id}`) // tocou → abre
+  }
+  function cancelarArrasto() {
+    arrasto.current = null; alvoRef.current = null; setFantasma(null); setSobre(null)
+  }
+
   const primeiro = new Date(ref.ano, ref.mes, 1)
   const offset = (primeiro.getDay() + 6) % 7 // segunda = 0
   const nDias = new Date(ref.ano, ref.mes + 1, 0).getDate()
@@ -71,7 +102,7 @@ export default function CalendarioPage() {
         <Link href="/marketing/publicacoes/novo" style={s.btnNovo}>+ Nova publicação</Link>
       </div>
 
-      <p style={s.dica}>Arrasta uma publicação para outro dia para mudar a data prevista. No telemóvel, abre a publicação para alterar a data.</p>
+      <p style={s.dica}>Arrasta uma publicação para outro dia para mudar a data prevista (funciona no computador e no telemóvel). Um toque abre a publicação.</p>
 
       {erro && <p style={{ color: 'var(--danger)', marginTop: 8 }}>{erro}</p>}
 
@@ -91,20 +122,19 @@ export default function CalendarioPage() {
           const items = porDia.get(k) ?? []
           const ehHoje = k === hoje()
           return (
-            <div key={i}
-              onDragOver={(e) => { e.preventDefault(); setSobre(k) }}
-              onDragLeave={() => setSobre((atual) => atual === k ? null : atual)}
-              onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData('text/plain'); if (id) largarEm(k, id) }}
+            <div key={i} data-dia={k}
               style={{ ...s.cel, ...(sobre === k ? s.celSobre : {}), ...(ehHoje ? s.celHoje : {}) }}>
               <div style={{ fontSize: 12, color: ehHoje ? 'var(--primary)' : 'var(--muted)', fontWeight: ehHoje ? 700 : 400, marginBottom: 3 }}>{dia}</div>
               {items.map((it) => {
                 const cor = ESTADO_COR[it.estado_global] ?? ESTADO_COR.draft!
                 return (
-                  <div key={it.id} draggable
-                    onDragStart={(e) => e.dataTransfer.setData('text/plain', it.id)}
-                    onClick={() => router.push(`/marketing/publicacoes/${it.id}`)}
+                  <div key={it.id}
+                    onPointerDown={(e) => iniciarArrasto(e, it)}
+                    onPointerMove={moverArrasto}
+                    onPointerUp={() => terminarArrasto(it)}
+                    onPointerCancel={cancelarArrasto}
                     title={`${it.titulo_interno} · ${ESTADO_POST_LABEL[it.estado_global]}`}
-                    style={{ ...s.chip, background: cor.bg, color: cor.c }}>
+                    style={{ ...s.chip, background: cor.bg, color: cor.c, touchAction: 'none' }}>
                     <span style={{ marginRight: 3 }}>{it.canais.map((c) => emojiCanal(c)).join('')}</span>
                     {it.titulo_interno}
                   </div>
@@ -114,6 +144,11 @@ export default function CalendarioPage() {
           )
         })}
       </div>
+
+      {/* Fantasma que segue o dedo/cursor durante o arrasto */}
+      {fantasma && (
+        <div style={{ ...s.fantasma, left: fantasma.x + 12, top: fantasma.y + 12 }}>{fantasma.titulo}</div>
+      )}
     </main>
   )
 }
@@ -130,5 +165,6 @@ const s: Record<string, React.CSSProperties> = {
   cel: { minHeight: 96, background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: 6, overflow: 'hidden' },
   celSobre: { background: '#EEF2FF', borderColor: 'var(--primary)' },
   celHoje: { borderColor: 'var(--primary)', boxShadow: 'inset 0 0 0 1px var(--primary)' },
-  chip: { fontSize: 11.5, borderRadius: 6, padding: '3px 6px', marginBottom: 3, cursor: 'grab', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600 },
+  chip: { fontSize: 11.5, borderRadius: 6, padding: '3px 6px', marginBottom: 3, cursor: 'grab', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600, userSelect: 'none' },
+  fantasma: { position: 'fixed', zIndex: 2000, pointerEvents: 'none', background: 'var(--primary)', color: '#fff', borderRadius: 8, padding: '6px 10px', fontSize: 12.5, fontWeight: 700, maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', boxShadow: '0 6px 20px rgba(0,0,0,0.25)' },
 }
