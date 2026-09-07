@@ -29,6 +29,11 @@ export default function EditarEquipamento() {
   useEffect(() => {
     const saida = modoSaida
 
+    // Em edição NÃO usamos rascunho (ver abaixo). Limpa qualquer rascunho antigo
+    // que tenha ficado preso a esta ficha para não voltar a sobrepor-se aos
+    // dados reais da BD (ex.: repor um destino já corrigido).
+    limparRascunho(`equipamento:edit:${id}`)
+
     supabase
       .from('equipamentos')
       .select('*')
@@ -81,7 +86,6 @@ export default function EditarEquipamento() {
         valoresIniciais={inicial}
         urlCancelar={`/equipamentos/${id}`}
         aoGuardar={aoGuardar}
-        rascunhoKey={`equipamento:edit:${id}`}
       />
     </main>
   )
