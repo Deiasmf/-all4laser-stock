@@ -46,6 +46,25 @@ export const ESTRATEGIA_LABEL: Record<EstrategiaPromocao, string> = {
   organica: 'Orgânica', candidata_paga: 'Candidata a paga', paga_aprovada: 'Paga aprovada',
 }
 
+// ── Canais (modelo simples MVP: multi-seleção na publicação) ──────────────────
+// Lista canónica; guardada como text[] livre na BD (extensível/gerível).
+export type Canal = 'instagram' | 'facebook' | 'linkedin' | 'site'
+export const CANAIS: Canal[] = ['instagram', 'facebook', 'linkedin', 'site']
+export const CANAL_LABEL: Record<Canal, string> = {
+  instagram: 'Instagram', facebook: 'Facebook', linkedin: 'LinkedIn', site: 'Site/Blog',
+}
+export const CANAL_EMOJI: Record<string, string> = {
+  instagram: '📸', facebook: '👍', linkedin: '💼', site: '🌐',
+}
+
+// Estados simples (MVP) mapeados sobre estado_global.
+export const ESTADO_SIMPLES: { valor: EstadoPost; label: string }[] = [
+  { valor: 'idea', label: 'Ideia' },
+  { valor: 'draft', label: 'Rascunho' },
+  { valor: 'approved', label: 'Aprovada' },
+  { valor: 'published', label: 'Publicada' },
+]
+
 // ── Entidades ────────────────────────────────────────────────────────────────
 export type Campanha = {
   id: string
@@ -107,6 +126,12 @@ export type Post = {
   canva_url: string | null
   estrategia_promocao: EstrategiaPromocao
   estado_global: EstadoPost
+  // Conteúdo simples (MVP)
+  texto_pt: string | null
+  texto_en: string | null
+  hashtags: string[]
+  data_prevista: string | null
+  canais: string[]
   criado_por: string | null
   criado_por_nome: string | null
   created_at: string
@@ -124,6 +149,12 @@ export type PostInput = {
   notas_internas?: string | null
   canva_url?: string | null
   estrategia_promocao?: EstrategiaPromocao
+  // Conteúdo simples (MVP)
+  texto_pt?: string | null
+  texto_en?: string | null
+  hashtags?: string[]
+  data_prevista?: string | null
+  canais?: string[]
 }
 
 export type Variante = {
@@ -206,6 +237,19 @@ export type PropostaPaga = {
   created_at: string
 }
 
+// Documento do Plano de Marketing (com versões / histórico).
+export type PlanoDocumento = {
+  id: string
+  versao: number
+  nome: string
+  caminho: string
+  tipo: string | null            // pdf | docx | outro
+  tamanho_bytes: number | null
+  notas: string | null
+  criado_por_nome: string | null
+  created_at: string
+}
+
 export type TipoMedia = 'imagem' | 'video' | 'documento' | 'canva_link'
 export type EstadoMedia = 'rascunho' | 'aprovado' | 'expirado' | 'arquivado'
 export const TIPO_MEDIA_LABEL: Record<TipoMedia, string> = {
@@ -233,6 +277,29 @@ export type MediaAsset = {
   created_at: string
 }
 
+// Anexo de media diretamente na publicação (modelo simples MVP).
+export type Anexo = {
+  id: string
+  post_id: string
+  caminho: string
+  tipo: 'imagem' | 'video'
+  nome_original: string | null
+  largura: number | null
+  altura: number | null
+  tamanho_bytes: number | null
+  ordem: number
+  created_at: string
+}
+
+// Publicação real de um canal (data em que saiu).
+export type PublicacaoCanal = {
+  id: string
+  post_id: string
+  canal: string
+  publicado_em: string
+  publicado_por_nome: string | null
+}
+
 // Detalhe agregado de uma publicação (para o ecrã de detalhe).
 export type PostDetalhe = Post & {
   variantes: Variante[]
@@ -241,6 +308,8 @@ export type PostDetalhe = Post & {
   aprovacoes: Aprovacao[]
   proposta_paga: PropostaPaga | null
   campanha_nome: string | null
+  anexos: Anexo[]
+  publicacoes: PublicacaoCanal[]
 }
 
 // Itens da checklist de conformidade (§7 do briefing).

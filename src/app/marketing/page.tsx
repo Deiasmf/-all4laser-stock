@@ -8,6 +8,7 @@ import Link from 'next/link'
 type Cartao = { href: string; titulo: string; icon: string; descricao: string }
 
 const CARTOES: Cartao[] = [
+  { href: '/marketing/plano', titulo: 'Plano de Marketing', icon: '📋', descricao: 'O documento de referência da equipa (PDF/Word), com versões e notas.' },
   { href: '/marketing/dashboard', titulo: 'Dashboard', icon: '📊', descricao: 'Visão operacional: agendadas, a rever, a aprovar, publicadas e falhadas.' },
   { href: '/marketing/calendario', titulo: 'Calendário', icon: '🗓️', descricao: 'Calendário editorial por mês, semana e lista — por plataforma e mercado.' },
   { href: '/marketing/publicacoes', titulo: 'Publicações', icon: '📝', descricao: 'Conteúdos e as suas variantes por plataforma (Instagram, Facebook, LinkedIn).' },

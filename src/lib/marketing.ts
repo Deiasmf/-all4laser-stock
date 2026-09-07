@@ -2,7 +2,7 @@ import { supabase } from './supabase'
 import type {
   Campanha, CampanhaInput, Post, PostInput, PostDetalhe, Variante, VarianteInput,
   PostEquipamento, ComplianceItem, Aprovacao, PropostaPaga, EstadoPost, Plataforma,
-  LinhaNegocio, ObjetivoPost, FormatoVariante,
+  LinhaNegocio, ObjetivoPost, FormatoVariante, Anexo, PublicacaoCanal, PlanoDocumento,
 } from '@/types/marketing'
 import { CHECKLIST_ITENS } from '@/types/marketing'
 import type { MediaAsset, TipoMedia } from '@/types/marketing'
@@ -104,13 +104,15 @@ export async function obterPostDetalhe(id: string): Promise<PostDetalhe | null> 
   const { data: post } = await supabase.from('marketing_posts').select('*').eq('id', id).single()
   if (!post) return null
   const p = post as Post
-  const [variantes, equipamentos, checklist, aprovacoes, proposta, campanha] = await Promise.all([
+  const [variantes, equipamentos, checklist, aprovacoes, proposta, campanha, anexos, publicacoes] = await Promise.all([
     supabase.from('marketing_post_variants').select('*').eq('post_id', id).order('created_at'),
     supabase.from('marketing_post_equipment').select('*').eq('post_id', id),
     supabase.from('marketing_compliance_checks').select('*').eq('post_id', id).order('item'),
     supabase.from('marketing_post_approvals').select('*').eq('post_id', id).order('created_at', { ascending: false }),
     supabase.from('marketing_paid_proposals').select('*').eq('post_id', id).order('created_at', { ascending: false }).limit(1),
     p.campaign_id ? supabase.from('marketing_campaigns').select('nome').eq('id', p.campaign_id).single() : Promise.resolve({ data: null }),
+    supabase.from('marketing_post_anexos').select('*').eq('post_id', id).order('ordem'),
+    supabase.from('marketing_post_publicacoes').select('*').eq('post_id', id).order('publicado_em'),
   ])
   return {
     ...p,
@@ -120,6 +122,8 @@ export async function obterPostDetalhe(id: string): Promise<PostDetalhe | null> 
     aprovacoes: (aprovacoes.data as Aprovacao[]) ?? [],
     proposta_paga: ((proposta.data as PropostaPaga[]) ?? [])[0] ?? null,
     campanha_nome: (campanha.data as { nome: string } | null)?.nome ?? null,
+    anexos: (anexos.data as Anexo[]) ?? [],
+    publicacoes: (publicacoes.data as PublicacaoCanal[]) ?? [],
   }
 }
 
@@ -137,6 +141,12 @@ export async function criarPost(input: PostInput, autor: Autor) {
     canva_url: limpar(input.canva_url),
     estrategia_promocao: input.estrategia_promocao ?? 'organica',
     estado_global: 'draft',
+    // conteúdo simples (MVP)
+    texto_pt: limpar(input.texto_pt),
+    texto_en: limpar(input.texto_en),
+    hashtags: input.hashtags ?? [],
+    data_prevista: input.data_prevista || null,
+    canais: input.canais ?? [],
     criado_por: autor.id,
     criado_por_nome: autor.nome,
   }).select('*').single()
@@ -158,6 +168,11 @@ export async function atualizarPost(id: string, input: PostInput, estadoAtual: E
     notas_internas: limpar(input.notas_internas),
     canva_url: limpar(input.canva_url),
     estrategia_promocao: input.estrategia_promocao ?? 'organica',
+    texto_pt: limpar(input.texto_pt),
+    texto_en: limpar(input.texto_en),
+    hashtags: input.hashtags ?? [],
+    data_prevista: input.data_prevista || null,
+    canais: input.canais ?? [],
   }
   if (invalida) patch.estado_global = 'in_review'
   const res = await supabase.from('marketing_posts').update(patch).eq('id', id).select('*').single()
@@ -165,6 +180,27 @@ export async function atualizarPost(id: string, input: PostInput, estadoAtual: E
     await registarAcao(id, null, 'pediu_alteracoes', autor, 'Edição após aprovação — voltou a revisão.')
   }
   return res
+}
+
+// Publicações com data prevista, para o calendário (modelo simples MVP).
+export type PostCalendario = {
+  id: string
+  titulo_interno: string
+  estado_global: EstadoPost
+  canais: string[]
+  data_prevista: string
+}
+export async function listarPostsCalendario(): Promise<PostCalendario[]> {
+  const { data } = await supabase.from('marketing_posts')
+    .select('id, titulo_interno, estado_global, canais, data_prevista')
+    .is('deleted_at', null).not('data_prevista', 'is', null)
+    .order('data_prevista').limit(3000)
+  return (data as PostCalendario[]) ?? []
+}
+
+// Muda a data prevista (usado ao arrastar no calendário).
+export async function atualizarDataPrevista(postId: string, data: string | null) {
+  return supabase.from('marketing_posts').update({ data_prevista: data || null }).eq('id', postId)
 }
 
 export async function apagarPost(id: string, autor: Autor) {
@@ -640,6 +676,133 @@ export async function apagarMediaAsset(asset: MediaAsset, autor: Autor) {
   return supabase.from('marketing_media_assets')
     .update({ deleted_at: new Date().toISOString(), deleted_by: autor.id, deleted_by_nome: autor.nome })
     .eq('id', asset.id)
+}
+
+// ═══ ANEXOS DA PUBLICAÇÃO (modelo simples MVP) ══════════════════════════════
+export async function listarAnexos(postId: string): Promise<Anexo[]> {
+  const { data } = await supabase.from('marketing_post_anexos')
+    .select('*').eq('post_id', postId).order('ordem')
+  return (data as Anexo[]) ?? []
+}
+
+// Dimensões de uma imagem (para pré-visualização/aspeto). Falha → null.
+async function dimensoesImagem(file: File): Promise<{ w: number; h: number } | null> {
+  if (!file.type.startsWith('image/')) return null
+  try {
+    const bmp = await createImageBitmap(file)
+    const r = { w: bmp.width, h: bmp.height }; bmp.close?.(); return r
+  } catch { return null }
+}
+
+export type ResultadoAnexos = { carregados: number; total: number; falhas: string[] }
+
+// Carrega imagens/vídeos para a publicação (compressão de imagens no upload).
+// Não rebenta no 1.º erro: salta e continua, devolvendo um resumo.
+export async function carregarAnexos(
+  postId: string, ficheiros: File[], autor: Autor,
+  ordemInicial = 0, onProgresso?: (feitos: number, total: number) => void,
+): Promise<ResultadoAnexos> {
+  const res: ResultadoAnexos = { carregados: 0, total: ficheiros.length, falhas: [] }
+  let i = 0
+  for (const original of ficheiros) {
+    i++; onProgresso?.(i, ficheiros.length)
+    const ficheiro = await comprimirImagem(original)             // imagens encolhem; vídeos passam
+    const tipo = ficheiro.type.startsWith('video/') ? 'video' : 'imagem'
+    const dims = await dimensoesImagem(ficheiro)
+    const caminho = `posts/${postId}/${Date.now()}-${nomeSeguro(ficheiro.name)}`
+    const up = await supabase.storage.from(BUCKET_MARKETING).upload(caminho, ficheiro)
+    if (up.error) { res.falhas.push(original.name); continue }
+    const { error } = await supabase.from('marketing_post_anexos').insert({
+      post_id: postId, caminho, tipo, nome_original: original.name,
+      largura: dims?.w ?? null, altura: dims?.h ?? null, tamanho_bytes: ficheiro.size,
+      ordem: ordemInicial + i, criado_por: autor.id, criado_por_nome: autor.nome,
+    })
+    if (error) { await supabase.storage.from(BUCKET_MARKETING).remove([caminho]); res.falhas.push(original.name); continue }
+    res.carregados++
+  }
+  return res
+}
+
+export async function apagarAnexo(anexo: Anexo) {
+  if (anexo.caminho) await supabase.storage.from(BUCKET_MARKETING).remove([anexo.caminho])
+  return supabase.from('marketing_post_anexos').delete().eq('id', anexo.id)
+}
+
+export async function reordenarAnexos(idsOrdenados: string[]) {
+  await Promise.all(idsOrdenados.map((id, i) =>
+    supabase.from('marketing_post_anexos').update({ ordem: i }).eq('id', id)))
+}
+
+// ═══ PLANO DE MARKETING (documento com versões) ═════════════════════════════
+export async function listarPlanoDocumentos(): Promise<PlanoDocumento[]> {
+  const { data } = await supabase.from('marketing_plano_documentos')
+    .select('*').order('versao', { ascending: false })
+  return (data as PlanoDocumento[]) ?? []
+}
+
+function tipoDocumento(nome: string, mime: string): string {
+  const n = nome.toLowerCase()
+  if (mime === 'application/pdf' || n.endsWith('.pdf')) return 'pdf'
+  if (n.endsWith('.docx') || n.endsWith('.doc') || mime.includes('word')) return 'docx'
+  return 'outro'
+}
+
+// Carrega uma NOVA versão do plano (nunca apaga as anteriores).
+export async function carregarPlanoDocumento(file: File, notas: string | null, autor: Autor) {
+  const caminho = `plano/${Date.now()}-${nomeSeguro(file.name)}`
+  const up = await supabase.storage.from(BUCKET_MARKETING).upload(caminho, file)
+  if (up.error) return { data: null, error: up.error }
+  return supabase.from('marketing_plano_documentos').insert({
+    nome: file.name, caminho, tipo: tipoDocumento(file.name, file.type),
+    tamanho_bytes: file.size, notas: limpar(notas), versao: 0, // 0 → trigger atribui a próxima
+    criado_por: autor.id, criado_por_nome: autor.nome,
+  }).select('*').single()
+}
+
+export async function atualizarNotasPlano(id: string, notas: string | null) {
+  return supabase.from('marketing_plano_documentos').update({ notas: limpar(notas) }).eq('id', id)
+}
+
+export async function apagarPlanoDocumento(doc: PlanoDocumento) {
+  if (doc.caminho) await supabase.storage.from(BUCKET_MARKETING).remove([doc.caminho])
+  return supabase.from('marketing_plano_documentos').delete().eq('id', doc.id)
+}
+
+// ═══ PUBLICAÇÃO POR CANAL (estado real "Publicada" + data) ══════════════════
+export async function marcarPublicado(postId: string, canal: string, autor: Autor) {
+  const r = await supabase.from('marketing_post_publicacoes').upsert({
+    post_id: postId, canal, publicado_em: new Date().toISOString(),
+    publicado_por: autor.id, publicado_por_nome: autor.nome,
+  }, { onConflict: 'post_id,canal' })
+  if (!r.error) await sincronizarEstadoPublicado(postId)
+  return r
+}
+
+export async function desmarcarPublicado(postId: string, canal: string) {
+  const r = await supabase.from('marketing_post_publicacoes').delete()
+    .eq('post_id', postId).eq('canal', canal)
+  if (!r.error) await sincronizarEstadoPublicado(postId)
+  return r
+}
+
+// Quando TODOS os canais-alvo estão publicados, a publicação fica 'published';
+// se deixar de estar (desmarcou um) e estava 'published', volta a 'approved'.
+async function sincronizarEstadoPublicado(postId: string) {
+  const { data: post } = await supabase.from('marketing_posts')
+    .select('canais, estado_global').eq('id', postId).single()
+  if (!post) return
+  const canais: string[] = (post as { canais: string[] }).canais ?? []
+  if (canais.length === 0) return
+  const { data: pubs } = await supabase.from('marketing_post_publicacoes')
+    .select('canal').eq('post_id', postId)
+  const publicados = new Set(((pubs as { canal: string }[]) ?? []).map((p) => p.canal))
+  const todos = canais.every((c) => publicados.has(c))
+  const estado = (post as { estado_global: EstadoPost }).estado_global
+  if (todos && estado !== 'published') {
+    await supabase.from('marketing_posts').update({ estado_global: 'published' }).eq('id', postId)
+  } else if (!todos && estado === 'published') {
+    await supabase.from('marketing_posts').update({ estado_global: 'approved' }).eq('id', postId)
+  }
 }
 
 // ═══ CALENDÁRIO ═════════════════════════════════════════════════════════════

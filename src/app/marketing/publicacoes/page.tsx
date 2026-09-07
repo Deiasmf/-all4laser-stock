@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { listarPosts, type PostListItem } from '@/lib/marketing'
-import { ESTADO_POST_LABEL, LINHA_NEGOCIO_LABEL, ESTRATEGIA_LABEL } from '@/types/marketing'
-import type { EstadoPost } from '@/types/marketing'
+import { ESTADO_POST_LABEL, CANAIS, CANAL_LABEL, CANAL_EMOJI } from '@/types/marketing'
+import type { EstadoPost, Canal } from '@/types/marketing'
 
 const ESTADO_COR: Partial<Record<EstadoPost, { c: string; bg: string }>> = {
   idea: { c: '#6B7280', bg: '#F3F4F6' },
@@ -26,6 +26,8 @@ export default function PublicacoesPage() {
   const [erro, setErro] = useState<string | null>(null)
   const [q, setQ] = useState('')
   const [filtro, setFiltro] = useState<EstadoPost | 'todos'>('todos')
+  const [canal, setCanal] = useState<Canal | 'todos'>('todos')
+  const [mes, setMes] = useState('') // 'YYYY-MM'
 
   useEffect(() => {
     listarPosts().then(setPosts).catch((e) => setErro(String(e))).finally(() => setCarregando(false))
@@ -33,6 +35,8 @@ export default function PublicacoesPage() {
 
   const filtrados = posts.filter((p) => {
     if (filtro !== 'todos' && p.estado_global !== filtro) return false
+    if (canal !== 'todos' && !(p.canais ?? []).includes(canal)) return false
+    if (mes && (p.data_prevista ?? '').slice(0, 7) !== mes) return false
     const txt = `${p.titulo_interno} ${p.numero ?? ''} ${p.campanha_nome ?? ''}`.toLowerCase()
     return !q.trim() || txt.includes(q.toLowerCase())
   })
@@ -60,6 +64,22 @@ export default function PublicacoesPage() {
         ))}
       </div>
 
+      <div style={s.filtros}>
+        <div style={s.pills}>
+          <button onClick={() => setCanal('todos')} style={{ ...s.pill, ...(canal === 'todos' ? s.pillOn : {}) }}>Todos os canais</button>
+          {CANAIS.map((c) => (
+            <button key={c} onClick={() => setCanal(c)} style={{ ...s.pill, ...(canal === c ? s.pillOn : {}) }}>
+              {CANAL_EMOJI[c]} {CANAL_LABEL[c]}
+            </button>
+          ))}
+        </div>
+        <label style={s.mesLabel}>
+          Mês:
+          <input type="month" value={mes} onChange={(e) => setMes(e.target.value)} style={s.mesInput} />
+          {mes && <button onClick={() => setMes('')} style={s.limparMes}>limpar</button>}
+        </label>
+      </div>
+
       {erro && <p style={{ ...s.estado, color: 'var(--danger)' }}>Erro: {erro}</p>}
       {carregando && <p style={s.estado}>A carregar…</p>}
       {!carregando && !erro && filtrados.length === 0 && (
@@ -72,10 +92,9 @@ export default function PublicacoesPage() {
             <tr>
               <th style={s.th}>Número</th>
               <th style={s.th}>Título</th>
+              <th style={s.th}>Canais</th>
+              <th style={s.th}>Data prevista</th>
               <th style={s.th}>Campanha</th>
-              <th style={s.th}>Linha</th>
-              <th style={s.th}>Variantes</th>
-              <th style={s.th}>Promoção</th>
               <th style={s.th}>Estado</th>
             </tr>
           </thead>
@@ -86,10 +105,9 @@ export default function PublicacoesPage() {
                 <tr key={p.id} style={s.tr} onClick={() => { window.location.href = `/marketing/publicacoes/${p.id}` }}>
                   <td style={s.td}>{p.numero ?? '—'}</td>
                   <td style={{ ...s.td, fontWeight: 600 }}>{p.titulo_interno}</td>
+                  <td style={s.td}>{(p.canais ?? []).length ? (p.canais).map((c) => CANAL_EMOJI[c] ?? c).join(' ') : '—'}</td>
+                  <td style={s.td}>{p.data_prevista ? new Date(p.data_prevista + 'T00:00:00').toLocaleDateString('pt-PT') : '—'}</td>
                   <td style={s.td}>{p.campanha_nome ?? '—'}</td>
-                  <td style={s.td}>{p.linha_negocio ? LINHA_NEGOCIO_LABEL[p.linha_negocio] : '—'}</td>
-                  <td style={s.td}>{p.n_variantes}</td>
-                  <td style={s.td}>{ESTRATEGIA_LABEL[p.estrategia_promocao]}</td>
                   <td style={s.td}><span style={{ ...s.badge, color: cor.c, background: cor.bg }}>{ESTADO_POST_LABEL[p.estado_global]}</span></td>
                 </tr>
               )
@@ -110,6 +128,10 @@ const s: Record<string, React.CSSProperties> = {
   btnImportar: { background: 'transparent', color: 'var(--primary)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', fontWeight: 600, textDecoration: 'none' },
   pesquisa: { width: '100%', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8, font: 'inherit', marginBottom: 12 },
   pills: { display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 },
+  filtros: { display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  mesLabel: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--muted)', marginBottom: 16 },
+  mesInput: { padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 8, font: 'inherit' },
+  limparMes: { border: 'none', background: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: 12.5, textDecoration: 'underline' },
   pill: { border: '1px solid var(--border)', background: '#fff', borderRadius: 999, padding: '6px 14px', fontSize: 13, cursor: 'pointer', color: 'var(--muted)' },
   pillOn: { background: 'var(--primary)', color: '#fff', borderColor: 'var(--primary)' },
   estado: { color: 'var(--muted)', textAlign: 'center', padding: 30 },
