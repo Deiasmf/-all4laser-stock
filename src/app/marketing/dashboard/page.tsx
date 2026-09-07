@@ -2,9 +2,13 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { dashboardMarketing, type MarketingDashboard } from '@/lib/marketing'
-import { ESTADO_POST_LABEL, PLATAFORMA_LABEL } from '@/types/marketing'
+import { dashboardMarketing, publicacoesPorPrazo, type MarketingDashboard, type PublicacoesPrazo, type PostCalendario } from '@/lib/marketing'
+import { ESTADO_POST_LABEL, PLATAFORMA_LABEL, CANAL_EMOJI } from '@/types/marketing'
 import type { EstadoPost } from '@/types/marketing'
+
+function formatarDia(d: string) {
+  return new Date(d.slice(0, 10) + 'T00:00:00').toLocaleDateString('pt-PT', { weekday: 'short', day: 'numeric', month: 'short' })
+}
 
 const KPIS: { estado: EstadoPost; cor: string }[] = [
   { estado: 'draft', cor: '#3A3870' },
@@ -17,9 +21,11 @@ const KPIS: { estado: EstadoPost; cor: string }[] = [
 
 export default function MarketingDashboardPage() {
   const [d, setD] = useState<MarketingDashboard | null>(null)
+  const [prazos, setPrazos] = useState<PublicacoesPrazo | null>(null)
   const [erro, setErro] = useState<string | null>(null)
 
   useEffect(() => { dashboardMarketing().then(setD).catch((e) => setErro(String(e))) }, [])
+  useEffect(() => { publicacoesPorPrazo().then(setPrazos).catch(() => {}) }, [])
 
   return (
     <main style={s.page}>
@@ -47,6 +53,16 @@ export default function MarketingDashboardPage() {
             <Destaque n={d.candidatasPagas} rot="Candidatas a promoção paga" cor="#9A3412" href="/marketing/publicacoes" />
             <Destaque n={d.campanhasAtivas} rot="Campanhas ativas" cor="#166534" href="/marketing/campanhas" />
           </div>
+
+          {/* Prazos: em atraso + próximos 7 dias (por data prevista) */}
+          {prazos && (prazos.emAtraso.length > 0 || prazos.proximos7.length > 0) && (
+            <div style={s.prazos}>
+              <ListaPrazo titulo="Em atraso" cor="#B91C1C" bg="#FEF2F2" itens={prazos.emAtraso}
+                vazio="Nada em atraso. 👏" />
+              <ListaPrazo titulo="Próximos 7 dias" cor="#1E40AF" bg="#EFF6FF" itens={prazos.proximos7}
+                vazio="Sem publicações previstas para os próximos 7 dias." />
+            </div>
+          )}
 
           {/* Por estado */}
           <h2 style={s.h2}>Publicações por estado</h2>
@@ -82,6 +98,29 @@ export default function MarketingDashboardPage() {
   )
 }
 
+function ListaPrazo({ titulo, cor, bg, itens, vazio }: {
+  titulo: string; cor: string; bg: string; itens: PostCalendario[]; vazio: string
+}) {
+  return (
+    <div className="a4l-card" style={{ padding: 0, overflow: 'hidden' }}>
+      <div style={{ padding: '10px 14px', background: bg, color: cor, fontWeight: 700, fontSize: 14 }}>
+        {titulo} {itens.length > 0 && <span style={{ opacity: 0.8 }}>· {itens.length}</span>}
+      </div>
+      {itens.length === 0 ? (
+        <p style={{ color: 'var(--muted)', fontSize: 13.5, padding: '12px 14px', margin: 0 }}>{vazio}</p>
+      ) : (
+        itens.map((p) => (
+          <Link key={p.id} href={`/marketing/publicacoes/${p.id}`} style={s.linhaProx}>
+            <span style={{ fontWeight: 600, flex: 1 }}>{p.titulo_interno}</span>
+            <span style={{ fontSize: 13 }}>{p.canais.map((c) => CANAL_EMOJI[c] ?? '').join('')}</span>
+            <span style={{ color: cor, fontSize: 12.5, fontWeight: 600, textTransform: 'capitalize' }}>{formatarDia(p.data_prevista)}</span>
+          </Link>
+        ))
+      )}
+    </div>
+  )
+}
+
 function Destaque({ n, rot, cor, href }: { n: number; rot: string; cor: string; href: string }) {
   return (
     <Link href={href} style={s.destaque}>
@@ -98,6 +137,7 @@ const s: Record<string, React.CSSProperties> = {
   btnPri: { background: 'var(--primary)', color: '#fff', borderRadius: 8, padding: '9px 14px', fontWeight: 700, textDecoration: 'none', fontSize: 14 },
   btnSec: { background: 'transparent', color: 'var(--primary)', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 14px', fontWeight: 600, textDecoration: 'none', fontSize: 14 },
   destaques: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12, marginTop: 18 },
+  prazos: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14, marginTop: 20 },
   destaque: { display: 'flex', flexDirection: 'column', gap: 4, background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 16, textDecoration: 'none' },
   h2: { fontSize: 15, fontWeight: 700, color: 'var(--primary)', margin: '22px 0 10px' },
   kpis: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 10 },
