@@ -15,6 +15,7 @@ export type PostDetetado = {
   texto_pt: string | null
   texto_en: string | null
   hashtags: string[]
+  promotion_type: 'ORGANIC' | 'CANDIDATE_PAID'
 }
 
 const CANAIS_DEFAULT = ['instagram', 'facebook', 'linkedin', 'site']
@@ -50,8 +51,12 @@ function construirTool(canaisValidos: string[]): Anthropic.Tool {
               texto_pt: { type: ['string', 'null'], description: 'Texto/legenda da publicação em Português, se existir. Senão null.' },
               texto_en: { type: ['string', 'null'], description: 'Texto/legenda em Inglês, se existir. Senão null.' },
               hashtags: { type: 'array', description: 'Hashtags sem o símbolo #.', items: { type: 'string' } },
+              promotion_type: {
+                type: 'string', enum: ['ORGANIC', 'CANDIDATE_PAID'],
+                description: 'Tipo de promoção indicado no plano (campo PROMOTION_TYPE). ORGANIC = orgânica; CANDIDATE_PAID = a promover/patrocinar. Se não indicado, ORGANIC.',
+              },
             },
-            required: ['titulo_interno', 'data_prevista', 'canais', 'texto_pt', 'texto_en', 'hashtags'],
+            required: ['titulo_interno', 'data_prevista', 'canais', 'texto_pt', 'texto_en', 'hashtags', 'promotion_type'],
           },
         },
       },
@@ -66,7 +71,9 @@ Para cada publicação, identificas o tema (título interno), a data prevista, o
 (Instagram, Facebook, LinkedIn, Site/Blog), o texto em Português e/ou Inglês quando
 existir, e as hashtags. NÃO inventes conteúdo: se um campo não estiver no plano, devolve
 null (ou lista vazia para canais/hashtags). Extrai EXATAMENTE o que está escrito. Se o
-mesmo conteúdo for para vários canais, junta os canais numa só publicação.`
+mesmo conteúdo for para vários canais, junta os canais numa só publicação. Se o plano
+indicar um campo PROMOTION_TYPE (ORGANIC / CANDIDATE_PAID), respeita-o; se não indicar,
+usa ORGANIC.`
 
 const INSTRUCAO = 'Extrai todas as publicações planeadas deste plano e regista-as.'
 
@@ -106,6 +113,9 @@ function normalizar(raw: Record<string, unknown>, canaisValidos: string[]): Post
   if (!titulo) return null
   const canais = listaTexto(raw.canais).map((c) => c.toLowerCase()).filter((c) => canaisValidos.includes(c))
   const hashtags = listaTexto(raw.hashtags).map((h) => h.replace(/^#+/, '').trim()).filter(Boolean)
+  const promoRaw = (texto(raw.promotion_type) ?? '').toUpperCase().replace(/[\s-]+/g, '_')
+  const promotion_type: PostDetetado['promotion_type'] =
+    promoRaw.includes('PAID') || promoRaw.includes('CANDIDATE') ? 'CANDIDATE_PAID' : 'ORGANIC'
   return {
     titulo_interno: titulo,
     data_prevista: normalizarData(raw.data_prevista),
@@ -113,6 +123,7 @@ function normalizar(raw: Record<string, unknown>, canaisValidos: string[]): Post
     texto_pt: texto(raw.texto_pt),
     texto_en: texto(raw.texto_en),
     hashtags: Array.from(new Set(hashtags)),
+    promotion_type,
   }
 }
 

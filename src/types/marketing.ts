@@ -46,6 +46,41 @@ export const ESTRATEGIA_LABEL: Record<EstrategiaPromocao, string> = {
   organica: 'Orgânica', candidata_paga: 'Candidata a paga', paga_aprovada: 'Paga aprovada',
 }
 
+// ── Promoção: tipo (reutiliza estrategia_promocao) + estado + detalhes ────────
+// Etiqueta visível (texto + cor + ícone) por tipo de promoção.
+export const PROMO_ETIQUETA: Record<EstrategiaPromocao, { label: string; c: string; bg: string; icone: string }> = {
+  organica:      { label: 'Orgânica',  c: '#1E40AF', bg: '#DBEAFE', icone: '🌱' },
+  candidata_paga:{ label: 'A promover', c: '#7C3AED', bg: '#EDE9FE', icone: '📣' },
+  paga_aprovada: { label: 'Paga aprovada', c: '#6D28D9', bg: '#EDE9FE', icone: '📣' },
+}
+
+export type PromotionStatus =
+  | 'NOT_APPLICABLE' | 'PLANNED' | 'APPROVED' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED'
+export const PROMOTION_STATUS_LABEL: Record<PromotionStatus, string> = {
+  NOT_APPLICABLE: 'Não aplicável', PLANNED: 'Planeada', APPROVED: 'Aprovada',
+  ACTIVE: 'Ativa', COMPLETED: 'Concluída', CANCELLED: 'Cancelada',
+}
+
+export type AdPlatform = 'META_ADS' | 'LINKEDIN_ADS' | 'GOOGLE_ADS' | 'TIKTOK_ADS' | 'OTHER'
+export const AD_PLATFORM_LABEL: Record<AdPlatform, string> = {
+  META_ADS: 'Meta Ads (Facebook/Instagram)', LINKEDIN_ADS: 'LinkedIn Ads',
+  GOOGLE_ADS: 'Google Ads', TIKTOK_ADS: 'TikTok Ads', OTHER: 'Outra',
+}
+
+export type ObjetivoPromocao =
+  | 'leads' | 'mensagens' | 'trafego' | 'conversao' | 'notoriedade' | 'alcance'
+export const OBJETIVO_PROMOCAO_LABEL: Record<ObjetivoPromocao, string> = {
+  leads: 'Leads', mensagens: 'Mensagens', trafego: 'Tráfego',
+  conversao: 'Conversões', notoriedade: 'Notoriedade', alcance: 'Alcance',
+}
+
+// Estado da promoção decorrente da estratégia (regra de negócio).
+export function promotionStatusPara(estrategia: EstrategiaPromocao): PromotionStatus {
+  if (estrategia === 'paga_aprovada') return 'APPROVED'
+  if (estrategia === 'candidata_paga') return 'PLANNED'
+  return 'NOT_APPLICABLE'
+}
+
 // ── Canais (multi-seleção na publicação; geríveis nas Configurações) ──────────
 // A lista real vive na tabela marketing_canais e carrega-se via useCanais().
 // Os valores abaixo são só o DEFAULT/fallback (nomes dos 4 canais semeados) para
@@ -137,6 +172,7 @@ export type Post = {
   notas_internas: string | null
   canva_url: string | null
   estrategia_promocao: EstrategiaPromocao
+  promotion_status: PromotionStatus
   estado_global: EstadoPost
   // Conteúdo simples (MVP)
   texto_pt: string | null
@@ -235,7 +271,9 @@ export type PropostaPaga = {
   id: string
   post_id: string
   motivo: string | null
-  objetivo: 'alcance' | 'trafego' | 'leads' | 'conversao' | null
+  objetivo: ObjetivoPromocao | null
+  ad_platform: AdPlatform | null
+  moeda: string
   mercado: string | null
   publico: string | null
   periodo_inicio: string | null
