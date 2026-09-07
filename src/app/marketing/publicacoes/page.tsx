@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { listarPosts, type PostListItem } from '@/lib/marketing'
-import { ESTADO_POST_LABEL, CANAIS, CANAL_LABEL, CANAL_EMOJI } from '@/types/marketing'
-import type { EstadoPost, Canal } from '@/types/marketing'
+import { useCanais, resolverCanais } from '@/lib/useCanais'
+import { ESTADO_POST_LABEL } from '@/types/marketing'
+import type { EstadoPost } from '@/types/marketing'
 
 const ESTADO_COR: Partial<Record<EstadoPost, { c: string; bg: string }>> = {
   idea: { c: '#6B7280', bg: '#F3F4F6' },
@@ -26,8 +27,10 @@ export default function PublicacoesPage() {
   const [erro, setErro] = useState<string | null>(null)
   const [q, setQ] = useState('')
   const [filtro, setFiltro] = useState<EstadoPost | 'todos'>('todos')
-  const [canal, setCanal] = useState<Canal | 'todos'>('todos')
+  const [canal, setCanal] = useState<string>('todos')
   const [mes, setMes] = useState('') // 'YYYY-MM'
+  const canaisDisponiveis = useCanais()
+  const { emoji } = resolverCanais(canaisDisponiveis)
 
   useEffect(() => {
     listarPosts().then(setPosts).catch((e) => setErro(String(e))).finally(() => setCarregando(false))
@@ -67,9 +70,9 @@ export default function PublicacoesPage() {
       <div style={s.filtros}>
         <div style={s.pills}>
           <button onClick={() => setCanal('todos')} style={{ ...s.pill, ...(canal === 'todos' ? s.pillOn : {}) }}>Todos os canais</button>
-          {CANAIS.map((c) => (
-            <button key={c} onClick={() => setCanal(c)} style={{ ...s.pill, ...(canal === c ? s.pillOn : {}) }}>
-              {CANAL_EMOJI[c]} {CANAL_LABEL[c]}
+          {canaisDisponiveis.map((c) => (
+            <button key={c.slug} onClick={() => setCanal(c.slug)} style={{ ...s.pill, ...(canal === c.slug ? s.pillOn : {}) }}>
+              {c.emoji} {c.label}
             </button>
           ))}
         </div>
@@ -105,7 +108,7 @@ export default function PublicacoesPage() {
                 <tr key={p.id} style={s.tr} onClick={() => { window.location.href = `/marketing/publicacoes/${p.id}` }}>
                   <td style={s.td}>{p.numero ?? '—'}</td>
                   <td style={{ ...s.td, fontWeight: 600 }}>{p.titulo_interno}</td>
-                  <td style={s.td}>{(p.canais ?? []).length ? (p.canais).map((c) => CANAL_EMOJI[c] ?? c).join(' ') : '—'}</td>
+                  <td style={s.td}>{(p.canais ?? []).length ? (p.canais).map((c) => emoji(c) || c).join(' ') : '—'}</td>
                   <td style={s.td}>{p.data_prevista ? new Date(p.data_prevista + 'T00:00:00').toLocaleDateString('pt-PT') : '—'}</td>
                   <td style={s.td}>{p.campanha_nome ?? '—'}</td>
                   <td style={s.td}><span style={{ ...s.badge, color: cor.c, background: cor.bg }}>{ESTADO_POST_LABEL[p.estado_global]}</span></td>

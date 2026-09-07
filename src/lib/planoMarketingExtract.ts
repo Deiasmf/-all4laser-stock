@@ -17,7 +17,7 @@ export type PostDetetado = {
   hashtags: string[]
 }
 
-const CANAIS_VALIDOS = ['instagram', 'facebook', 'linkedin', 'site']
+const CANAIS_DEFAULT = ['instagram', 'facebook', 'linkedin', 'site']
 const IMAGENS = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
 const PDF = 'application/pdf'
 
@@ -26,35 +26,38 @@ export function tipoSuportado(contentType: string): boolean {
   return t === PDF || IMAGENS.has(t)
 }
 
-const TOOL: Anthropic.Tool = {
-  name: 'registar_publicacoes',
-  description: 'Regista a lista de publicações de redes sociais detetadas no plano.',
-  input_schema: {
-    type: 'object',
-    properties: {
-      publicacoes: {
-        type: 'array',
-        description: 'Uma entrada por publicação planeada. Se o plano não tiver publicações, devolve lista vazia.',
-        items: {
-          type: 'object',
-          properties: {
-            titulo_interno: { type: 'string', description: 'Título curto interno que identifique a publicação (tema/assunto).' },
-            data_prevista: { type: ['string', 'null'], description: 'Data prevista de publicação em ISO yyyy-mm-dd, ou null se não indicada.' },
-            canais: {
-              type: 'array',
-              description: 'Canais-alvo. Só estes valores: instagram, facebook, linkedin, site. "site" = site/blog.',
-              items: { type: 'string', enum: CANAIS_VALIDOS },
+// A ferramenta depende dos canais válidos (geríveis nas Configurações).
+function construirTool(canaisValidos: string[]): Anthropic.Tool {
+  return {
+    name: 'registar_publicacoes',
+    description: 'Regista a lista de publicações de redes sociais detetadas no plano.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        publicacoes: {
+          type: 'array',
+          description: 'Uma entrada por publicação planeada. Se o plano não tiver publicações, devolve lista vazia.',
+          items: {
+            type: 'object',
+            properties: {
+              titulo_interno: { type: 'string', description: 'Título curto interno que identifique a publicação (tema/assunto).' },
+              data_prevista: { type: ['string', 'null'], description: 'Data prevista de publicação em ISO yyyy-mm-dd, ou null se não indicada.' },
+              canais: {
+                type: 'array',
+                description: `Canais-alvo. Só estes valores (slugs): ${canaisValidos.join(', ')}. "site" = site/blog.`,
+                items: { type: 'string', enum: canaisValidos },
+              },
+              texto_pt: { type: ['string', 'null'], description: 'Texto/legenda da publicação em Português, se existir. Senão null.' },
+              texto_en: { type: ['string', 'null'], description: 'Texto/legenda em Inglês, se existir. Senão null.' },
+              hashtags: { type: 'array', description: 'Hashtags sem o símbolo #.', items: { type: 'string' } },
             },
-            texto_pt: { type: ['string', 'null'], description: 'Texto/legenda da publicação em Português, se existir. Senão null.' },
-            texto_en: { type: ['string', 'null'], description: 'Texto/legenda em Inglês, se existir. Senão null.' },
-            hashtags: { type: 'array', description: 'Hashtags sem o símbolo #.', items: { type: 'string' } },
+            required: ['titulo_interno', 'data_prevista', 'canais', 'texto_pt', 'texto_en', 'hashtags'],
           },
-          required: ['titulo_interno', 'data_prevista', 'canais', 'texto_pt', 'texto_en', 'hashtags'],
         },
       },
+      required: ['publicacoes'],
     },
-    required: ['publicacoes'],
-  },
+  }
 }
 
 const SISTEMA = `És um assistente que lê um PLANO DE MARKETING da All4laser (equipamentos de
@@ -98,10 +101,10 @@ function normalizarData(v: unknown): string | null {
   return m ? `${m[1]}-${m[2]}-${m[3]}` : null
 }
 
-function normalizar(raw: Record<string, unknown>): PostDetetado | null {
+function normalizar(raw: Record<string, unknown>, canaisValidos: string[]): PostDetetado | null {
   const titulo = texto(raw.titulo_interno)
   if (!titulo) return null
-  const canais = listaTexto(raw.canais).map((c) => c.toLowerCase()).filter((c) => CANAIS_VALIDOS.includes(c))
+  const canais = listaTexto(raw.canais).map((c) => c.toLowerCase()).filter((c) => canaisValidos.includes(c))
   const hashtags = listaTexto(raw.hashtags).map((h) => h.replace(/^#+/, '').trim()).filter(Boolean)
   return {
     titulo_interno: titulo,
@@ -114,9 +117,13 @@ function normalizar(raw: Record<string, unknown>): PostDetetado | null {
 }
 
 // Extrai publicações a partir de texto colado OU de um documento.
+// canaisValidos: os slugs dos canais geríveis (default = os 4 semeados).
 export async function extrairPublicacoes(
   entrada: { texto?: string; ficheiro?: FicheiroDoc },
+  canaisValidos: string[] = CANAIS_DEFAULT,
 ): Promise<PostDetetado[]> {
+  const canais = canaisValidos.length ? canaisValidos : CANAIS_DEFAULT
+  const tool = construirTool(canais)
   const conteudo: Anthropic.ContentBlockParam[] = []
   if (entrada.ficheiro) conteudo.push(blocoDocumento(entrada.ficheiro))
   if (entrada.texto && entrada.texto.trim()) conteudo.push({ type: 'text', text: `PLANO:\n\n${entrada.texto.trim()}` })
@@ -126,12 +133,12 @@ export async function extrairPublicacoes(
     model: MODELO_PLANO,
     max_tokens: 8000,
     system: SISTEMA,
-    tools: [TOOL],
-    tool_choice: { type: 'tool', name: TOOL.name },
+    tools: [tool],
+    tool_choice: { type: 'tool', name: tool.name },
     messages: [{ role: 'user', content: conteudo }],
   })
   const bloco = resp.content.find((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use')
   const dados = (bloco?.input ?? {}) as { publicacoes?: unknown }
   const lista = Array.isArray(dados.publicacoes) ? dados.publicacoes : []
-  return lista.map((x) => normalizar((x ?? {}) as Record<string, unknown>)).filter(Boolean) as PostDetetado[]
+  return lista.map((x) => normalizar((x ?? {}) as Record<string, unknown>, canais)).filter(Boolean) as PostDetetado[]
 }

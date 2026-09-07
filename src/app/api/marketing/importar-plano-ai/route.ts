@@ -38,7 +38,10 @@ export async function POST(req: Request) {
 
   if (!process.env.ANTHROPIC_API_KEY) return Response.json({ ok: false, erro: 'IA não configurada.' }, { status: 500 })
   try {
-    const posts = await extrairPublicacoes({ texto: body.texto, ficheiro })
+    // Canais ativos (geríveis) para a IA saber quais existem.
+    const { data: canaisRows } = await db.from('marketing_canais').select('slug').eq('ativo', true).order('ordem')
+    const canaisValidos = ((canaisRows as { slug: string }[]) ?? []).map((c) => c.slug)
+    const posts = await extrairPublicacoes({ texto: body.texto, ficheiro }, canaisValidos)
     return Response.json({ ok: true, posts })
   } catch (e) {
     return Response.json({ ok: false, erro: e instanceof Error ? e.message : 'Falha na IA.' }, { status: 502 })

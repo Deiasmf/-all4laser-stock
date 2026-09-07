@@ -18,15 +18,17 @@ import PostPartilha from '@/components/PostPartilha'
 import AtribuirPublicacao from '@/components/AtribuirPublicacao'
 import {
   ESTADO_POST_LABEL, PLATAFORMA_LABEL, FORMATO_LABEL, ESTRATEGIA_LABEL,
-  CHECKLIST_ITENS, CANAL_LABEL, CANAL_EMOJI,
+  CHECKLIST_ITENS,
 } from '@/types/marketing'
 import type { PostDetalhe, PostInput, Campanha, EstadoPost } from '@/types/marketing'
+import { useCanais, resolverCanais } from '@/lib/useCanais'
 
 export default function PublicacaoDetalhe({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const router = useRouter()
   const { perfil, isFinanceiro } = useAuth()
   const autor = perfil ? { id: perfil.id, nome: perfil.nome } : null
+  const { label: labelCanal, emoji: emojiCanal } = resolverCanais(useCanais())
 
   const [post, setPost] = useState<PostDetalhe | null>(null)
   const [campanhas, setCampanhas] = useState<Campanha[]>([])
@@ -126,7 +128,7 @@ export default function PublicacaoDetalhe({ params }: { params: Promise<{ id: st
         <Seccao titulo="Conteúdo e media">
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
             {post.canais.length > 0
-              ? post.canais.map((c) => <span key={c} style={s.tag}>{CANAL_EMOJI[c] ?? ''} {CANAL_LABEL[c as keyof typeof CANAL_LABEL] ?? c}</span>)
+              ? post.canais.map((c) => <span key={c} style={s.tag}>{emojiCanal(c)} {labelCanal(c)}</span>)
               : <span style={{ color: 'var(--muted)', fontSize: 13.5 }}>Sem canais definidos.</span>}
             {post.data_prevista && <span style={s.tag}>📅 {formatarDataSimples(post.data_prevista)}</span>}
           </div>
