@@ -17,6 +17,7 @@ type Candidato = {
   texto_pt: string
   texto_en: string
   hashtags: string
+  aPromover: boolean   // promotion_type CANDIDATE_PAID
 }
 
 const arquivoParaBase64 = (f: File): Promise<string> =>
@@ -80,6 +81,7 @@ export default function ImportarPlanoAI() {
       const detetados = (json.posts ?? []) as {
         titulo_interno: string; data_prevista: string | null; canais: string[]
         texto_pt: string | null; texto_en: string | null; hashtags: string[]
+        promotion_type?: 'ORGANIC' | 'CANDIDATE_PAID'
       }[]
       setCands(detetados.map((p) => ({
         incluir: true,
@@ -89,6 +91,7 @@ export default function ImportarPlanoAI() {
         texto_pt: p.texto_pt ?? '',
         texto_en: p.texto_en ?? '',
         hashtags: (p.hashtags ?? []).map((h) => `#${h}`).join(' '),
+        aPromover: p.promotion_type === 'CANDIDATE_PAID',
       })))
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Falha na análise.')
@@ -122,6 +125,7 @@ export default function ImportarPlanoAI() {
         texto_pt: c.texto_pt || null,
         texto_en: c.texto_en || null,
         hashtags: c.hashtags.split(/[\s,]+/).map((h) => h.replace(/^#+/, '').trim()).filter(Boolean),
+        estrategia_promocao: c.aPromover ? 'candidata_paga' : 'organica',
       }, { id: perfil.id, nome: perfil.nome })
       if (error) { falhados++; setErro(mensagemErro(error, { entidade: 'publicação' })) } else criados++
     }
@@ -177,11 +181,16 @@ export default function ImportarPlanoAI() {
                   <input style={{ ...s.input, fontWeight: 700, flex: 1 }} value={c.titulo_interno} onChange={(e) => editar(i, { titulo_interno: e.target.value })} placeholder="Título interno" />
                   <input style={{ ...s.input, width: 150 }} type="date" value={c.data_prevista} onChange={(e) => editar(i, { data_prevista: e.target.value })} />
                 </div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8, alignItems: 'center' }}>
                   {canaisDisponiveis.map((canal) => {
                     const on = c.canais.includes(canal.slug)
                     return <button type="button" key={canal.slug} onClick={() => alternarCanal(i, canal.slug)} style={{ ...s.canal, ...(on ? s.canalOn : {}) }}>{canal.emoji} {canal.label}</button>
                   })}
+                  <button type="button" onClick={() => editar(i, { aPromover: !c.aPromover })}
+                    title="Marcar como publicação a promover (publicidade paga)"
+                    style={{ ...s.canal, ...(c.aPromover ? s.promoOn : {}), marginLeft: 'auto' }}>
+                    📣 {c.aPromover ? 'A promover' : 'Orgânica'}
+                  </button>
                 </div>
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                   <textarea style={{ ...s.input, flex: 1, minWidth: 220, minHeight: 70 }} value={c.texto_pt} onChange={(e) => editar(i, { texto_pt: e.target.value })} placeholder="Texto PT" />
@@ -205,6 +214,7 @@ const s: Record<string, React.CSSProperties> = {
   cartao: { border: '1px solid var(--border)', borderRadius: 10, padding: 12, background: '#fff' },
   canal: { border: '1px solid var(--border)', background: '#fff', color: 'var(--muted)', borderRadius: 999, padding: '5px 11px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' },
   canalOn: { background: 'var(--primary)', color: '#fff', borderColor: 'var(--primary)' },
+  promoOn: { background: '#EDE9FE', color: '#7C3AED', borderColor: '#DDD6FE' },
   resumo: { background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 10, padding: 14, marginTop: 12 },
   btnPri: { background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 18px', fontWeight: 700, cursor: 'pointer' },
   btnOff: { background: 'transparent', color: 'var(--muted)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 16px', fontWeight: 600, cursor: 'pointer' },

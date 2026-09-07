@@ -5,7 +5,8 @@ import type {
   LinhaNegocio, ObjetivoPost, FormatoVariante, Anexo, PublicacaoCanal, PlanoDocumento,
   CanalDef,
 } from '@/types/marketing'
-import { CHECKLIST_ITENS } from '@/types/marketing'
+import { CHECKLIST_ITENS, promotionStatusPara } from '@/types/marketing'
+import type { PromotionStatus, AdPlatform, ObjetivoPromocao, EstrategiaPromocao } from '@/types/marketing'
 import type { MediaAsset, TipoMedia } from '@/types/marketing'
 import { comprimirImagem } from './mediaUpload'
 import { semAcentos } from './categorizacaoFinanceira'
@@ -141,6 +142,7 @@ export async function criarPost(input: PostInput, autor: Autor) {
     notas_internas: limpar(input.notas_internas),
     canva_url: limpar(input.canva_url),
     estrategia_promocao: input.estrategia_promocao ?? 'organica',
+    promotion_status: promotionStatusPara(input.estrategia_promocao ?? 'organica'),
     estado_global: 'draft',
     // conteúdo simples (MVP)
     texto_pt: limpar(input.texto_pt),
@@ -157,6 +159,15 @@ export async function criarPost(input: PostInput, autor: Autor) {
 // conteúdo invalida a aprovação e volta a "em revisão" (regra §6.3).
 export async function atualizarPost(id: string, input: PostInput, estadoAtual: EstadoPost, autor: Autor) {
   const invalida = estadoAtual === 'approved' || estadoAtual === 'scheduled'
+  const novaEstrategia = input.estrategia_promocao ?? 'organica'
+  // Sincroniza o estado da promoção com a estratégia SEM despromover uma promoção
+  // já a decorrer: organica→NOT_APPLICABLE; candidata_paga→PLANNED só se estava
+  // "não aplicável"; nunca força APPROVED/ACTIVE automaticamente.
+  const { data: atual } = await supabase.from('marketing_posts').select('promotion_status').eq('id', id).single()
+  const statusAtual = (atual as { promotion_status: PromotionStatus } | null)?.promotion_status ?? 'NOT_APPLICABLE'
+  let novoStatus: PromotionStatus = statusAtual
+  if (novaEstrategia === 'organica') novoStatus = 'NOT_APPLICABLE'
+  else if (novaEstrategia === 'candidata_paga' && statusAtual === 'NOT_APPLICABLE') novoStatus = 'PLANNED'
   const patch: Record<string, unknown> = {
     titulo_interno: input.titulo_interno.trim(),
     campaign_id: input.campaign_id || null,
@@ -168,7 +179,8 @@ export async function atualizarPost(id: string, input: PostInput, estadoAtual: E
     prioridade: input.prioridade ?? 'normal',
     notas_internas: limpar(input.notas_internas),
     canva_url: limpar(input.canva_url),
-    estrategia_promocao: input.estrategia_promocao ?? 'organica',
+    estrategia_promocao: novaEstrategia,
+    promotion_status: novoStatus,
     texto_pt: limpar(input.texto_pt),
     texto_en: limpar(input.texto_en),
     hashtags: input.hashtags ?? [],
@@ -188,12 +200,13 @@ export type PostCalendario = {
   id: string
   titulo_interno: string
   estado_global: EstadoPost
+  estrategia_promocao: EstrategiaPromocao
   canais: string[]
   data_prevista: string
 }
 export async function listarPostsCalendario(): Promise<PostCalendario[]> {
   const { data } = await supabase.from('marketing_posts')
-    .select('id, titulo_interno, estado_global, canais, data_prevista')
+    .select('id, titulo_interno, estado_global, estrategia_promocao, canais, data_prevista')
     .is('deleted_at', null).not('data_prevista', 'is', null)
     .order('data_prevista').limit(3000)
   return (data as PostCalendario[]) ?? []
@@ -349,12 +362,15 @@ export async function definirCheck(
 
 // ── Propostas de promoção paga ───────────────────────────────────────────────
 export async function criarProposta(postId: string, input: Partial<PropostaPaga>, autor: Autor) {
-  // Marca a publicação como candidata a paga.
-  await supabase.from('marketing_posts').update({ estrategia_promocao: 'candidata_paga' }).eq('id', postId)
+  // Marca a publicação como candidata a paga e planeada (nunca aprova/ativa aqui).
+  await supabase.from('marketing_posts')
+    .update({ estrategia_promocao: 'candidata_paga', promotion_status: 'PLANNED' }).eq('id', postId)
   return supabase.from('marketing_paid_proposals').insert({
     post_id: postId,
     motivo: limpar(input.motivo),
     objetivo: input.objetivo ?? null,
+    ad_platform: input.ad_platform ?? null,
+    moeda: input.moeda?.trim() || 'EUR',
     mercado: limpar(input.mercado),
     publico: limpar(input.publico),
     periodo_inicio: input.periodo_inicio || null,
@@ -367,6 +383,19 @@ export async function criarProposta(postId: string, input: Partial<PropostaPaga>
   }).select('*').single()
 }
 
+// Editar os detalhes de uma proposta (plataforma, objetivo, orçamento, moeda, datas).
+export async function atualizarProposta(id: string, input: Partial<PropostaPaga>) {
+  const patch: Record<string, unknown> = {}
+  if (input.objetivo !== undefined) patch.objetivo = input.objetivo ?? null
+  if (input.ad_platform !== undefined) patch.ad_platform = input.ad_platform ?? null
+  if (input.moeda !== undefined) patch.moeda = input.moeda?.trim() || 'EUR'
+  if (input.orcamento_proposto !== undefined) patch.orcamento_proposto = input.orcamento_proposto ?? null
+  if (input.periodo_inicio !== undefined) patch.periodo_inicio = input.periodo_inicio || null
+  if (input.periodo_fim !== undefined) patch.periodo_fim = input.periodo_fim || null
+  if (input.motivo !== undefined) patch.motivo = limpar(input.motivo)
+  return supabase.from('marketing_paid_proposals').update(patch).eq('id', id).select('*').single()
+}
+
 // Aprovar orçamento: a BD (trigger) garante que só admin/financeiro consegue.
 export async function aprovarProposta(id: string, postId: string, autor: Autor, refExterna?: string | null) {
   const r = await supabase.from('marketing_paid_proposals').update({
@@ -374,13 +403,20 @@ export async function aprovarProposta(id: string, postId: string, autor: Autor, 
     campanha_externa_ref: limpar(refExterna),
   }).eq('id', id).select('*').single()
   if (!r.error) {
-    await supabase.from('marketing_posts').update({ estrategia_promocao: 'paga_aprovada' }).eq('id', postId)
+    await supabase.from('marketing_posts')
+      .update({ estrategia_promocao: 'paga_aprovada', promotion_status: 'APPROVED' }).eq('id', postId)
   }
   return r
 }
 
 export async function rejeitarProposta(id: string) {
   return supabase.from('marketing_paid_proposals').update({ estado: 'rejeitada' }).eq('id', id)
+}
+
+// Muda manualmente o estado da promoção da publicação (ACTIVE/COMPLETED/CANCELLED…).
+// Nunca é automático; a UI restringe APPROVED/ACTIVE a admin/financeiro.
+export async function definirEstadoPromocao(postId: string, status: PromotionStatus) {
+  return supabase.from('marketing_posts').update({ promotion_status: status }).eq('id', postId)
 }
 
 // ═══ IMPORTAÇÃO DO PLANO EDITORIAL (CSV) ════════════════════════════════════
@@ -460,13 +496,27 @@ const CAMPOS: Record<string, string> = {
   hashtags: 'hashtags', hashtag: 'hashtags', tags: 'hashtags',
   // canva
   'link canva': 'canva', canva: 'canva', 'canva link': 'canva', 'design canva': 'canva',
-  // orgânico/pago
+  // orgânico/pago · tipo de promoção
   'organico/pago': 'promo', 'organico / pago': 'promo', promocao: 'promo', 'organic/paid': 'promo',
   promocaopaga: 'promo', 'organic / paid': 'promo',
+  promotion_type: 'promo', 'promotion type': 'promo', promotiontype: 'promo',
+  'tipo de promocao': 'promo', 'tipo promocao': 'promo', 'tipo de promocao paga': 'promo',
   // orçamento
   orcamento: 'orcamento', 'orcamento proposto': 'orcamento', budget: 'orcamento', 'proposed budget': 'orcamento',
   // notas
   notas: 'notas', notes: 'notas', observacoes: 'notas', obs: 'notas',
+}
+
+// Interpreta o PROMOTION_TYPE (ou coluna orgânico/pago). Normaliza maiúsculas/
+// espaços; devolve a estratégia e um aviso se o valor não for reconhecido.
+export function mapearPromocao(valorRaw: string): { estrategia: EstrategiaPromocao; aviso: string | null } {
+  const original = (valorRaw ?? '').trim()
+  const v = semAcentos(original).toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z_]/g, '')
+  if (!v) return { estrategia: 'organica', aviso: null }
+  if (['ORGANIC', 'ORGANICA', 'ORGANICO'].includes(v)) return { estrategia: 'organica', aviso: null }
+  if (['CANDIDATE_PAID', 'CANDIDATA_PAGA', 'CANDIDATE', 'PAID', 'PAGO', 'PAGA'].includes(v)
+    || v.includes('PAID') || v.includes('PAG')) return { estrategia: 'candidata_paga', aviso: null }
+  return { estrategia: 'organica', aviso: `PROMOTION_TYPE não reconhecido: “${original}” — assumido Orgânica.` }
 }
 
 export type LinhaImport = {
@@ -480,11 +530,12 @@ export type LinhaImport = {
   copy: string | null; cta: string | null; url: string | null
   hashtags: string[]
   canva_url: string | null
-  paga: boolean
+  estrategia: EstrategiaPromocao
   orcamento: number | null
   notas: string | null
   data_agendada: string | null
   erros: string[]
+  avisos: string[]
 }
 
 function dataHoraParaIso(data: string, hora: string): string | null {
@@ -563,13 +614,15 @@ export function parsePlanoCsv(texto: string): { linhas: LinhaImport[]; erroGeral
     if (!titulo && !cel(cols, 'plataforma')) continue
     const platRaw = semAcento(cel(cols, 'plataforma'))
     const plataforma = MAPA_PLATAFORMA[platRaw] ?? null
-    const promo = semAcento(cel(cols, 'promo'))
+    const promoMap = mapearPromocao(cel(cols, 'promo'))
     const orcRaw = cel(cols, 'orcamento').replace(/[€\s]/g, '').replace(',', '.')
     const dataAg = dataHoraParaIso(cel(cols, 'data'), cel(cols, 'hora'))
     const erros: string[] = []
+    const avisos: string[] = []
     if (!titulo) erros.push('sem título')
     if (!plataforma) erros.push(`plataforma inválida: “${cel(cols, 'plataforma')}”`)
     if (cel(cols, 'data') && !dataAg) erros.push('data inválida')
+    if (promoMap.aviso) avisos.push(promoMap.aviso)
     out.push({
       linha: i + 1, titulo, plataforma,
       linha_negocio: MAPA_LINHA[semAcento(cel(cols, 'linha'))] ?? null,
@@ -580,10 +633,10 @@ export function parsePlanoCsv(texto: string): { linhas: LinhaImport[]; erroGeral
       copy: cel(cols, 'copy') || null, cta: cel(cols, 'cta') || null, url: cel(cols, 'url') || null,
       hashtags: cel(cols, 'hashtags').split(/[\s,]+/).map((h) => h.replace(/^#/, '')).filter(Boolean),
       canva_url: cel(cols, 'canva') || null,
-      paga: promo.includes('pag') || promo.includes('paid'),
+      estrategia: promoMap.estrategia,
       orcamento: orcRaw && !isNaN(Number(orcRaw)) ? Number(orcRaw) : null,
       notas: [cel(cols, 'tema'), cel(cols, 'notas')].filter(Boolean).join(' — ') || null,
-      data_agendada: dataAg, erros,
+      data_agendada: dataAg, erros, avisos,
     })
   }
   return { linhas: out, erroGeral: null }
@@ -610,11 +663,12 @@ export async function importarPlano(linhas: LinhaImport[], autor: Autor): Promis
     if (l.erros.length > 0 || !l.plataforma) { res.falhados++; continue }
     const k = chave(l.titulo, l.plataforma, l.data_agendada)
     if (vistos.has(k)) { res.ignorados++; continue }
+    for (const a of l.avisos) res.detalhe.push(`Linha ${l.linha}: ${a}`)
     try {
       const post = await criarPost({
         titulo_interno: l.titulo, linha_negocio: l.linha_negocio, objetivo: l.objetivo,
         mercados: l.mercado ? [l.mercado] : [], idioma_base: l.idioma, canva_url: l.canva_url,
-        notas_internas: l.notas, estrategia_promocao: l.paga ? 'candidata_paga' : 'organica',
+        notas_internas: l.notas, estrategia_promocao: l.estrategia,
       }, autor)
       if (post.error || !post.data) { res.falhados++; continue }
       await criarVariante(post.data.id, {

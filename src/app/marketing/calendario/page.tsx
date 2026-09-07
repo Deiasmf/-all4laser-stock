@@ -7,6 +7,9 @@ import { listarPostsCalendario, atualizarDataPrevista, type PostCalendario } fro
 import { useCanais, resolverCanais } from '@/lib/useCanais'
 import { ESTADO_POST_LABEL } from '@/types/marketing'
 import type { EstadoPost } from '@/types/marketing'
+import EtiquetaPromocao from '@/components/EtiquetaPromocao'
+
+type FiltroPromo = 'todos' | 'organicas' | 'promover'
 
 // Cor por estado (mesmo mapa da lista de publicações).
 const ESTADO_COR: Partial<Record<EstadoPost, { c: string; bg: string }>> = {
@@ -27,6 +30,7 @@ export default function CalendarioPage() {
   const [carregando, setCarregando] = useState(true)
   const [ref, setRef] = useState(() => { const d = new Date(); return { ano: d.getFullYear(), mes: d.getMonth() } })
   const [sobre, setSobre] = useState<string | null>(null) // dia sob o dedo/cursor a arrastar
+  const [promo, setPromo] = useState<FiltroPromo>('todos')
   const { emoji: emojiCanal } = resolverCanais(useCanais())
   // Arrastar com Pointer Events (funciona em rato E toque).
   const arrasto = useRef<{ id: string; titulo: string; startX: number; startY: number; moved: boolean } | null>(null)
@@ -42,12 +46,14 @@ export default function CalendarioPage() {
   const porDia = useMemo(() => {
     const m = new Map<string, PostCalendario[]>()
     for (const it of itens) {
+      if (promo === 'organicas' && it.estrategia_promocao !== 'organica') continue
+      if (promo === 'promover' && it.estrategia_promocao === 'organica') continue
       const k = it.data_prevista.slice(0, 10)
       if (!m.has(k)) m.set(k, [])
       m.get(k)!.push(it)
     }
     return m
-  }, [itens])
+  }, [itens, promo])
 
   // Largar uma publicação num dia → muda a data prevista (otimista).
   async function largarEm(dia: string, postId: string) {
@@ -104,6 +110,13 @@ export default function CalendarioPage() {
 
       <p style={s.dica}>Arrasta uma publicação para outro dia para mudar a data prevista (funciona no computador e no telemóvel). Um toque abre a publicação.</p>
 
+      <div style={s.filtroPromo}>
+        <span style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 600 }}>Tipo de promoção:</span>
+        {([['todos', 'Todas'], ['organicas', 'Orgânicas'], ['promover', 'A promover']] as [FiltroPromo, string][]).map(([v, label]) => (
+          <button key={v} onClick={() => setPromo(v)} style={{ ...s.pill, ...(promo === v ? s.pillOn : {}) }}>{label}</button>
+        ))}
+      </div>
+
       {erro && <p style={{ color: 'var(--danger)', marginTop: 8 }}>{erro}</p>}
 
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, margin: '14px 0 12px' }}>
@@ -135,8 +148,11 @@ export default function CalendarioPage() {
                     onPointerCancel={cancelarArrasto}
                     title={`${it.titulo_interno} · ${ESTADO_POST_LABEL[it.estado_global]}`}
                     style={{ ...s.chip, background: cor.bg, color: cor.c, touchAction: 'none' }}>
-                    <span style={{ marginRight: 3 }}>{it.canais.map((c) => emojiCanal(c)).join('')}</span>
-                    {it.titulo_interno}
+                    <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <span style={{ marginRight: 3 }}>{it.canais.map((c) => emojiCanal(c)).join('')}</span>
+                      {it.titulo_interno}
+                    </div>
+                    <div style={{ marginTop: 2 }}><EtiquetaPromocao estrategia={it.estrategia_promocao} tamanho="mini" /></div>
                   </div>
                 )
               })}
@@ -165,6 +181,9 @@ const s: Record<string, React.CSSProperties> = {
   cel: { minHeight: 96, background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: 6, overflow: 'hidden' },
   celSobre: { background: '#EEF2FF', borderColor: 'var(--primary)' },
   celHoje: { borderColor: 'var(--primary)', boxShadow: 'inset 0 0 0 1px var(--primary)' },
-  chip: { fontSize: 11.5, borderRadius: 6, padding: '3px 6px', marginBottom: 3, cursor: 'grab', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600, userSelect: 'none' },
+  chip: { fontSize: 11.5, borderRadius: 6, padding: '3px 6px', marginBottom: 3, cursor: 'grab', overflow: 'hidden', fontWeight: 600, userSelect: 'none' },
+  filtroPromo: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 10 },
+  pill: { border: '1px solid var(--border)', background: '#fff', borderRadius: 999, padding: '5px 12px', fontSize: 12.5, cursor: 'pointer', color: 'var(--muted)' },
+  pillOn: { background: 'var(--primary)', color: '#fff', borderColor: 'var(--primary)' },
   fantasma: { position: 'fixed', zIndex: 2000, pointerEvents: 'none', background: 'var(--primary)', color: '#fff', borderRadius: 8, padding: '6px 10px', fontSize: 12.5, fontWeight: 700, maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', boxShadow: '0 6px 20px rgba(0,0,0,0.25)' },
 }

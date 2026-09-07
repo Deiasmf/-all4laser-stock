@@ -73,6 +73,11 @@ export default function ImportarPlanoPage() {
           ✓ Importação concluída: <strong>{resultado.criados}</strong> criada(s),{' '}
           <strong>{resultado.ignorados}</strong> ignorada(s) (já existiam),{' '}
           <strong>{resultado.falhados}</strong> falhada(s).
+          {resultado.detalhe.length > 0 && (
+            <ul style={{ margin: '8px 0 0', paddingLeft: 18, color: '#92400E', fontSize: 13 }}>
+              {resultado.detalhe.map((d, i) => <li key={i}>⚠ {d}</li>)}
+            </ul>
+          )}
           <div style={{ marginTop: 8 }}>
             <button style={s.btnPri} onClick={() => router.push('/marketing/publicacoes')}>Ver publicações</button>
           </div>
@@ -102,7 +107,10 @@ export default function ImportarPlanoPage() {
                     <td style={s.td}>{l.titulo || <em style={{ color: 'var(--muted)' }}>—</em>}</td>
                     <td style={s.td}>{l.plataforma ? PLATAFORMA_LABEL[l.plataforma] : '—'}</td>
                     <td style={s.td}>{l.data_agendada ? new Date(l.data_agendada).toLocaleString('pt-PT', { timeZone: 'Europe/Lisbon', dateStyle: 'short', timeStyle: 'short' }) : '—'}</td>
-                    <td style={s.td}>{l.erros.length ? <span style={{ color: '#B91C1C' }}>{l.erros.join('; ')}</span> : <span style={{ color: '#166534' }}>OK</span>}</td>
+                    <td style={s.td}>
+                      {l.erros.length ? <span style={{ color: '#B91C1C' }}>{l.erros.join('; ')}</span> : <span style={{ color: '#166534' }}>OK</span>}
+                      {l.avisos.length > 0 && <div style={{ color: '#92400E', fontSize: 12 }}>⚠ {l.avisos.join('; ')}</div>}
+                    </td>
                   </tr>
                 ))}
               </tbody>

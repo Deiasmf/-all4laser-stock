@@ -8,7 +8,8 @@ import { supabase } from '@/lib/supabase'
 import {
   obterPostDetalhe, atualizarPost, apagarPost, submeterRevisao, pedirAlteracoes,
   aprovarPost, cancelarPost, listarCampanhas, apagarVariante, definirEquipamentos,
-  garantirChecklist, definirCheck, criarProposta, aprovarProposta, rejeitarProposta,
+  garantirChecklist, definirCheck, criarProposta, atualizarProposta, aprovarProposta,
+  rejeitarProposta, definirEstadoPromocao,
 } from '@/lib/marketing'
 import { mensagemErro } from '@/lib/erros'
 import PostForm from '@/components/PostForm'
@@ -17,11 +18,15 @@ import PostAnexos from '@/components/PostAnexos'
 import PostPartilha from '@/components/PostPartilha'
 import AtribuirPublicacao from '@/components/AtribuirPublicacao'
 import {
-  ESTADO_POST_LABEL, PLATAFORMA_LABEL, FORMATO_LABEL, ESTRATEGIA_LABEL,
-  CHECKLIST_ITENS,
+  ESTADO_POST_LABEL, PLATAFORMA_LABEL, FORMATO_LABEL,
+  CHECKLIST_ITENS, PROMOTION_STATUS_LABEL, AD_PLATFORM_LABEL, OBJETIVO_PROMOCAO_LABEL,
 } from '@/types/marketing'
-import type { PostDetalhe, PostInput, Campanha, EstadoPost } from '@/types/marketing'
+import type {
+  PostDetalhe, PostInput, Campanha, EstadoPost,
+  PromotionStatus, AdPlatform, ObjetivoPromocao,
+} from '@/types/marketing'
 import { useCanais, resolverCanais } from '@/lib/useCanais'
+import EtiquetaPromocao from '@/components/EtiquetaPromocao'
 
 export default function PublicacaoDetalhe({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -94,7 +99,7 @@ export default function PublicacaoDetalhe({ params }: { params: Promise<{ id: st
           </h1>
           <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
             <Badge estado={est} />
-            <span style={s.tag}>{ESTRATEGIA_LABEL[post.estrategia_promocao]}</span>
+            <EtiquetaPromocao estrategia={post.estrategia_promocao} />
             {post.campanha_nome && <span style={s.tag}>📣 {post.campanha_nome}</span>}
           </div>
         </div>
@@ -335,63 +340,148 @@ function ChecklistBloco({ post, autor, onMudou }: { post: PostDetalhe; autor: { 
 }
 
 // ── Promoção paga ─────────────────────────────────────────────────────────────
+// Estados que só admin/financeiro pode definir (ativação/aprovação explícita).
+const STATUS_RESTRITOS: PromotionStatus[] = ['APPROVED', 'ACTIVE']
+const STATUS_STAFF: PromotionStatus[] = ['PLANNED', 'COMPLETED', 'CANCELLED']
+
 function PromocaoBloco({ post, isFinanceiro, autor, onMudou, setErro }: {
   post: PostDetalhe; isFinanceiro: boolean; autor: { id: string; nome: string | null }
   onMudou: () => void; setErro: (s: string | null) => void
 }) {
-  const [motivo, setMotivo] = useState('')
-  const [orcamento, setOrcamento] = useState('')
   const p = post.proposta_paga
+  const organica = post.estrategia_promocao === 'organica'
 
-  async function propor() {
+  // Detalhes editáveis da proposta.
+  const [plataforma, setPlataforma] = useState<AdPlatform | ''>(p?.ad_platform ?? '')
+  const [objetivo, setObjetivo] = useState<ObjetivoPromocao | ''>(p?.objetivo ?? '')
+  const [orcamento, setOrcamento] = useState(p?.orcamento_proposto != null ? String(p.orcamento_proposto) : '')
+  const [moeda, setMoeda] = useState(p?.moeda ?? 'EUR')
+  const [inicio, setInicio] = useState(p?.periodo_inicio ?? '')
+  const [fim, setFim] = useState(p?.periodo_fim ?? '')
+
+  // Estados que este utilizador pode escolher no seletor.
+  const statusOpcoes: PromotionStatus[] = organica
+    ? ['NOT_APPLICABLE']
+    : [...STATUS_STAFF, ...(isFinanceiro ? STATUS_RESTRITOS : [])]
+
+  async function marcarAPromover() {
     setErro(null)
-    const { error } = await criarProposta(post.id, { motivo, orcamento_proposto: orcamento ? Number(orcamento) : null }, autor)
+    const { error } = await criarProposta(post.id, {}, autor) // → candidata_paga + PLANNED
     if (error) { setErro(mensagemErro(error as never)); return }
-    setMotivo(''); setOrcamento(''); onMudou()
+    onMudou()
   }
-  async function aprovar() {
+  async function guardarDetalhes() {
+    if (!p) return
+    setErro(null)
+    const { error } = await atualizarProposta(p.id, {
+      ad_platform: plataforma || null, objetivo: objetivo || null,
+      orcamento_proposto: orcamento ? Number(orcamento) : null, moeda,
+      periodo_inicio: inicio || null, periodo_fim: fim || null,
+    })
+    if (error) { setErro(mensagemErro(error as never)); return }
+    onMudou()
+  }
+  async function mudarEstado(novo: PromotionStatus) {
+    setErro(null)
+    if (STATUS_RESTRITOS.includes(novo) && !isFinanceiro) {
+      setErro('Só a administração/financeiro pode aprovar/ativar a promoção.'); return
+    }
+    const { error } = await definirEstadoPromocao(post.id, novo)
+    if (error) { setErro(mensagemErro(error as never)); return }
+    onMudou()
+  }
+  async function aprovarOrcamento() {
+    if (!p) return
     setErro(null)
     const ref = window.prompt('ID/URL da campanha no gestor de anúncios (opcional):') ?? ''
-    const { error } = await aprovarProposta(p!.id, post.id, autor, ref)
+    const { error } = await aprovarProposta(p.id, post.id, autor, ref)
     if (error) { setErro(mensagemErro(error as never)); return }
     onMudou()
   }
 
-  if (!p) {
-    return (
-      <div>
-        <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 8 }}>
-          Recomendar esta publicação para promoção paga. A ativação do orçamento fica a aguardar aprovação da administração/financeiro — nada é ativado automaticamente.
-        </p>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <input style={{ ...s.input, flex: 2, minWidth: 200 }} placeholder="Motivo da recomendação" value={motivo} onChange={(e) => setMotivo(e.target.value)} />
-          <input style={{ ...s.input, width: 140 }} type="number" placeholder="Orçamento €" value={orcamento} onChange={(e) => setOrcamento(e.target.value)} />
-          <button style={btn.sec} onClick={propor}>Marcar candidata a paga</button>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div>
-      <dl style={s.dl}>
-        <Campo r="Estado" v={p.estado} />
-        <Campo r="Motivo" v={p.motivo ?? '—'} />
-        <Campo r="Orçamento proposto" v={p.orcamento_proposto != null ? `${p.orcamento_proposto} €` : '—'} />
-        {p.aprovado_por_nome && <Campo r="Aprovado por" v={`${p.aprovado_por_nome} · ${p.aprovado_em ? new Date(p.aprovado_em).toLocaleDateString('pt-PT') : ''}`} />}
-        {p.campanha_externa_ref && <Campo r="Campanha externa" v={p.campanha_externa_ref} />}
-      </dl>
-      {p.estado === 'proposta' && (
-        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-          {isFinanceiro ? (
-            <>
-              <button style={btn.pri} onClick={aprovar}>Aprovar orçamento</button>
-              <button style={btn.sec} onClick={async () => { await rejeitarProposta(p.id); onMudou() }}>Rejeitar</button>
-            </>
-          ) : (
-            <span style={s.aviso}>Só a administração/financeiro pode aprovar o orçamento.</span>
-          )}
+      {/* Tipo + estado (sempre visível) */}
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 600 }}>Tipo:</span>
+          <EtiquetaPromocao estrategia={post.estrategia_promocao} />
         </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 600 }}>Estado da promoção:</span>
+          <select style={{ ...s.input, padding: '6px 10px', maxWidth: 200 }} value={post.promotion_status}
+            onChange={(e) => mudarEstado(e.target.value as PromotionStatus)} disabled={organica}>
+            {/* mostra sempre o estado atual mesmo que não seja escolhível por este utilizador */}
+            {Array.from(new Set([post.promotion_status, ...statusOpcoes])).map((st) => (
+              <option key={st} value={st}>{PROMOTION_STATUS_LABEL[st]}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {organica && (
+        <div>
+          <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 8 }}>
+            Esta publicação é orgânica. Podes marcá-la como <strong>a promover</strong> (fica “Planeada”).
+            A ativação e o orçamento exigem aprovação da administração/financeiro — nada é ativado automaticamente.
+          </p>
+          <button style={btn.sec} onClick={marcarAPromover}>📣 Marcar como “A promover”</button>
+        </div>
+      )}
+
+      {!organica && !p && (
+        <div>
+          <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 8 }}>Sem detalhes de promoção. Acrescenta plataforma, objetivo e orçamento (proposta).</p>
+          <button style={btn.sec} onClick={marcarAPromover}>Adicionar detalhes da promoção</button>
+        </div>
+      )}
+
+      {!organica && p && (
+        <>
+          <div style={s.promoGrid}>
+            <Grupo r="Plataforma de anúncios">
+              <select style={s.input} value={plataforma} onChange={(e) => setPlataforma(e.target.value as AdPlatform | '')}>
+                <option value="">—</option>
+                {(Object.keys(AD_PLATFORM_LABEL) as AdPlatform[]).map((k) => <option key={k} value={k}>{AD_PLATFORM_LABEL[k]}</option>)}
+              </select>
+            </Grupo>
+            <Grupo r="Objetivo da promoção">
+              <select style={s.input} value={objetivo} onChange={(e) => setObjetivo(e.target.value as ObjetivoPromocao | '')}>
+                <option value="">—</option>
+                {(Object.keys(OBJETIVO_PROMOCAO_LABEL) as ObjetivoPromocao[]).map((k) => <option key={k} value={k}>{OBJETIVO_PROMOCAO_LABEL[k]}</option>)}
+              </select>
+            </Grupo>
+            <Grupo r="Orçamento">
+              <input style={s.input} type="number" value={orcamento} onChange={(e) => setOrcamento(e.target.value)} placeholder="0" />
+            </Grupo>
+            <Grupo r="Moeda">
+              <input style={s.input} value={moeda} onChange={(e) => setMoeda(e.target.value)} placeholder="EUR" />
+            </Grupo>
+            <Grupo r="Data de início">
+              <input style={s.input} type="date" value={inicio} onChange={(e) => setInicio(e.target.value)} />
+            </Grupo>
+            <Grupo r="Data de fim">
+              <input style={s.input} type="date" value={fim} onChange={(e) => setFim(e.target.value)} />
+            </Grupo>
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+            <button style={btn.sec} onClick={guardarDetalhes}>Guardar detalhes</button>
+            {p.estado === 'proposta' && (isFinanceiro
+              ? <button style={btn.pri} onClick={aprovarOrcamento}>Aprovar orçamento</button>
+              : <span style={s.aviso}>A aprovação do orçamento é da administração/financeiro.</span>)}
+            {p.estado === 'proposta' && isFinanceiro &&
+              <button style={btn.sec} onClick={async () => { await rejeitarProposta(p.id); onMudou() }}>Rejeitar</button>}
+          </div>
+          {(p.aprovado_por_nome || p.campanha_externa_ref) && (
+            <dl style={{ ...s.dl, marginTop: 10 }}>
+              {p.aprovado_por_nome && <Campo r="Orçamento aprovado por" v={`${p.aprovado_por_nome} · ${p.aprovado_em ? new Date(p.aprovado_em).toLocaleDateString('pt-PT') : ''}`} />}
+              {p.campanha_externa_ref && <Campo r="Campanha externa" v={p.campanha_externa_ref} />}
+            </dl>
+          )}
+          <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 10 }}>
+            Nada é ligado nem executado nas plataformas de anúncios a partir daqui. A ativação é sempre manual e explícita.
+          </p>
+        </>
       )}
     </div>
   )
@@ -411,6 +501,14 @@ function Seccao({ titulo, acao, children }: { titulo: string; acao?: React.React
 }
 function Campo({ r, v }: { r: string; v: string }) {
   return (<><dt style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 600 }}>{r}</dt><dd style={{ margin: 0, fontSize: 14 }}>{v}</dd></>)
+}
+function Grupo({ r, children }: { r: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+      <label style={{ fontSize: 12.5, color: 'var(--muted)', fontWeight: 600 }}>{r}</label>
+      {children}
+    </div>
+  )
 }
 function BlocoTexto({ rotulo, texto }: { rotulo: string; texto: string | null }) {
   return (
@@ -445,6 +543,7 @@ const s: Record<string, React.CSSProperties> = {
   aviso: { fontSize: 13, color: '#92400E' },
   dl: { display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '10px 18px', margin: 0 },
   blocoRotulo: { fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--muted)', fontWeight: 700, marginBottom: 5 },
+  promoGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 },
   variante: { border: '1px solid var(--border)', borderRadius: 10, padding: 12, marginBottom: 10 },
   vazio: { color: 'var(--muted)', fontSize: 13.5 },
   input: { width: '100%', padding: '9px 11px', border: '1px solid var(--border)', borderRadius: 8, font: 'inherit', background: '#fff' },

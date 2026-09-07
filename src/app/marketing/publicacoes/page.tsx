@@ -6,6 +6,9 @@ import { listarPosts, type PostListItem } from '@/lib/marketing'
 import { useCanais, resolverCanais } from '@/lib/useCanais'
 import { ESTADO_POST_LABEL } from '@/types/marketing'
 import type { EstadoPost } from '@/types/marketing'
+import EtiquetaPromocao from '@/components/EtiquetaPromocao'
+
+type FiltroPromo = 'todos' | 'organicas' | 'promover'
 
 const ESTADO_COR: Partial<Record<EstadoPost, { c: string; bg: string }>> = {
   idea: { c: '#6B7280', bg: '#F3F4F6' },
@@ -29,6 +32,7 @@ export default function PublicacoesPage() {
   const [filtro, setFiltro] = useState<EstadoPost | 'todos'>('todos')
   const [canal, setCanal] = useState<string>('todos')
   const [mes, setMes] = useState('') // 'YYYY-MM'
+  const [promo, setPromo] = useState<FiltroPromo>('todos')
   const canaisDisponiveis = useCanais()
   const { emoji } = resolverCanais(canaisDisponiveis)
 
@@ -40,6 +44,8 @@ export default function PublicacoesPage() {
     if (filtro !== 'todos' && p.estado_global !== filtro) return false
     if (canal !== 'todos' && !(p.canais ?? []).includes(canal)) return false
     if (mes && (p.data_prevista ?? '').slice(0, 7) !== mes) return false
+    if (promo === 'organicas' && p.estrategia_promocao !== 'organica') return false
+    if (promo === 'promover' && p.estrategia_promocao === 'organica') return false
     const txt = `${p.titulo_interno} ${p.numero ?? ''} ${p.campanha_nome ?? ''}`.toLowerCase()
     return !q.trim() || txt.includes(q.toLowerCase())
   })
@@ -83,6 +89,13 @@ export default function PublicacoesPage() {
         </label>
       </div>
 
+      <div style={{ ...s.pills, alignItems: 'center' }}>
+        <span style={s.filtroRotulo}>Tipo de promoção:</span>
+        {([['todos', 'Todas'], ['organicas', 'Orgânicas'], ['promover', 'A promover']] as [FiltroPromo, string][]).map(([v, label]) => (
+          <button key={v} onClick={() => setPromo(v)} style={{ ...s.pill, ...(promo === v ? s.pillOn : {}) }}>{label}</button>
+        ))}
+      </div>
+
       {erro && <p style={{ ...s.estado, color: 'var(--danger)' }}>Erro: {erro}</p>}
       {carregando && <p style={s.estado}>A carregar…</p>}
       {!carregando && !erro && filtrados.length === 0 && (
@@ -97,6 +110,7 @@ export default function PublicacoesPage() {
               <th style={s.th}>Título</th>
               <th style={s.th}>Canais</th>
               <th style={s.th}>Data prevista</th>
+              <th style={s.th}>Promoção</th>
               <th style={s.th}>Campanha</th>
               <th style={s.th}>Estado</th>
             </tr>
@@ -110,6 +124,7 @@ export default function PublicacoesPage() {
                   <td style={{ ...s.td, fontWeight: 600 }}>{p.titulo_interno}</td>
                   <td style={s.td}>{(p.canais ?? []).length ? (p.canais).map((c) => emoji(c) || c).join(' ') : '—'}</td>
                   <td style={s.td}>{p.data_prevista ? new Date(p.data_prevista + 'T00:00:00').toLocaleDateString('pt-PT') : '—'}</td>
+                  <td style={s.td}><EtiquetaPromocao estrategia={p.estrategia_promocao} /></td>
                   <td style={s.td}>{p.campanha_nome ?? '—'}</td>
                   <td style={s.td}><span style={{ ...s.badge, color: cor.c, background: cor.bg }}>{ESTADO_POST_LABEL[p.estado_global]}</span></td>
                 </tr>
@@ -132,6 +147,7 @@ const s: Record<string, React.CSSProperties> = {
   pesquisa: { width: '100%', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8, font: 'inherit', marginBottom: 12 },
   pills: { display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 },
   filtros: { display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  filtroRotulo: { fontSize: 13, color: 'var(--muted)', fontWeight: 600, marginRight: 4 },
   mesLabel: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--muted)', marginBottom: 16 },
   mesInput: { padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 8, font: 'inherit' },
   limparMes: { border: 'none', background: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: 12.5, textDecoration: 'underline' },
