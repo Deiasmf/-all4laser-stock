@@ -15,6 +15,7 @@ import PostForm from '@/components/PostForm'
 import VarianteEditor from '@/components/VarianteEditor'
 import PostAnexos from '@/components/PostAnexos'
 import PostPartilha from '@/components/PostPartilha'
+import AtribuirPublicacao from '@/components/AtribuirPublicacao'
 import {
   ESTADO_POST_LABEL, PLATAFORMA_LABEL, FORMATO_LABEL, ESTRATEGIA_LABEL,
   CHECKLIST_ITENS, CANAL_LABEL, CANAL_EMOJI,
@@ -145,6 +146,14 @@ export default function PublicacaoDetalhe({ params }: { params: Promise<{ id: st
           <div style={{ borderTop: '1px solid var(--border)', margin: '16px 0 14px' }} />
           <div style={s.blocoRotulo}>Partilha rápida</div>
           <PostPartilha post={post} anexos={post.anexos} publicacoes={post.publicacoes} autor={autor} onMudou={recarregar} />
+        </Seccao>
+      )}
+
+      {/* Responsável e tarefas */}
+      {!editar && (
+        <Seccao titulo="Responsável e tarefas">
+          <AtribuirPublicacao postId={id} titulo={post.titulo_interno} autor={autor}
+            responsavelNome={post.responsavel_nome} onAtribuido={recarregar} />
         </Seccao>
       )}
 

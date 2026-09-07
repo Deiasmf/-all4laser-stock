@@ -203,6 +203,29 @@ export async function atualizarDataPrevista(postId: string, data: string | null)
   return supabase.from('marketing_posts').update({ data_prevista: data || null }).eq('id', postId)
 }
 
+// Estados que NÃO contam para prazos (já saiu ou foi arquivada/cancelada).
+const ESTADOS_FORA_PRAZO: EstadoPost[] = ['published', 'cancelled', 'archived']
+
+// Publicações por prazo (para o dashboard): próximos 7 dias e em atraso.
+// "Em atraso" = data prevista passada sem estar publicada (estado != published).
+export type PublicacoesPrazo = { proximos7: PostCalendario[]; emAtraso: PostCalendario[] }
+export async function publicacoesPorPrazo(): Promise<PublicacoesPrazo> {
+  const todos = await listarPostsCalendario()
+  const hoje = new Date().toLocaleDateString('sv-SE')
+  const d7 = new Date(); d7.setDate(d7.getDate() + 7)
+  const limite = d7.toLocaleDateString('sv-SE')
+  const ativos = todos.filter((p) => !ESTADOS_FORA_PRAZO.includes(p.estado_global))
+  const proximos7 = ativos.filter((p) => { const d = p.data_prevista.slice(0, 10); return d >= hoje && d <= limite })
+  const emAtraso = ativos.filter((p) => p.data_prevista.slice(0, 10) < hoje)
+  return { proximos7, emAtraso }
+}
+
+// Define o responsável de uma publicação (usado ao atribuir).
+export async function definirResponsavelPost(postId: string, user: { id: string; nome: string | null }) {
+  return supabase.from('marketing_posts')
+    .update({ responsavel_id: user.id, responsavel_nome: user.nome }).eq('id', postId)
+}
+
 export async function apagarPost(id: string, autor: Autor) {
   return supabase.from('marketing_posts')
     .update({ deleted_at: new Date().toISOString(), deleted_by: autor.id, deleted_by_nome: autor.nome })
