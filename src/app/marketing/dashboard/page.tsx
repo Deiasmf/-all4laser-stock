@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { dashboardMarketing, publicacoesPorPrazo, type MarketingDashboard, type PublicacoesPrazo, type PostCalendario } from '@/lib/marketing'
-import { ESTADO_POST_LABEL, PLATAFORMA_LABEL, CANAL_EMOJI } from '@/types/marketing'
+import { useCanais, resolverCanais } from '@/lib/useCanais'
+import { ESTADO_POST_LABEL, PLATAFORMA_LABEL } from '@/types/marketing'
 import type { EstadoPost } from '@/types/marketing'
 
 function formatarDia(d: string) {
@@ -23,6 +24,7 @@ export default function MarketingDashboardPage() {
   const [d, setD] = useState<MarketingDashboard | null>(null)
   const [prazos, setPrazos] = useState<PublicacoesPrazo | null>(null)
   const [erro, setErro] = useState<string | null>(null)
+  const { emoji: emojiCanal } = resolverCanais(useCanais())
 
   useEffect(() => { dashboardMarketing().then(setD).catch((e) => setErro(String(e))) }, [])
   useEffect(() => { publicacoesPorPrazo().then(setPrazos).catch(() => {}) }, [])
@@ -58,9 +60,9 @@ export default function MarketingDashboardPage() {
           {prazos && (prazos.emAtraso.length > 0 || prazos.proximos7.length > 0) && (
             <div style={s.prazos}>
               <ListaPrazo titulo="Em atraso" cor="#B91C1C" bg="#FEF2F2" itens={prazos.emAtraso}
-                vazio="Nada em atraso. 👏" />
+                vazio="Nada em atraso. 👏" emojiCanal={emojiCanal} />
               <ListaPrazo titulo="Próximos 7 dias" cor="#1E40AF" bg="#EFF6FF" itens={prazos.proximos7}
-                vazio="Sem publicações previstas para os próximos 7 dias." />
+                vazio="Sem publicações previstas para os próximos 7 dias." emojiCanal={emojiCanal} />
             </div>
           )}
 
@@ -98,8 +100,9 @@ export default function MarketingDashboardPage() {
   )
 }
 
-function ListaPrazo({ titulo, cor, bg, itens, vazio }: {
+function ListaPrazo({ titulo, cor, bg, itens, vazio, emojiCanal }: {
   titulo: string; cor: string; bg: string; itens: PostCalendario[]; vazio: string
+  emojiCanal: (slug: string) => string
 }) {
   return (
     <div className="a4l-card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -112,7 +115,7 @@ function ListaPrazo({ titulo, cor, bg, itens, vazio }: {
         itens.map((p) => (
           <Link key={p.id} href={`/marketing/publicacoes/${p.id}`} style={s.linhaProx}>
             <span style={{ fontWeight: 600, flex: 1 }}>{p.titulo_interno}</span>
-            <span style={{ fontSize: 13 }}>{p.canais.map((c) => CANAL_EMOJI[c] ?? '').join('')}</span>
+            <span style={{ fontSize: 13 }}>{p.canais.map((c) => emojiCanal(c)).join('')}</span>
             <span style={{ color: cor, fontSize: 12.5, fontWeight: 600, textTransform: 'capitalize' }}>{formatarDia(p.data_prevista)}</span>
           </Link>
         ))

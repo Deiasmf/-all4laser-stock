@@ -3,6 +3,7 @@ import type {
   Campanha, CampanhaInput, Post, PostInput, PostDetalhe, Variante, VarianteInput,
   PostEquipamento, ComplianceItem, Aprovacao, PropostaPaga, EstadoPost, Plataforma,
   LinhaNegocio, ObjetivoPost, FormatoVariante, Anexo, PublicacaoCanal, PlanoDocumento,
+  CanalDef,
 } from '@/types/marketing'
 import { CHECKLIST_ITENS } from '@/types/marketing'
 import type { MediaAsset, TipoMedia } from '@/types/marketing'
@@ -754,6 +755,52 @@ export async function apagarAnexo(anexo: Anexo) {
 export async function reordenarAnexos(idsOrdenados: string[]) {
   await Promise.all(idsOrdenados.map((id, i) =>
     supabase.from('marketing_post_anexos').update({ ordem: i }).eq('id', id)))
+}
+
+// ═══ CANAIS (geríveis nas Configurações) ════════════════════════════════════
+export async function listarCanais(incluirInativos = false): Promise<CanalDef[]> {
+  let q = supabase.from('marketing_canais').select('*').order('ordem').order('label')
+  if (!incluirInativos) q = q.eq('ativo', true)
+  const { data } = await q
+  return (data as CanalDef[]) ?? []
+}
+
+// slug estável a partir do nome (minúsculas, sem acentos, só a-z0-9_).
+function slugCanal(label: string): string {
+  return semAcentos(label).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'canal'
+}
+
+export async function criarCanal(label: string, emoji: string | null) {
+  const nome = label.trim()
+  if (!nome) return { error: { message: 'Indica o nome do canal.' } as { message: string } }
+  const base = slugCanal(nome)
+  // Garante slug único (base, base_2, base_3…).
+  const { data: existentes } = await supabase.from('marketing_canais').select('slug')
+  const usados = new Set(((existentes as { slug: string }[]) ?? []).map((c) => c.slug))
+  let slug = base, i = 2
+  while (usados.has(slug)) slug = `${base}_${i++}`
+  const { data: ord } = await supabase.from('marketing_canais').select('ordem').order('ordem', { ascending: false }).limit(1).single()
+  const ordem = ((ord as { ordem: number } | null)?.ordem ?? 0) + 1
+  return supabase.from('marketing_canais').insert({ slug, label: nome, emoji: emoji?.trim() || null, ordem }).select('*').single()
+}
+
+export async function atualizarCanal(id: string, patch: { label?: string; emoji?: string | null; ativo?: boolean }) {
+  const dados: Record<string, unknown> = {}
+  if (patch.label !== undefined) dados.label = patch.label.trim()
+  if (patch.emoji !== undefined) dados.emoji = patch.emoji?.trim() || null
+  if (patch.ativo !== undefined) dados.ativo = patch.ativo
+  return supabase.from('marketing_canais').update(dados).eq('id', id)
+}
+
+// Apaga um canal. O slug pode continuar guardado em publicações antigas — aí é
+// mostrado pelo próprio slug (não se perde a informação).
+export async function apagarCanal(id: string) {
+  return supabase.from('marketing_canais').delete().eq('id', id)
+}
+
+export async function reordenarCanais(idsOrdenados: string[]) {
+  await Promise.all(idsOrdenados.map((id, i) =>
+    supabase.from('marketing_canais').update({ ordem: i + 1 }).eq('id', id)))
 }
 
 // ═══ PLANO DE MARKETING (documento com versões) ═════════════════════════════

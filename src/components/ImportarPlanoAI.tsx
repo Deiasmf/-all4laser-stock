@@ -6,8 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
 import { criarPost } from '@/lib/marketing'
 import { mensagemErro } from '@/lib/erros'
-import { CANAIS, CANAL_LABEL, CANAL_EMOJI } from '@/types/marketing'
-import type { Canal } from '@/types/marketing'
+import { useCanais } from '@/lib/useCanais'
 
 // Candidato editável (o modelo detetado + se entra ou não).
 type Candidato = {
@@ -31,6 +30,7 @@ const arquivoParaBase64 = (f: File): Promise<string> =>
 export default function ImportarPlanoAI() {
   const router = useRouter()
   const { perfil } = useAuth()
+  const canaisDisponiveis = useCanais()
   const [texto, setTexto] = useState('')
   const [ficheiro, setFicheiro] = useState<File | null>(null)
   const [aAnalisar, setAAnalisar] = useState(false)
@@ -83,7 +83,7 @@ export default function ImportarPlanoAI() {
   function editar(i: number, patch: Partial<Candidato>) {
     setCands((prev) => prev ? prev.map((c, j) => j === i ? { ...c, ...patch } : c) : prev)
   }
-  function alternarCanal(i: number, canal: Canal) {
+  function alternarCanal(i: number, canal: string) {
     setCands((prev) => prev ? prev.map((c, j) => {
       if (j !== i) return c
       const tem = c.canais.includes(canal)
@@ -161,9 +161,9 @@ export default function ImportarPlanoAI() {
                   <input style={{ ...s.input, width: 150 }} type="date" value={c.data_prevista} onChange={(e) => editar(i, { data_prevista: e.target.value })} />
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-                  {CANAIS.map((canal) => {
-                    const on = c.canais.includes(canal)
-                    return <button type="button" key={canal} onClick={() => alternarCanal(i, canal)} style={{ ...s.canal, ...(on ? s.canalOn : {}) }}>{CANAL_EMOJI[canal]} {CANAL_LABEL[canal]}</button>
+                  {canaisDisponiveis.map((canal) => {
+                    const on = c.canais.includes(canal.slug)
+                    return <button type="button" key={canal.slug} onClick={() => alternarCanal(i, canal.slug)} style={{ ...s.canal, ...(on ? s.canalOn : {}) }}>{canal.emoji} {canal.label}</button>
                   })}
                 </div>
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>

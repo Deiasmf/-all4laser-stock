@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { listarPostsCalendario, atualizarDataPrevista, type PostCalendario } from '@/lib/marketing'
-import { ESTADO_POST_LABEL, CANAL_EMOJI } from '@/types/marketing'
+import { useCanais, resolverCanais } from '@/lib/useCanais'
+import { ESTADO_POST_LABEL } from '@/types/marketing'
 import type { EstadoPost } from '@/types/marketing'
 
 // Cor por estado (mesmo mapa da lista de publicações).
@@ -26,6 +27,7 @@ export default function CalendarioPage() {
   const [carregando, setCarregando] = useState(true)
   const [ref, setRef] = useState(() => { const d = new Date(); return { ano: d.getFullYear(), mes: d.getMonth() } })
   const [sobre, setSobre] = useState<string | null>(null) // dia sob o cursor a arrastar
+  const { emoji: emojiCanal } = resolverCanais(useCanais())
 
   const recarregar = useCallback(() => {
     setCarregando(true)
@@ -103,7 +105,7 @@ export default function CalendarioPage() {
                     onClick={() => router.push(`/marketing/publicacoes/${it.id}`)}
                     title={`${it.titulo_interno} · ${ESTADO_POST_LABEL[it.estado_global]}`}
                     style={{ ...s.chip, background: cor.bg, color: cor.c }}>
-                    <span style={{ marginRight: 3 }}>{it.canais.map((c) => CANAL_EMOJI[c] ?? '').join('')}</span>
+                    <span style={{ marginRight: 3 }}>{it.canais.map((c) => emojiCanal(c)).join('')}</span>
                     {it.titulo_interno}
                   </div>
                 )

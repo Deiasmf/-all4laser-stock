@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import type { PostInput, LinhaNegocio, ObjetivoPost, EstrategiaPromocao, Campanha, Canal } from '@/types/marketing'
-import { LINHA_NEGOCIO_LABEL, OBJETIVO_LABEL, ESTRATEGIA_LABEL, CANAIS, CANAL_LABEL, CANAL_EMOJI } from '@/types/marketing'
+import type { PostInput, LinhaNegocio, ObjetivoPost, EstrategiaPromocao, Campanha } from '@/types/marketing'
+import { LINHA_NEGOCIO_LABEL, OBJETIVO_LABEL, ESTRATEGIA_LABEL } from '@/types/marketing'
+import { useCanais } from '@/lib/useCanais'
 
 // Hashtags: aceita "#a #b, c" e guarda ['a','b','c']; mostra "#a #b #c".
 const hashtagsParaTexto = (a?: string[] | null) => (a ?? []).map((h) => `#${h}`).join(' ')
@@ -38,9 +39,10 @@ export default function PostForm({ inicial, campanhas, aGuardar, onSubmit, onCan
   const [textoPt, setTextoPt] = useState(inicial?.texto_pt ?? '')
   const [textoEn, setTextoEn] = useState(inicial?.texto_en ?? '')
   const [hashtags, setHashtags] = useState(hashtagsParaTexto(inicial?.hashtags))
+  const canaisDisponiveis = useCanais()
 
-  function alternarCanal(c: Canal) {
-    setCanais((atual) => atual.includes(c) ? atual.filter((x) => x !== c) : [...atual, c])
+  function alternarCanal(slug: string) {
+    setCanais((atual) => atual.includes(slug) ? atual.filter((x) => x !== slug) : [...atual, slug])
   }
 
   function submeter(e: React.FormEvent) {
@@ -67,12 +69,12 @@ export default function PostForm({ inicial, campanhas, aGuardar, onSubmit, onCan
       <div style={s.grupo}>
         <label style={s.label}>Canais</label>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {CANAIS.map((c) => {
-            const on = canais.includes(c)
+          {canaisDisponiveis.map((c) => {
+            const on = canais.includes(c.slug)
             return (
-              <button type="button" key={c} onClick={() => alternarCanal(c)}
+              <button type="button" key={c.slug} onClick={() => alternarCanal(c.slug)}
                 style={{ ...s.canal, ...(on ? s.canalOn : {}) }}>
-                {CANAL_EMOJI[c]} {CANAL_LABEL[c]}
+                {c.emoji} {c.label}
               </button>
             )
           })}

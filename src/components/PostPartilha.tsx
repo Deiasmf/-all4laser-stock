@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { marcarPublicado, desmarcarPublicado, urlAssinadaMedia } from '@/lib/marketing'
-import { CANAL_LABEL, CANAL_EMOJI } from '@/types/marketing'
+import { useCanais, resolverCanais } from '@/lib/useCanais'
 import type { Anexo, PublicacaoCanal } from '@/types/marketing'
 
 type Autor = { id: string; nome: string | null }
@@ -27,6 +27,7 @@ export default function PostPartilha({ post, anexos, publicacoes, autor, onMudou
   const [toast, setToast] = useState<string | null>(null)
   const [imgUrls, setImgUrls] = useState<{ anexo: Anexo; url: string }[]>([])
   const [aPartilhar, setAPartilhar] = useState(false)
+  const { label: labelCanal, emoji: emojiCanal } = resolverCanais(useCanais())
 
   const imagens = anexos.filter((a) => a.tipo === 'imagem')
   const hashtagsTxt = post.hashtags.map((h) => `#${h}`).join(' ')
@@ -113,7 +114,7 @@ export default function PostPartilha({ post, anexos, publicacoes, autor, onMudou
 
   async function alternarPublicado(canal: string) {
     if (publicadoPorCanal.has(canal)) {
-      if (!confirm(`Desmarcar "publicada" no ${CANAL_LABEL[canal as keyof typeof CANAL_LABEL] ?? canal}?`)) return
+      if (!confirm(`Desmarcar "publicada" no ${labelCanal(canal)}?`)) return
       await desmarcarPublicado(post.id, canal)
     } else {
       await marcarPublicado(post.id, canal, autor)
@@ -145,12 +146,12 @@ export default function PostPartilha({ post, anexos, publicacoes, autor, onMudou
           <div style={s.linha}>
             {post.canais.map((c) => {
               const pub = publicadoPorCanal.get(c)
-              const nome = CANAL_LABEL[c as keyof typeof CANAL_LABEL] ?? c
+              const nome = labelCanal(c)
               return (
                 <button key={c} onClick={() => alternarPublicado(c)}
                   style={{ ...s.canalBtn, ...(pub ? s.canalOn : {}) }}
                   title={pub ? `Publicada a ${new Date(pub.publicado_em).toLocaleString('pt-PT')} — clicar para desmarcar` : `Marcar como publicada no ${nome}`}>
-                  {pub ? '✅' : '⬜'} {CANAL_EMOJI[c] ?? ''} {nome}
+                  {pub ? '✅' : '⬜'} {emojiCanal(c)} {nome}
                   {pub && <span style={s.data}> · {new Date(pub.publicado_em).toLocaleDateString('pt-PT')}</span>}
                 </button>
               )

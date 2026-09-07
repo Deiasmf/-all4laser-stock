@@ -46,15 +46,27 @@ export const ESTRATEGIA_LABEL: Record<EstrategiaPromocao, string> = {
   organica: 'Orgânica', candidata_paga: 'Candidata a paga', paga_aprovada: 'Paga aprovada',
 }
 
-// ── Canais (modelo simples MVP: multi-seleção na publicação) ──────────────────
-// Lista canónica; guardada como text[] livre na BD (extensível/gerível).
+// ── Canais (multi-seleção na publicação; geríveis nas Configurações) ──────────
+// A lista real vive na tabela marketing_canais e carrega-se via useCanais().
+// Os valores abaixo são só o DEFAULT/fallback (nomes dos 4 canais semeados) para
+// mostrar algo antes de a BD carregar e para resolver slugs conhecidos.
 export type Canal = 'instagram' | 'facebook' | 'linkedin' | 'site'
 export const CANAIS: Canal[] = ['instagram', 'facebook', 'linkedin', 'site']
-export const CANAL_LABEL: Record<Canal, string> = {
+export const CANAL_LABEL: Record<string, string> = {
   instagram: 'Instagram', facebook: 'Facebook', linkedin: 'LinkedIn', site: 'Site/Blog',
 }
 export const CANAL_EMOJI: Record<string, string> = {
   instagram: '📸', facebook: '👍', linkedin: '💼', site: '🌐',
+}
+
+// Canal tal como está guardado na BD (gerível).
+export type CanalDef = {
+  id: string
+  slug: string
+  label: string
+  emoji: string | null
+  ordem: number
+  ativo: boolean
 }
 
 // Estados simples (MVP) mapeados sobre estado_global.
