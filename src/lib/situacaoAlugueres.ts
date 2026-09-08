@@ -2,18 +2,18 @@ import { supabase } from './supabase'
 import { STATUS_OFICIAIS, saiuDaEmpresa } from './statusEquipamento'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SITUAÇÃO ATUAL DOS ALUGUERES
+// LASERS EM ALUGUER (situação atual)
 //
 // Estar EM aluguer é derivado do status do equipamento ("Aluguer nacional" /
-// "Aluguer internacional"). Mas a separação Nacional/Internacional NÃO se fia no
-// status (era escrito à mão e ficava desatualizado). A classificação é
-// DETERMINÍSTICA e nunca cai num quadro por omissão — ver `classificar()`:
-//   1. `mercado` (override explícito na ficha) manda sempre;
-//   2. senão, país do cliente ligado: Portugal → Nacional, outro → Internacional;
-//   3. sem override e sem país → "Por classificar" (fora dos dois quadros).
+// "Aluguer internacional"). A separação Nacional/Internacional é AUTOMÁTICA
+// pelo próprio status — ver `classificar()`:
+//   • status "Aluguer internacional" → quadro Internacionais;
+//   • status "Aluguer nacional"      → quadro Nacionais.
+// (Fallback defensivo por mercado/país, que na prática nunca corre porque só se
+// carregam estes dois status.)
 //
 // A tabela `aluguer_situacao` ENRIQUECE cada linha (cliente, datas, valor mensal,
-// renovação) e guarda o `mercado`.
+// renovação). Mudar de quadro = mudar o status do equipamento (`definirQuadroPorStatus`).
 //
 // "Disponíveis" = frota de aluguer (equipamentos cujos modelos estão no
 // catálogo `modelos_aluguer`) que estão livres (Em stock) ou indisponíveis
@@ -32,11 +32,21 @@ function paisEhPortugal(pais: string | null | undefined): boolean {
   return p === 'portugal' || p === 'pt'
 }
 
-// Classificação de um aluguer: override `mercado` → país do cliente → por classificar.
+// Classificação de um aluguer: AUTOMÁTICA pelo status do equipamento.
+// Fallback (defensivo) por mercado/país — só se o status não for de aluguer.
 export function classificar(s: SituacaoAluguer): Quadro {
+  if (s.status === STATUS_ALUGUER_INT) return 'internacional'
+  if (s.status === STATUS_ALUGUER_NAC) return 'nacional'
   if (s.mercado === 'nacional' || s.mercado === 'internacional') return s.mercado
   if ((s.cliente_pais ?? '').trim()) return paisEhPortugal(s.cliente_pais) ? 'nacional' : 'internacional'
   return 'por-classificar'
+}
+
+// Move um aluguer entre quadros mudando o STATUS do equipamento (é o status que
+// decide o quadro). `is_staff()` pode atualizar equipamentos (policy eq_update).
+export async function definirQuadroPorStatus(equipamentoId: string, mercado: Mercado) {
+  const status = mercado === 'internacional' ? STATUS_ALUGUER_INT : STATUS_ALUGUER_NAC
+  return supabase.from('equipamentos').update({ status }).eq('id', equipamentoId)
 }
 
 // Status "em casa" que contam para os Disponíveis (fora daqui: Enviado, Olicargo,
