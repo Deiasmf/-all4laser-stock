@@ -190,7 +190,67 @@ export async function concluirFase(
   return { error: null }
 }
 
+// Retrocede o fluxo para uma fase ANTERIOR, para corrigir informação. A fase de
+// destino fica "em_curso"; as fases seguintes voltam a "pendente". Se a nota já
+// estava expedida, volta a "em_preparacao" e o equipamento sai de "Enviado".
+// Só mexe nas fases que existem (ex.: sem preparação técnica).
+export async function retrocederFase(
+  nota: NotaEncomenda,
+  faseDestino: Fase,
+  responsavel: Responsavel,
+  motivo?: string | null,
+): Promise<{ error: { message: string } | null }> {
+  const idxDestino = ORDEM_FASES.indexOf(faseDestino)
+  if (idxDestino < 0) return { error: { message: 'Fase inválida.' } }
+
+  const { data } = await supabase.from('ne_fluxo').select('fase').eq('nota_id', nota.id)
+  const existentes = ((data as { fase: Fase }[] | null) ?? []).map((x) => x.fase)
+
+  // Destino → em curso; tudo o que vem depois → pendente. As anteriores ficam concluídas.
+  for (const f of existentes) {
+    const idx = ORDEM_FASES.indexOf(f)
+    if (idx < idxDestino) continue
+    const estado: EstadoFase = idx === idxDestino ? 'em_curso' : 'pendente'
+    const patch: Record<string, unknown> = { estado, concluido_at: null }
+    if (idx === idxDestino) {
+      patch.responsavel_id = responsavel.id
+      patch.responsavel_nome = responsavel.nome
+      if ((motivo ?? '').trim()) patch.notas = motivo!.trim()
+    }
+    const { error } = await supabase.from('ne_fluxo').update(patch).eq('nota_id', nota.id).eq('fase', f)
+    if (error) return { error }
+  }
+
+  // Se estava expedida, reabre: volta a "em_preparacao" e reverte o equipamento.
+  if (nota.estado === 'expedida') {
+    await alterarEstadoNota(nota.id, 'em_preparacao')
+    if (nota.equipamento_id) {
+      await supabase.from('equipamentos').update({ status: 'Prep-Logística' }).eq('id', nota.equipamento_id)
+    }
+  }
+
+  await notificarRetrocesso(nota, faseDestino, responsavel, motivo ?? null).catch(() => {})
+  return { error: null }
+}
+
 // ─── Notificações (comunicado in-app + email) ────────────────────────────────
+
+async function notificarRetrocesso(nota: NotaEncomenda, faseDestino: Fase, autor: Responsavel, motivo: string | null) {
+  const cfg = FASE_CONFIG[faseDestino]
+  const autorNome = autor.nome ?? 'Sistema'
+  const corpo =
+    `NE ${nota.numero ?? ''} devolvida a "${cfg.label}" para correção${motivo ? `: ${motivo}` : ''}. ` +
+    `${nota.equipamento_modelo ?? '—'} SN ${nota.equipamento_sn ?? '—'} · ${nota.cliente_nome ?? '—'}.`
+  await supabase.from('comunicados').insert({
+    titulo: `NE ${nota.numero ?? ''} — voltou a ${cfg.label}`.trim(),
+    corpo,
+    prioridade: 'importante',
+    autor_id: autor.id,
+    autor_nome: autorNome,
+    autor_iniciais: iniciais(autorNome, null),
+    area: cfg.area,
+  })
+}
 
 async function notificarFase(nota: NotaEncomenda, fase: Fase, autor: Responsavel) {
   const cfg = FASE_CONFIG[fase]

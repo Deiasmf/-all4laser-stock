@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 import { notasProntas, moradasCliente, criarExpedicion } from '@/lib/expeditions'
 import { resumoEquipamentos, type MoradaEntrega } from '@/types/expedition'
+import RetrocederFluxo from '@/components/RetrocederFluxo'
 import type { NotaEncomenda } from '@/types/notaEncomenda'
 
 function fdata(d: string | null) {
@@ -147,6 +148,15 @@ export default function ProntosAEnviarPage() {
                       <td style={c.td}>{n.pais_destino ?? '—'}</td>
                       <td style={c.td}>{n.equipamento_modelo ?? '—'}</td>
                       <td style={c.td}>SN {n.equipamento_sn ?? '—'}</td>
+                      <td style={{ ...c.td, textAlign: 'right' }}>
+                        <RetrocederFluxo
+                          nota={n}
+                          faseAtual="admin_expedicao"
+                          autor={{ id: session?.user.id ?? null, nome: perfil?.nome ?? perfil?.email ?? null }}
+                          onConcluido={carregar}
+                          variante="mini"
+                        />
+                      </td>
                     </tr>
                   ))}
                 </tbody>
