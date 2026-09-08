@@ -1,7 +1,7 @@
 import { supabase } from './supabase'
 import type {
   Despesa, DespesaInput, DespesaFoto, DespesaTipo,
-  Fundo, FundoInput, ExtratoMes, AluguerAtivoOpc,
+  Fundo, FundoInput, ExtratoMes, AluguerAtivoOpc, ApuramentoColaborador,
 } from '@/types/despesa'
 
 export const BUCKET_DESPESAS = 'despesas-alugueres'
@@ -45,9 +45,19 @@ export async function criarTipo(nome: string, autor: Autor): Promise<DespesaTipo
 
 // ─── Despesas ────────────────────────────────────────────────────────────────
 
-// As despesas do próprio (a RLS já limita ao colaborador). Filtro por mês opcional.
-export async function listarMinhasDespesas(mes?: string): Promise<Despesa[]> {
+export async function listarMeusFundosDoColaborador(colaboradorId?: string, mes?: string): Promise<Fundo[]> {
+  let q = supabase.from('despesas_fundos').select('*').order('data', { ascending: false })
+  if (colaboradorId) q = q.eq('colaborador_id', colaboradorId)
+  if (mes) q = q.eq('mes_apuramento', mes)
+  const { data } = await q
+  return (data as Fundo[]) ?? []
+}
+
+// As despesas de um colaborador (o financeiro vê tudo pela RLS, por isso filtra-se
+// explicitamente pelo próprio na vista pessoal). Filtro por mês opcional.
+export async function listarMinhasDespesas(colaboradorId?: string, mes?: string): Promise<Despesa[]> {
   let q = supabase.from('despesas_alugueres').select('*').order('data_despesa', { ascending: false })
+  if (colaboradorId) q = q.eq('colaborador_id', colaboradorId)
   if (mes) q = q.eq('mes_apuramento', mes)
   const { data } = await q
   return (data as Despesa[]) ?? []
@@ -174,7 +184,144 @@ export async function mesFechado(mes: string): Promise<boolean> {
   return !!data
 }
 
+export type MesFechado = { mes: string; snapshot: unknown; fechado_por_nome: string | null; fechado_em: string }
+
+export async function obterMesFechado(mes: string): Promise<MesFechado | null> {
+  const { data } = await supabase
+    .from('despesas_meses_fechados').select('mes, snapshot, fechado_por_nome, fechado_em').eq('mes', mes).maybeSingle()
+  return (data as MesFechado) ?? null
+}
+
 // ─── Alugueres ativos (dropdown: cliente + rótulo livre) ─────────────────────
+
+// ─── Gestão (admin/financeiro) ───────────────────────────────────────────────
+
+export type Colaborador = { id: string; nome: string | null; email: string | null }
+
+export async function listarColaboradores(): Promise<Colaborador[]> {
+  const { data } = await supabase.from('profiles').select('id, nome, email').order('nome')
+  return (data as Colaborador[]) ?? []
+}
+
+// Todas as despesas de um mês (a RLS dá tudo ao financeiro).
+export async function listarDespesasMes(mes: string): Promise<Despesa[]> {
+  const { data } = await supabase
+    .from('despesas_alugueres').select('*').eq('mes_apuramento', mes)
+    .order('data_despesa', { ascending: false })
+  return (data as Despesa[]) ?? []
+}
+
+export async function listarFundosMes(mes: string): Promise<Fundo[]> {
+  const { data } = await supabase
+    .from('despesas_fundos').select('*').eq('mes_apuramento', mes).order('data', { ascending: false })
+  return (data as Fundo[]) ?? []
+}
+
+// Marca/desmarca uma despesa como conferida (só enquanto o mês está aberto).
+export async function conferirDespesa(id: string, conferida: boolean, autor: Autor) {
+  return supabase.from('despesas_alugueres').update(
+    conferida
+      ? { estado: 'conferida', conferida_por: autor.id, conferida_por_nome: autor.nome, conferida_em: new Date().toISOString() }
+      : { estado: 'registada', conferida_por: null, conferida_por_nome: null, conferida_em: null },
+  ).eq('id', id).select().single()
+}
+
+// ─── Gestão de tipos ─────────────────────────────────────────────────────────
+
+// Todos os tipos ativos (não fundidos), pendentes primeiro (para o financeiro tratar).
+export async function listarTiposGestao(): Promise<DespesaTipo[]> {
+  const { data } = await supabase.from('despesas_tipos').select('*').is('fundido_em', null)
+    .order('estado', { ascending: false })   // 'pendente' > 'aprovado'
+    .order('nome', { ascending: true })
+  return (data as DespesaTipo[]) ?? []
+}
+
+// Todos os tipos (incluindo fundidos) — para resolver nomes na cadeia fundido_em.
+export async function listarTodosTipos(): Promise<DespesaTipo[]> {
+  const { data } = await supabase.from('despesas_tipos').select('*').order('nome')
+  return (data as DespesaTipo[]) ?? []
+}
+
+export async function aprovarTipo(id: string) {
+  return supabase.from('despesas_tipos').update({ estado: 'aprovado' }).eq('id', id)
+}
+
+export async function renomearTipo(id: string, nome: string) {
+  return supabase.from('despesas_tipos').update({ nome: nome.trim() }).eq('id', id)
+}
+
+// Funde `origemId` em `destinoId`: marca a origem como fundida (some das listas) e
+// reatribui as despesas de meses ABERTOS. Nos meses fechados o nome resolve-se pela
+// cadeia fundido_em (ver resolverNomeTipo) — não se mexe em histórico congelado.
+export async function fundirTipo(origemId: string, destinoId: string) {
+  const { data: abertas } = await supabase
+    .from('despesas_alugueres').select('id, mes_apuramento').eq('tipo_id', origemId)
+  const { data: fechados } = await supabase.from('despesas_meses_fechados').select('mes')
+  const mesesFechados = new Set(((fechados as { mes: string }[]) ?? []).map((m) => m.mes))
+  const ids = ((abertas as { id: string; mes_apuramento: string }[]) ?? [])
+    .filter((d) => !mesesFechados.has(d.mes_apuramento)).map((d) => d.id)
+  if (ids.length) await supabase.from('despesas_alugueres').update({ tipo_id: destinoId }).in('id', ids)
+  return supabase.from('despesas_tipos').update({ fundido_em: destinoId }).eq('id', origemId)
+}
+
+// Nome efetivo de um tipo, seguindo a cadeia fundido_em.
+export function resolverNomeTipo(id: string | null, tipos: DespesaTipo[]): string {
+  if (!id) return '—'
+  const mapa = new Map(tipos.map((t) => [t.id, t]))
+  let t = mapa.get(id)
+  const visto = new Set<string>()
+  while (t?.fundido_em && !visto.has(t.id)) { visto.add(t.id); t = mapa.get(t.fundido_em) }
+  return t?.nome ?? '—'
+}
+
+// Apuramento do mês por colaborador (para o mapa). `tipos` resolve nomes (com fundido_em).
+export function apurarMes(
+  despesas: Despesa[], fundos: Fundo[], colaboradores: Colaborador[], tipos: DespesaTipo[],
+): ApuramentoColaborador[] {
+  const nome = (id: string) => {
+    const c = colaboradores.find((x) => x.id === id)
+    return c?.nome ?? c?.email ?? 'Colaborador'
+  }
+  // Junta os ids de colaborador que aparecem em despesas ou fundos.
+  const ids = new Set<string>()
+  despesas.forEach((d) => ids.add(d.colaborador_id))
+  fundos.forEach((f) => ids.add(f.colaborador_id))
+  const linhas: ApuramentoColaborador[] = []
+  for (const id of ids) {
+    const ds = despesas.filter((d) => d.colaborador_id === id)
+    const fs = fundos.filter((f) => f.colaborador_id === id)
+    const porTipo: Record<string, number> = {}
+    for (const d of ds) {
+      const t = resolverNomeTipo(d.tipo_id, tipos)
+      porTipo[t] = (porTipo[t] ?? 0) + Number(d.valor)
+    }
+    const recebido = fs.filter((f) => f.tipo === 'entrada').reduce((s, f) => s + Number(f.valor), 0)
+    const entregue = fs.filter((f) => f.tipo === 'entrega').reduce((s, f) => s + Number(f.valor), 0)
+    const totDespesas = ds.reduce((s, d) => s + Number(d.valor), 0)
+    linhas.push({
+      colaborador_id: id, colaborador_nome: nome(id), recebido, porTipo,
+      despesas: totDespesas, entregue, apuramento: recebido - totDespesas - entregue,
+    })
+  }
+  return linhas.sort((a, b) => a.colaborador_nome.localeCompare(b.colaborador_nome, 'pt'))
+}
+
+// ─── Fechar mês ──────────────────────────────────────────────────────────────
+
+// Marca as despesas escolhidas como conferidas e congela o mês (imutável).
+export async function fecharMes(
+  mes: string, idsConferir: string[], snapshot: unknown, autor: Autor,
+) {
+  if (idsConferir.length) {
+    await supabase.from('despesas_alugueres').update({
+      estado: 'conferida', conferida_por: autor.id, conferida_por_nome: autor.nome,
+      conferida_em: new Date().toISOString(),
+    }).in('id', idsConferir)
+  }
+  return supabase.from('despesas_meses_fechados')
+    .insert({ mes, snapshot, fechado_por: autor.id, fechado_por_nome: autor.nome })
+    .select().single()
+}
 
 export async function listarAlugueresAtivos(): Promise<AluguerAtivoOpc[]> {
   const { data } = await supabase

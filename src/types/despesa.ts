@@ -117,3 +117,14 @@ export type ExtratoMes = {
 
 // Aluguer ativo para o dropdown (cliente + rótulo livre).
 export type AluguerAtivoOpc = { cliente_id: string | null; cliente_nome: string; label: string }
+
+// Apuramento de um colaborador num mês (linha do mapa).
+export type ApuramentoColaborador = {
+  colaborador_id: string
+  colaborador_nome: string
+  recebido: number
+  porTipo: Record<string, number>   // nome do tipo → total de despesas
+  despesas: number
+  entregue: number
+  apuramento: number                // recebido − despesas − entregue (0 = contas certas)
+}
