@@ -69,11 +69,14 @@ function inicioDoPack(itens: SituacaoAluguer[]): string | null {
 
 // Divide os itens de um grupo em unidades: cada pack vira uma unidade (array),
 // os avulsos ficam individuais. Mantém a ordem de aparição.
-function unidadesDe(itens: SituacaoAluguer[]): (SituacaoAluguer | SituacaoAluguer[])[] {
+function unidadesDe(
+  itens: SituacaoAluguer[],
+  combinar: (s: SituacaoAluguer) => boolean = () => true,
+): (SituacaoAluguer | SituacaoAluguer[])[] {
   const packs = new Map<string, SituacaoAluguer[]>()
   const out: (SituacaoAluguer | SituacaoAluguer[])[] = []
   for (const s of itens) {
-    if (s.pack) {
+    if (s.pack && combinar(s)) {
       let arr = packs.get(s.pack)
       if (!arr) { arr = []; packs.set(s.pack, arr); out.push(arr) }
       arr.push(s)
@@ -298,7 +301,8 @@ export default function SituacaoAtualPage() {
       ) : tab === 'por-classificar' ? (
         <ZonaPorClassificar lista={listaAtual} onEditar={setEditar} onDefinir={definirMercado} />
       ) : (
-        <QuadroAlugueres lista={listaAtual} estreito={estreito} onEditar={setEditar} grupoDe={(s) => grupoDaLinha(s, tab)} />
+        <QuadroAlugueres lista={listaAtual} estreito={estreito} onEditar={setEditar} grupoDe={(s) => grupoDaLinha(s, tab)}
+          combinarPack={tab === 'nacionais' ? (s) => (s.zona ?? '').trim().toLowerCase() === 'mensais' : () => true} />
       )}
 
       {editar && (
@@ -321,8 +325,9 @@ export default function SituacaoAtualPage() {
 }
 
 // ─────────────────────────────────────────────── QUADRO DE ALUGUERES ─────────
-function QuadroAlugueres({ lista, estreito, onEditar, grupoDe }: {
-  lista: SituacaoAluguer[]; estreito: boolean; onEditar: (s: SituacaoAluguer) => void; grupoDe: (s: SituacaoAluguer) => string
+function QuadroAlugueres({ lista, estreito, onEditar, grupoDe, combinarPack = () => true }: {
+  lista: SituacaoAluguer[]; estreito: boolean; onEditar: (s: SituacaoAluguer) => void
+  grupoDe: (s: SituacaoAluguer) => string; combinarPack?: (s: SituacaoAluguer) => boolean
 }) {
   const { total: totalMensal, semValor } = totalMensalComPacks(lista)
   const numPacks = new Set(lista.filter((l) => l.pack).map((l) => l.pack)).size
@@ -403,7 +408,7 @@ function QuadroAlugueres({ lista, estreito, onEditar, grupoDe }: {
           {grupos.map((g) => (
             <Fragment key={g.chave}>
               {divisoria(g.chave, g.itens)}
-              {unidadesDe(g.itens).map((u) =>
+              {unidadesDe(g.itens, combinarPack).map((u) =>
                 Array.isArray(u)
                   ? <CartaoPack key={`pack-${u[0].pack}`} itens={u} onEditar={onEditar} />
                   : <CartaoAluguer key={u.equipamento_id} s={u} onEditar={onEditar} />,
@@ -421,7 +426,7 @@ function QuadroAlugueres({ lista, estreito, onEditar, grupoDe }: {
           {grupos.map((g) => (
             <Fragment key={g.chave}>
               {divisoria(g.chave, g.itens)}
-              {unidadesDe(g.itens).map((u) => (Array.isArray(u) ? linhaPack(u) : linhaEquip(u)))}
+              {unidadesDe(g.itens, combinarPack).map((u) => (Array.isArray(u) ? linhaPack(u) : linhaEquip(u)))}
             </Fragment>
           ))}
         </div>
