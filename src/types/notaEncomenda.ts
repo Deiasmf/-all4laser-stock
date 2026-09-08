@@ -17,6 +17,7 @@ export type NotaEncomenda = {
   capas: CapasOpcao | null
   observacoes: string | null
   estado: EstadoNota
+  sem_preparacao_tecnica: boolean
   criado_por: string | null
   criado_por_nome: string | null
   created_at: string
@@ -45,6 +46,7 @@ export type NotaInput = {
   capas: CapasOpcao | null
   observacoes: string | null
   estado: EstadoNota
+  sem_preparacao_tecnica: boolean
 }
 
 // Item de material escolhido (para gravar em notas_encomenda_material)

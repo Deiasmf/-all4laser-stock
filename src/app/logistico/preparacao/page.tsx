@@ -8,6 +8,7 @@ export default function LogisticaPreparacaoPage() {
       fase="logistica_preparacao"
       titulo="Equipamentos em Preparação"
       botaoLabel="Concluir — Entregar ao Técnico"
+      botaoLabelSemTecnico="Concluir — Para Encaixotamento"
       voltarHref="/logistico"
       voltarLabel="Logística"
     />

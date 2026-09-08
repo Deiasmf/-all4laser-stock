@@ -38,7 +38,7 @@ export default function NovaNotaPage() {
     // Ao emitir: equipamento → Prep-Logística + comunicados + arranca o fluxo
     // de preparação (1ª fase: logística em curso).
     if (emitir) {
-      await criarFluxoInicial(nota.id)
+      await criarFluxoInicial(nota.id, nota.sem_preparacao_tecnica)
       if (nota.equipamento_id) await marcarEquipamentoEmPreparacao(nota.equipamento_id)
       await notificarNovaNota(nota)
     }

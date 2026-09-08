@@ -8,6 +8,7 @@ import {
   obterNota, listarMateriais, atualizarNota, guardarMateriais,
   alterarEstadoNota, eliminarNota,
 } from '@/lib/notasEncomenda'
+import { sincronizarFaseTecnica } from '@/lib/neFluxo'
 import NotaEncomendaForm from '@/components/NotaEncomendaForm'
 import FolhasReutilizaveis from '@/components/FolhasReutilizaveis'
 import { expedicaoDaNota } from '@/lib/expeditions'
@@ -73,6 +74,11 @@ export default function DetalheNotaPage() {
     const { data, error } = await atualizarNota(id, input)
     if (error) { setAGuardar(false); setErro('Erro ao guardar: ' + error.message); return }
     await guardarMateriais(id, mats)
+    // Editável só enquanto "emitida" (só a logística em curso); aqui é seguro
+    // ligar/desligar o salto da preparação técnica sem partir o fluxo.
+    if (nota?.estado === 'emitida') {
+      await sincronizarFaseTecnica(id, input.sem_preparacao_tecnica).catch(() => {})
+    }
     if (data) setNota(data as NotaEncomenda)
     setMateriais(await listarMateriais(id))
     setAGuardar(false)
@@ -242,6 +248,9 @@ export default function DetalheNotaPage() {
           <Linha rotulo="Modelo" valor={nota.equipamento_modelo} />
           <Linha rotulo="Serial number" valor={nota.equipamento_sn} />
           <Linha rotulo="Ano" valor={nota.equipamento_ano} />
+          {nota.sem_preparacao_tecnica && (
+            <Linha rotulo="Preparação técnica" valor="Não (segue direto para encaixotamento)" />
+          )}
         </Bloco>
 
         {nota.detalhes_tecnicos && (

@@ -62,15 +62,34 @@ export const FASE_CONFIG: Record<Fase, { label: string; area: string; emails: st
 
 // ─── Criação e leitura do fluxo ──────────────────────────────────────────────
 
-// Cria as 4 fases ao emitir uma nota (1ª em curso, restantes pendentes).
+// Cria as fases ao emitir uma nota (1ª em curso, restantes pendentes).
 // Idempotente: se já existir o fluxo, não duplica.
-export async function criarFluxoInicial(notaId: string) {
-  const linhas = ORDEM_FASES.map((fase, i) => ({
+// `semTecnico`: equipamento que não passa pela preparação técnica (ex.: Soprano,
+// CO2) — nesse caso a fase técnica não é criada e o fluxo salta-a.
+export async function criarFluxoInicial(notaId: string, semTecnico = false) {
+  const fases = semTecnico
+    ? ORDEM_FASES.filter((f) => f !== 'tecnico_preparacao')
+    : ORDEM_FASES
+  const linhas = fases.map((fase, i) => ({
     nota_id: notaId,
     fase,
     estado: (i === 0 ? 'em_curso' : 'pendente') as EstadoFase,
   }))
   return supabase.from('ne_fluxo').upsert(linhas, { onConflict: 'nota_id,fase', ignoreDuplicates: true })
+}
+
+// Acerta a existência da fase técnica quando se edita uma nota ainda "emitida"
+// (só a logística é que está em curso; nada progrediu). Liga/desliga o salto da
+// preparação técnica sem partir o fluxo. Só remove a fase se ainda estiver pendente.
+export async function sincronizarFaseTecnica(notaId: string, semTecnico: boolean) {
+  if (semTecnico) {
+    return supabase.from('ne_fluxo').delete()
+      .eq('nota_id', notaId).eq('fase', 'tecnico_preparacao').eq('estado', 'pendente')
+  }
+  return supabase.from('ne_fluxo').upsert(
+    [{ nota_id: notaId, fase: 'tecnico_preparacao' as Fase, estado: 'pendente' as EstadoFase }],
+    { onConflict: 'nota_id,fase', ignoreDuplicates: true }
+  )
 }
 
 // Notas com uma fase específica em curso (para as páginas de departamento).
@@ -149,7 +168,13 @@ export async function concluirFase(
     .eq('fase', fase)
   if (error) return { error }
 
-  const proxima = ORDEM_FASES[ORDEM_FASES.indexOf(fase) + 1]
+  // Próxima fase = a seguinte que REALMENTE existe no fluxo desta nota. Assim,
+  // se a fase técnica tiver sido saltada (sem preparação técnica), avança logo
+  // para o encaixotamento.
+  const { data: existentesData } = await supabase
+    .from('ne_fluxo').select('fase').eq('nota_id', nota.id)
+  const existentes = new Set(((existentesData as { fase: Fase }[] | null) ?? []).map((x) => x.fase))
+  const proxima = ORDEM_FASES.slice(ORDEM_FASES.indexOf(fase) + 1).find((f) => existentes.has(f))
 
   if (proxima) {
     await supabase.from('ne_fluxo').update({ estado: 'em_curso' }).eq('nota_id', nota.id).eq('fase', proxima)

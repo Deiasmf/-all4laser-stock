@@ -41,6 +41,7 @@ type NotaDraft = {
   equipamentoSn: string
   equipamentoAno: string
   marca: string | null
+  semTecnico: boolean
   detalhes: string
   selecionados: string[]
   outros: string[]
@@ -79,6 +80,9 @@ export default function NotaEncomendaForm({ inicial, materiaisIniciais, acoes, a
   const [equipamentoSn, setEquipamentoSn] = useState(inicial?.equipamento_sn ?? '')
   const [equipamentoAno, setEquipamentoAno] = useState(inicial?.equipamento_ano ?? '')
   const [marca, setMarca] = useState<string | null>(null)
+  // Equipamentos que não passam pela preparação técnica (ex.: Soprano, CO2):
+  // o fluxo salta a fase técnica e fica logo na logística.
+  const [semTecnico, setSemTecnico] = useState(inicial?.sem_preparacao_tecnica ?? false)
 
   // Detalhes
   const [detalhes, setDetalhes] = useState(inicial?.detalhes_tecnicos ?? '')
@@ -195,7 +199,7 @@ export default function NotaEncomendaForm({ inicial, materiaisIniciais, acoes, a
   // Rascunho automático (só em modo "novo", via rascunhoKey). O Set vai/volta como array.
   const valores: NotaDraft = {
     dataPedido, clienteId, clienteNome, paisDestino, clienteEmail, clienteTelefone,
-    equipamentoId, equipamentoModelo, equipamentoSn, equipamentoAno, marca,
+    equipamentoId, equipamentoModelo, equipamentoSn, equipamentoAno, marca, semTecnico,
     detalhes, selecionados: Array.from(selecionados), outros, capas, observacoes, mostrarTodasCats,
   }
   function restaurar(d: NotaDraft) {
@@ -210,6 +214,7 @@ export default function NotaEncomendaForm({ inicial, materiaisIniciais, acoes, a
     setEquipamentoSn(d.equipamentoSn)
     setEquipamentoAno(d.equipamentoAno)
     setMarca(d.marca)
+    setSemTecnico(d.semTecnico ?? false)
     setDetalhes(d.detalhes)
     setSelecionados(new Set(d.selecionados ?? []))
     setOutros(d.outros ?? [])
@@ -244,6 +249,7 @@ export default function NotaEncomendaForm({ inicial, materiaisIniciais, acoes, a
       capas: capas || null,
       observacoes: observacoes.trim() || null,
       estado: inicial?.estado ?? 'emitida',
+      sem_preparacao_tecnica: semTecnico,
     }
     onSubmit(input, reunirMateriais(), emitir)
   }
@@ -331,6 +337,13 @@ export default function NotaEncomendaForm({ inicial, materiaisIniciais, acoes, a
             <input value={equipamentoAno} onChange={(e) => setEquipamentoAno(e.target.value)} style={f.input} />
           </Campo>
         </div>
+        <label style={f.semTecnico}>
+          <input type="checkbox" checked={semTecnico} onChange={(e) => setSemTecnico(e.target.checked)} />
+          <span>
+            <strong>Não precisa de preparação técnica</strong>
+            <span style={f.semTecnicoAjuda}> — ex.: Soprano, CO2. Salta a fase Técnica e fica logo na Logística.</span>
+          </span>
+        </label>
       </section>
 
       {/* 4. Detalhes técnicos */}
@@ -540,6 +553,8 @@ const f: Record<string, React.CSSProperties> = {
   checkLabel: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--muted)', fontWeight: 600, cursor: 'pointer' },
   grid2: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 },
   grid3: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 },
+  semTecnico: { display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 14, color: 'var(--foreground)', cursor: 'pointer', background: 'var(--background)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px' },
+  semTecnicoAjuda: { color: 'var(--muted)', fontWeight: 400 },
   campo: { display: 'flex', flexDirection: 'column', gap: 6 },
   rotulo: { fontSize: 13, fontWeight: 600, color: 'var(--muted)' },
   input: { width: '100%', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--background)', color: 'var(--foreground)', font: 'inherit' },
