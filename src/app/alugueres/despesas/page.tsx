@@ -10,7 +10,7 @@ import RegistarDespesa from '@/components/despesas/RegistarDespesa'
 import {
   listarTipos, listarMinhasDespesas, apagarDespesa, atualizarDespesa,
   listarMeusFundosDoColaborador, criarFundo, apagarFundo, calcularExtrato,
-  listarAlugueresAtivos, urlFotoDespesa, listarFotosDespesa, mesCorrente, mesFechado,
+  listarAlugueresAtivos, listarAlugueresRecolhidosRecentes, urlFotoDespesa, listarFotosDespesa, mesCorrente, mesFechado,
 } from '@/lib/despesas'
 import type { Despesa, DespesaTipo, Fundo, AluguerAtivoOpc, TipoFundo } from '@/types/despesa'
 
@@ -26,6 +26,7 @@ export default function MinhasDespesasPage() {
   const [fechado, setFechado] = useState(false)
   const [tipos, setTipos] = useState<DespesaTipo[]>([])
   const [alugueres, setAlugueres] = useState<AluguerAtivoOpc[]>([])
+  const [alugueresRecolhidos, setAlugueresRecolhidos] = useState<AluguerAtivoOpc[]>([])
   const [despesas, setDespesas] = useState<Despesa[]>([])
   const [fundos, setFundos] = useState<Fundo[]>([])
   const [carregando, setCarregando] = useState(true)
@@ -47,6 +48,7 @@ export default function MinhasDespesasPage() {
   useEffect(() => {
     listarTipos().then(setTipos)
     listarAlugueresAtivos().then(setAlugueres)
+    listarAlugueresRecolhidosRecentes().then(setAlugueresRecolhidos)
   }, [])
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { carregar() }, [carregar])
@@ -101,7 +103,7 @@ export default function MinhasDespesasPage() {
 
       {/* Fundos em mãos */}
       <FundosBloco
-        fundos={fundos} alugueres={alugueres} autor={autor}
+        fundos={fundos} alugueres={alugueresRecolhidos} autor={autor}
         bloqueado={fechado || !ehMesCorrente}
         onMudou={carregar} onErro={setMsg}
       />
