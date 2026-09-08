@@ -50,6 +50,42 @@ function fimTexto(s: SituacaoAluguer) {
 
 const SEM_GRUPO = ['Sem zona', 'Sem país']
 
+// Zimmer (unidade de crioterapia) — distingue o laser do Zimmer num pack.
+function ehZimmer(modelo: string | null) {
+  return /cryo|zimmer/i.test(modelo ?? '')
+}
+
+// Valor mensal de um pack = o valor do conjunto (o maior valor definido entre os membros).
+function valorDoPack(itens: SituacaoAluguer[]): number | null {
+  const vals = itens.map((i) => i.valor_mensal).filter((v): v is number => v != null)
+  return vals.length ? Math.max(...vals) : null
+}
+
+// Início efetivo mais antigo do pack (para a data/duração da linha combinada).
+function inicioDoPack(itens: SituacaoAluguer[]): string | null {
+  const ds = itens.map(inicioEfetivo).filter((d): d is string => !!d).sort()
+  return ds[0] ?? null
+}
+
+// Divide os itens de um grupo em unidades: cada pack vira uma unidade (array),
+// os avulsos ficam individuais. Mantém a ordem de aparição.
+function unidadesDe(itens: SituacaoAluguer[]): (SituacaoAluguer | SituacaoAluguer[])[] {
+  const packs = new Map<string, SituacaoAluguer[]>()
+  const out: (SituacaoAluguer | SituacaoAluguer[])[] = []
+  for (const s of itens) {
+    if (s.pack) {
+      let arr = packs.get(s.pack)
+      if (!arr) { arr = []; packs.set(s.pack, arr); out.push(arr) }
+      arr.push(s)
+    } else {
+      out.push(s)
+    }
+  }
+  // Dentro de cada pack, o laser vem primeiro, o Zimmer depois.
+  for (const u of out) if (Array.isArray(u)) u.sort((a, b) => Number(ehZimmer(a.modelo)) - Number(ehZimmer(b.modelo)))
+  return out
+}
+
 // Grupo (secção) de um aluguer: nos Nacionais é a zona; nos Internacionais o país do cliente.
 function grupoDaLinha(s: SituacaoAluguer, tab: Tab): string {
   if (tab === 'internacionais') return (s.cliente_pais ?? '').trim() || 'Sem país'
@@ -326,6 +362,35 @@ function QuadroAlugueres({ lista, estreito, onEditar, grupoDe }: {
     )
   }
 
+  // Linha combinada de um pack (laser + Zimmer na MESMA linha).
+  function linhaPack(itens: SituacaoAluguer[]) {
+    const rep = itens[0]
+    const alerta = alertaDe(rep)
+    const inicio = inicioDoPack(itens)
+    const valor = valorDoPack(itens)
+    return (
+      <div key={`pack-${rep.pack}`}
+        style={{ ...c.linha, ...c.linhaClicavel, ...(alerta === 'vencido' ? c.linhaVencido : alerta === 'a-terminar' ? c.linhaTerminar : {}) }}
+        onClick={() => onEditar(rep)} title="Clica para completar/editar os dados do aluguer">
+        <span style={c.equip}>
+          {itens.map((m) => (
+            <span key={m.equipamento_id} style={c.equipMembro}>
+              <span style={c.equipSn}>{m.serial_number ?? '—'}</span>
+              <span style={c.equipMarca}> {[m.marca, m.modelo].filter(Boolean).join(' ')}</span>
+            </span>
+          ))}
+        </span>
+        <span>{rep.pack ? <span style={c.packTag}>{rep.pack}</span> : '—'}</span>
+        <span>{clienteTexto(rep)}</span>
+        <span>{localizacaoTexto(rep)}</span>
+        <span>{formatarData(inicio)}</span>
+        <span>{duracaoTexto(inicio)}</span>
+        <span>{fimTexto(rep)}{alerta && <BadgeAlerta s={rep} alerta={alerta} />}</span>
+        <span style={{ textAlign: 'right', fontWeight: 700 }}>{valor != null ? formatarEuro(valor) : '—'}</span>
+      </div>
+    )
+  }
+
   return (
     <>
       <div style={c.totais}>
@@ -338,7 +403,11 @@ function QuadroAlugueres({ lista, estreito, onEditar, grupoDe }: {
           {grupos.map((g) => (
             <Fragment key={g.chave}>
               {divisoria(g.chave, g.itens)}
-              {g.itens.map((s) => <CartaoAluguer key={s.equipamento_id} s={s} onEditar={onEditar} />)}
+              {unidadesDe(g.itens).map((u) =>
+                Array.isArray(u)
+                  ? <CartaoPack key={`pack-${u[0].pack}`} itens={u} onEditar={onEditar} />
+                  : <CartaoAluguer key={u.equipamento_id} s={u} onEditar={onEditar} />,
+              )}
             </Fragment>
           ))}
         </div>
@@ -352,7 +421,7 @@ function QuadroAlugueres({ lista, estreito, onEditar, grupoDe }: {
           {grupos.map((g) => (
             <Fragment key={g.chave}>
               {divisoria(g.chave, g.itens)}
-              {g.itens.map((s) => linhaEquip(s))}
+              {unidadesDe(g.itens).map((u) => (Array.isArray(u) ? linhaPack(u) : linhaEquip(u)))}
             </Fragment>
           ))}
         </div>
@@ -416,6 +485,33 @@ function CartaoAluguer({ s, onEditar }: { s: SituacaoAluguer; onEditar: (s: Situ
       <div style={c.cartaoLinha}><span style={c.cartaoLabel}>Início</span><span>{formatarData(inicioEfetivo(s))} · {duracaoTexto(inicioEfetivo(s))}</span></div>
       <div style={c.cartaoLinha}><span style={c.cartaoLabel}>Fim previsto</span><span>{fimTexto(s)}</span></div>
       <div style={c.cartaoLinha}><span style={c.cartaoLabel}>Valor mensal</span><span style={{ fontWeight: 700 }}>{s.valor_mensal != null ? formatarEuro(s.valor_mensal) : '—'}</span></div>
+    </div>
+  )
+}
+
+// Cartão (telemóvel) de um pack: laser + Zimmer juntos, com o valor do conjunto.
+function CartaoPack({ itens, onEditar }: { itens: SituacaoAluguer[]; onEditar: (s: SituacaoAluguer) => void }) {
+  const rep = itens[0]
+  const alerta = alertaDe(rep)
+  const inicio = inicioDoPack(itens)
+  const valor = valorDoPack(itens)
+  return (
+    <div style={{ ...c.cartao, ...c.linhaClicavel, ...(alerta === 'vencido' ? c.linhaVencido : alerta === 'a-terminar' ? c.linhaTerminar : {}) }}
+      onClick={() => onEditar(rep)}>
+      <div style={c.cartaoTopo}>
+        {rep.pack ? <span style={c.packTag}>{rep.pack}</span> : <span style={c.equipSn}>Pack</span>}
+        {alerta && <BadgeAlerta s={rep} alerta={alerta} />}
+      </div>
+      {itens.map((m) => (
+        <div key={m.equipamento_id} style={c.cartaoMembro}>
+          <strong>{m.serial_number ?? '—'}</strong> <span style={c.equipMarca}>{[m.marca, m.modelo].filter(Boolean).join(' ')}</span>
+        </div>
+      ))}
+      <div style={c.cartaoLinha}><span style={c.cartaoLabel}>Cliente</span><span>{clienteTexto(rep)}</span></div>
+      <div style={c.cartaoLinha}><span style={c.cartaoLabel}>Localização</span><span>{localizacaoTexto(rep)}</span></div>
+      <div style={c.cartaoLinha}><span style={c.cartaoLabel}>Início</span><span>{formatarData(inicio)} · {duracaoTexto(inicio)}</span></div>
+      <div style={c.cartaoLinha}><span style={c.cartaoLabel}>Fim previsto</span><span>{fimTexto(rep)}</span></div>
+      <div style={c.cartaoLinha}><span style={c.cartaoLabel}>Valor mensal</span><span style={{ fontWeight: 700 }}>{valor != null ? formatarEuro(valor) : '—'}</span></div>
     </div>
   )
 }
@@ -924,8 +1020,10 @@ const c: Record<string, React.CSSProperties> = {
   terminarTitulo: { fontWeight: 700, color: '#B91C1C', fontSize: 14 },
   linhaVencido: { background: '#FEF2F2' },
   equip: { display: 'flex', flexDirection: 'column', minWidth: 0 },
+  equipMembro: { display: 'block', lineHeight: 1.35 },
   equipSn: { fontWeight: 700 },
   equipMarca: { color: 'var(--muted)', fontSize: 12 },
+  cartaoMembro: { fontSize: 13, lineHeight: 1.4 },
   badgeTerminar: { marginLeft: 6, background: '#FEF3C7', color: '#92400E', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' },
   badgeVencido: { marginLeft: 6, background: '#FEE2E2', color: '#B91C1C', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' },
   cartoes: { display: 'grid', gap: 10 },
