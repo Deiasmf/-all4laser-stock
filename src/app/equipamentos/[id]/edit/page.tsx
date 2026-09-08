@@ -72,7 +72,7 @@ export default function EditarEquipamento() {
   if (naoEncontrado || !inicial)
     return (
       <main className={styles.page}>
-        <Link href="/" className={styles.voltar}>← Voltar</Link>
+        <Link href="/logistico" className={styles.voltar}>← Voltar</Link>
         <p className={styles.estado}>Equipamento não encontrado.</p>
       </main>
     )

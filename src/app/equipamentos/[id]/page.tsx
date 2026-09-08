@@ -131,7 +131,7 @@ export default function DetalheEquipamento() {
   if (erro || !eq)
     return (
       <main className={styles.page}>
-        <Link href="/" className={styles.voltar}>← Voltar à lista</Link>
+        <Link href="/logistico" className={styles.voltar}>← Voltar à lista</Link>
         <p className={styles.estado}>Equipamento não encontrado.</p>
       </main>
     )
@@ -148,7 +148,7 @@ export default function DetalheEquipamento() {
       setAApagar(false)
       alert('Erro ao apagar: ' + error.message)
     } else {
-      router.push('/')
+      router.push('/logistico')
     }
   }
 
@@ -156,7 +156,7 @@ export default function DetalheEquipamento() {
 
   return (
     <main className={styles.page}>
-      <Link href="/" className={styles.voltar}>← Voltar à lista</Link>
+      <Link href="/logistico" className={styles.voltar}>← Voltar à lista</Link>
 
       <div className={styles.header}>
         <span className={styles.titulo}>{eq.modelo ?? 'Sem modelo'}</span>

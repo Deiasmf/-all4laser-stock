@@ -82,7 +82,6 @@ type FiltrosGuardados = {
   recAte: string
   envDe: string
   envAte: string
-  soIncompletos: boolean
 }
 
 // Lê os filtros guardados (uma vez, no arranque). Tolerante a dados inválidos.
@@ -120,7 +119,6 @@ export default function Home() {
   const [recAte, setRecAte] = useState(guardados.recAte ?? '')
   const [envDe, setEnvDe] = useState(guardados.envDe ?? '')
   const [envAte, setEnvAte] = useState(guardados.envAte ?? '')
-  const [soIncompletos, setSoIncompletos] = useState(guardados.soIncompletos ?? false)
 
   const [recolhidas, setRecolhidas] = useState<Set<string>>(new Set())
 
@@ -172,14 +170,14 @@ export default function Home() {
   useEffect(() => {
     const dados: FiltrosGuardados = {
       pesquisa, marca, modelo, ano, status, origem, destino,
-      recDe, recAte, envDe, envAte, soIncompletos,
+      recDe, recAte, envDe, envAte,
     }
     try {
       sessionStorage.setItem(CHAVE_FILTROS, JSON.stringify(dados))
     } catch {
       // sessionStorage indisponível (ex: modo privado) — ignora
     }
-  }, [pesquisa, marca, modelo, ano, status, origem, destino, recDe, recAte, envDe, envAte, soIncompletos])
+  }, [pesquisa, marca, modelo, ano, status, origem, destino, recDe, recAte, envDe, envAte])
 
   // Opções dos dropdowns (a partir dos dados carregados)
   const opcoes = useMemo(() => {
@@ -219,7 +217,6 @@ export default function Home() {
         if (!incluido(destino, clienteDe(e))) return false
         if (!noIntervalo(e.data_entrada, recDe, recAte)) return false
         if (!noIntervalo(e.data_saida, envDe, envAte)) return false
-        if (soIncompletos && camposEmFalta(e).length === 0) return false
         if (q) {
           const alvo = `${e.marca ?? ''} ${e.modelo ?? ''} ${modeloDe(e)} ${e.serial_number ?? ''} ${e.destino ?? ''} ${clienteDe(e)}`.toLowerCase()
           if (!alvo.includes(q)) return false
@@ -235,12 +232,7 @@ export default function Home() {
         if (mo !== 0) return mo
         return (a.serial_number ?? '').localeCompare(b.serial_number ?? '', 'pt')
       })
-  }, [todos, pesquisa, marca, modelo, ano, status, origem, destino, recDe, recAte, envDe, envAte, soIncompletos])
-
-  const totalIncompletos = useMemo(
-    () => todos.filter((e) => camposEmFalta(e).length > 0).length,
-    [todos]
-  )
+  }, [todos, pesquisa, marca, modelo, ano, status, origem, destino, recDe, recAte, envDe, envAte])
 
   // Se mudarem as marcas, remove os modelos escolhidos que já não pertencem às marcas
   function mudarMarca(novasMarcas: string[]) {
@@ -265,7 +257,6 @@ export default function Home() {
     setRecAte('')
     setEnvDe('')
     setEnvAte('')
-    setSoIncompletos(false)
   }
 
   const temFiltros =
@@ -276,8 +267,7 @@ export default function Home() {
     status.length > 0 ||
     origem.length > 0 ||
     destino.length > 0 ||
-    !!recDe || !!recAte || !!envDe || !!envAte ||
-    soIncompletos
+    !!recDe || !!recAte || !!envDe || !!envAte
 
   // Badge de completude da ficha de produto (verde/amarelo/vermelho)
   function badgeFicha(id: string) {
@@ -434,12 +424,6 @@ export default function Home() {
         </div>
       </div>
 
-      {totalIncompletos > 0 && !soIncompletos && (
-        <button className={styles.alertaIncompletos} onClick={() => setSoIncompletos(true)}>
-          ⚠ {totalIncompletos} equipamentos com informação em falta — clica para ver
-        </button>
-      )}
-
       <div className={styles.filtros}>
         <input
           className={styles.input}
@@ -455,14 +439,6 @@ export default function Home() {
         <FiltroMulti label="Destinos" opcoes={opcoes.destinos} selecionados={destino} onChange={setDestino} />
         <FiltroData label="Receção" de={recDe} ate={recAte} onChange={(d, a) => { setRecDe(d); setRecAte(a) }} />
         <FiltroData label="Envio" de={envDe} ate={envAte} onChange={(d, a) => { setEnvDe(d); setEnvAte(a) }} />
-        <label className={styles.checkbox}>
-          <input
-            type="checkbox"
-            checked={soIncompletos}
-            onChange={(e) => setSoIncompletos(e.target.checked)}
-          />
-          Só incompletos
-        </label>
         {temFiltros && (
           <button className={styles.btnLimpar} onClick={limparFiltros}>
             Limpar filtros
