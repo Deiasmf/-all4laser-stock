@@ -36,7 +36,7 @@ export default function NovoEquipamento() {
 
   return (
     <main className={styles.page}>
-      <Link href="/" className={styles.voltar}>← Cancelar e voltar à lista</Link>
+      <Link href="/logistico" className={styles.voltar}>← Cancelar e voltar à lista</Link>
       <EquipamentoForm
         titulo="Adicionar equipamento"
         textoBotao="Adicionar equipamento"
