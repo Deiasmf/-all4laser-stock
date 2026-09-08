@@ -323,6 +323,12 @@ export async function fecharMes(
     .select().single()
 }
 
+type ClienteEmbed = { nome: string | null } | { nome: string | null }[] | null
+function nomeEmbed(c: ClienteEmbed): string {
+  const emb = Array.isArray(c) ? c[0] : c
+  return emb?.nome ?? 'Cliente'
+}
+
 export async function listarAlugueresAtivos(): Promise<AluguerAtivoOpc[]> {
   const { data } = await supabase
     .from('alugueres')
@@ -330,12 +336,29 @@ export async function listarAlugueresAtivos(): Promise<AluguerAtivoOpc[]> {
     .is('data_recolha', null)
     .order('data_entrega', { ascending: false })
     .limit(300)
-  type ClienteEmbed = { nome: string | null } | { nome: string | null }[] | null
   type Row = { id: string; modelo: string | null; cliente_id: string | null; clientes: ClienteEmbed }
   return ((data as unknown as Row[]) ?? []).map((r) => {
-    const emb = Array.isArray(r.clientes) ? r.clientes[0] : r.clientes
-    const nome = emb?.nome ?? 'Cliente'
-    const label = [nome, r.modelo].filter(Boolean).join(' · ')
-    return { cliente_id: r.cliente_id, cliente_nome: nome, label }
+    const nome = nomeEmbed(r.clientes)
+    return { cliente_id: r.cliente_id, cliente_nome: nome, label: [nome, r.modelo].filter(Boolean).join(' · ') }
+  })
+}
+
+// Alugueres recolhidos nas últimas ~48h (para o "Recebi do cliente" — recebe-se o
+// dinheiro na altura da recolha). `data_recolha` é uma date, por isso a janela é
+// ontem + hoje. O rótulo inclui a data de recolha para desambiguar.
+export async function listarAlugueresRecolhidosRecentes(): Promise<AluguerAtivoOpc[]> {
+  const hoje = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Lisbon' })
+  const ontem = new Date(new Date(hoje).getTime() - 86400000).toISOString().slice(0, 10)
+  const { data } = await supabase
+    .from('alugueres')
+    .select('id, modelo, cliente_id, data_recolha, clientes(nome)')
+    .gte('data_recolha', ontem)
+    .order('data_recolha', { ascending: false })
+    .limit(300)
+  type Row = { id: string; modelo: string | null; cliente_id: string | null; data_recolha: string | null; clientes: ClienteEmbed }
+  return ((data as unknown as Row[]) ?? []).map((r) => {
+    const nome = nomeEmbed(r.clientes)
+    const dr = r.data_recolha ? (() => { const [, m, d] = r.data_recolha!.split('-'); return `recolhido ${d}/${m}` })() : null
+    return { cliente_id: r.cliente_id, cliente_nome: nome, label: [nome, r.modelo, dr].filter(Boolean).join(' · ') }
   })
 }
