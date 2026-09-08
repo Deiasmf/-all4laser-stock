@@ -10,6 +10,7 @@ import {
 } from '@/lib/neFluxo'
 import { CAIXAS_STANDARD } from '@/lib/caixas-standard'
 import NotaDetalhe from '@/components/NotaDetalhe'
+import RetrocederFluxo from '@/components/RetrocederFluxo'
 import type { NotaEncomenda } from '@/types/notaEncomenda'
 
 function formatarData(d: string | null) {
@@ -201,9 +202,17 @@ export default function EncaixotamentoPage() {
             <label style={c.campo}><span style={c.rot}>Notas</span>
               <textarea value={obs} onChange={(e) => setObs(e.target.value)} style={c.textarea} /></label>
 
-            <button onClick={concluir} disabled={aGuardar || numFotos < 1} style={{ ...c.btnPrimario, opacity: numFotos < 1 ? 0.5 : 1 }}>
-              {aGuardar ? 'A guardar...' : 'Concluir Encaixotamento'}
-            </button>
+            <div style={c.acoesFase}>
+              <RetrocederFluxo
+                nota={aberta}
+                faseAtual="logistica_encaixotamento"
+                autor={{ id: session?.user.id ?? null, nome: perfil?.nome ?? perfil?.email ?? null }}
+                onConcluido={() => { setAberta(null); carregar() }}
+              />
+              <button onClick={concluir} disabled={aGuardar || numFotos < 1} style={{ ...c.btnPrimario, opacity: numFotos < 1 ? 0.5 : 1 }}>
+                {aGuardar ? 'A guardar...' : 'Concluir Encaixotamento'}
+              </button>
+            </div>
             {numFotos < 1 && <span style={c.ajuda}>Adiciona pelo menos 1 foto para concluir.</span>}
           </div>
         </div>
@@ -244,5 +253,6 @@ const c: Record<string, React.CSSProperties> = {
   mini: { width: '100%', height: 84, objectFit: 'cover', display: 'block' },
   miniVideo: { display: 'flex', alignItems: 'center', justifyContent: 'center', height: 84, fontSize: 13, color: 'var(--primary)', textDecoration: 'none', background: 'var(--background)' },
   miniX: { position: 'absolute', top: 3, right: 3, width: 22, height: 22, borderRadius: 999, border: 'none', background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 15, lineHeight: 1, cursor: 'pointer' },
-  btnPrimario: { background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '12px 18px', fontWeight: 700, cursor: 'pointer', fontSize: 15, marginTop: 4 },
+  acoesFase: { display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', marginTop: 4 },
+  btnPrimario: { background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '12px 18px', fontWeight: 700, cursor: 'pointer', fontSize: 15 },
 }

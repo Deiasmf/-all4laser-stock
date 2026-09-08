@@ -8,6 +8,7 @@ import { listarNotasNaFase, concluirFase, type Fase } from '@/lib/neFluxo'
 import { folhasDaNota, temFolhaConcluida } from '@/lib/folhasObra'
 import { ESTADO_FOLHA_CONFIG, type FolhaObra } from '@/types/folhaObra'
 import NotaDetalhe from '@/components/NotaDetalhe'
+import RetrocederFluxo from '@/components/RetrocederFluxo'
 import type { NotaEncomenda } from '@/types/notaEncomenda'
 
 function formatarData(d: string | null) {
@@ -159,15 +160,23 @@ export default function NeFaseSimples({
               <textarea value={obs} onChange={(e) => setObs(e.target.value)} style={c.textarea} />
             </label>
 
-            <button
-              onClick={concluir}
-              disabled={aGuardar || (exigeFolhaObra && !folhaOk)}
-              style={{ ...c.btnPrimario, opacity: exigeFolhaObra && !folhaOk ? 0.5 : 1 }}
-            >
-              {aGuardar
-                ? 'A guardar...'
-                : (aberta.sem_preparacao_tecnica && botaoLabelSemTecnico) || botaoLabel}
-            </button>
+            <div style={c.acoesFase}>
+              <RetrocederFluxo
+                nota={aberta}
+                faseAtual={fase}
+                autor={{ id: session?.user.id ?? null, nome: perfil?.nome ?? perfil?.email ?? null }}
+                onConcluido={() => { setAberta(null); carregar() }}
+              />
+              <button
+                onClick={concluir}
+                disabled={aGuardar || (exigeFolhaObra && !folhaOk)}
+                style={{ ...c.btnPrimario, opacity: exigeFolhaObra && !folhaOk ? 0.5 : 1 }}
+              >
+                {aGuardar
+                  ? 'A guardar...'
+                  : (aberta.sem_preparacao_tecnica && botaoLabelSemTecnico) || botaoLabel}
+              </button>
+            </div>
             {exigeFolhaObra && !folhaOk && (
               <span style={c.ajuda}>Conclui a folha de obra desta nota para poder avançar.</span>
             )}
@@ -204,6 +213,7 @@ const c: Record<string, React.CSSProperties> = {
   rot: { color: 'var(--muted)', fontWeight: 700, fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.4 },
   textarea: { width: '100%', minHeight: 60, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--background)', color: 'var(--foreground)', font: 'inherit', resize: 'vertical' },
   ajuda: { fontSize: 12, color: 'var(--muted)' },
-  btnPrimario: { background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '12px 18px', fontWeight: 700, cursor: 'pointer', fontSize: 15, marginTop: 4 },
+  acoesFase: { display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', marginTop: 4 },
+  btnPrimario: { background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '12px 18px', fontWeight: 700, cursor: 'pointer', fontSize: 15 },
   btnSecundario: { background: 'var(--surface)', color: 'var(--primary)', border: '1px solid var(--primary)', borderRadius: 8, padding: '9px 14px', fontWeight: 700, cursor: 'pointer', fontSize: 14, alignSelf: 'flex-start' },
 }
