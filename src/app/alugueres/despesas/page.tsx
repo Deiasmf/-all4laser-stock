@@ -127,7 +127,7 @@ export default function MinhasDespesasPage() {
       {registar && perfil?.id && (
         <RegistarDespesa
           perfil={{ id: perfil.id, nome: autor.nome }}
-          tipos={tipos} alugueres={alugueres}
+          tipos={tipos} alugueres={alugueresRecolhidos}
           onConcluido={aoConcluir}
           onTipoCriado={(t) => setTipos((prev) => [...prev, t])}
           onFechar={() => setRegistar(false)}
