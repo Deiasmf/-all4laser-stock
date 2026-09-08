@@ -9,6 +9,22 @@ import type { EstadoPost } from '@/types/marketing'
 import EtiquetaPromocao from '@/components/EtiquetaPromocao'
 
 type FiltroPromo = 'todos' | 'organicas' | 'promover'
+type Ordem =
+  | 'criacao_desc'
+  | 'criacao_asc'
+  | 'prevista_asc'
+  | 'prevista_desc'
+  | 'numero_desc'
+  | 'titulo_asc'
+
+const ORDENS: [Ordem, string][] = [
+  ['criacao_desc', 'Mais recentes primeiro'],
+  ['criacao_asc', 'Mais antigas primeiro'],
+  ['prevista_asc', 'Data prevista (mais próxima)'],
+  ['prevista_desc', 'Data prevista (mais distante)'],
+  ['numero_desc', 'Número (maior primeiro)'],
+  ['titulo_asc', 'Título (A → Z)'],
+]
 
 const ESTADO_COR: Partial<Record<EstadoPost, { c: string; bg: string }>> = {
   idea: { c: '#6B7280', bg: '#F3F4F6' },
@@ -33,6 +49,7 @@ export default function PublicacoesPage() {
   const [canal, setCanal] = useState<string>('todos')
   const [mes, setMes] = useState('') // 'YYYY-MM'
   const [promo, setPromo] = useState<FiltroPromo>('todos')
+  const [ordem, setOrdem] = useState<Ordem>('criacao_desc')
   const canaisDisponiveis = useCanais()
   const { emoji } = resolverCanais(canaisDisponiveis)
 
@@ -48,6 +65,35 @@ export default function PublicacoesPage() {
     if (promo === 'promover' && p.estrategia_promocao === 'organica') return false
     const txt = `${p.titulo_interno} ${p.numero ?? ''} ${p.campanha_nome ?? ''}`.toLowerCase()
     return !q.trim() || txt.includes(q.toLowerCase())
+  })
+
+  // Ordena consoante a opção escolhida. Valores em falta ficam sempre no fim.
+  const semData = (v: string | null) => (v == null || v === '')
+  const ordenados = [...filtrados].sort((a, b) => {
+    switch (ordem) {
+      case 'criacao_asc':
+        return a.created_at.localeCompare(b.created_at)
+      case 'prevista_asc':
+      case 'prevista_desc': {
+        const av = a.data_prevista, bv = b.data_prevista
+        if (semData(av) && semData(bv)) return 0
+        if (semData(av)) return 1
+        if (semData(bv)) return -1
+        return ordem === 'prevista_asc' ? av!.localeCompare(bv!) : bv!.localeCompare(av!)
+      }
+      case 'numero_desc': {
+        const av = a.numero, bv = b.numero
+        if (semData(av) && semData(bv)) return 0
+        if (semData(av)) return 1
+        if (semData(bv)) return -1
+        return bv!.localeCompare(av!, 'pt-PT', { numeric: true })
+      }
+      case 'titulo_asc':
+        return a.titulo_interno.localeCompare(b.titulo_interno, 'pt-PT', { sensitivity: 'base' })
+      case 'criacao_desc':
+      default:
+        return b.created_at.localeCompare(a.created_at)
+    }
   })
 
   return (
@@ -89,20 +135,30 @@ export default function PublicacoesPage() {
         </label>
       </div>
 
-      <div style={{ ...s.pills, alignItems: 'center' }}>
-        <span style={s.filtroRotulo}>Tipo de promoção:</span>
-        {([['todos', 'Todas'], ['organicas', 'Orgânicas'], ['promover', 'A promover']] as [FiltroPromo, string][]).map(([v, label]) => (
-          <button key={v} onClick={() => setPromo(v)} style={{ ...s.pill, ...(promo === v ? s.pillOn : {}) }}>{label}</button>
-        ))}
+      <div style={s.filtros}>
+        <div style={{ ...s.pills, alignItems: 'center', marginBottom: 0 }}>
+          <span style={s.filtroRotulo}>Tipo de promoção:</span>
+          {([['todos', 'Todas'], ['organicas', 'Orgânicas'], ['promover', 'A promover']] as [FiltroPromo, string][]).map(([v, label]) => (
+            <button key={v} onClick={() => setPromo(v)} style={{ ...s.pill, ...(promo === v ? s.pillOn : {}) }}>{label}</button>
+          ))}
+        </div>
+        <label style={s.ordemLabel}>
+          Ordenar:
+          <select value={ordem} onChange={(e) => setOrdem(e.target.value as Ordem)} style={s.ordemSelect}>
+            {ORDENS.map(([v, label]) => (
+              <option key={v} value={v}>{label}</option>
+            ))}
+          </select>
+        </label>
       </div>
 
       {erro && <p style={{ ...s.estado, color: 'var(--danger)' }}>Erro: {erro}</p>}
       {carregando && <p style={s.estado}>A carregar…</p>}
-      {!carregando && !erro && filtrados.length === 0 && (
+      {!carregando && !erro && ordenados.length === 0 && (
         <p style={s.estado}>Sem publicações neste filtro. Cria uma com “+ Nova publicação”.</p>
       )}
 
-      {!carregando && !erro && filtrados.length > 0 && (
+      {!carregando && !erro && ordenados.length > 0 && (
         <table style={s.tabela}>
           <thead>
             <tr>
@@ -116,7 +172,7 @@ export default function PublicacoesPage() {
             </tr>
           </thead>
           <tbody>
-            {filtrados.map((p) => {
+            {ordenados.map((p) => {
               const cor = ESTADO_COR[p.estado_global] ?? ESTADO_COR.draft!
               return (
                 <tr key={p.id} style={s.tr} onClick={() => { window.location.href = `/marketing/publicacoes/${p.id}` }}>
@@ -149,6 +205,8 @@ const s: Record<string, React.CSSProperties> = {
   filtros: { display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
   filtroRotulo: { fontSize: 13, color: 'var(--muted)', fontWeight: 600, marginRight: 4 },
   mesLabel: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--muted)', marginBottom: 16 },
+  ordemLabel: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--muted)', fontWeight: 600 },
+  ordemSelect: { padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 8, font: 'inherit', background: '#fff', color: 'var(--fg)', cursor: 'pointer' },
   mesInput: { padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 8, font: 'inherit' },
   limparMes: { border: 'none', background: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: 12.5, textDecoration: 'underline' },
   pill: { border: '1px solid var(--border)', background: '#fff', borderRadius: 999, padding: '6px 14px', fontSize: 13, cursor: 'pointer', color: 'var(--muted)' },
