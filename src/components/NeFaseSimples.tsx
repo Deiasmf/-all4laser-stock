@@ -21,11 +21,13 @@ function formatarData(d: string | null) {
 // `exigeFolhaObra`, só conclui depois de existir uma folha de obra concluída
 // ligada à nota (fase técnica).
 export default function NeFaseSimples({
-  fase, titulo, botaoLabel, voltarHref, voltarLabel, exigeFolhaObra = false,
+  fase, titulo, botaoLabel, botaoLabelSemTecnico, voltarHref, voltarLabel, exigeFolhaObra = false,
 }: {
   fase: Fase
   titulo: string
   botaoLabel: string
+  // Rótulo alternativo quando a nota aberta salta a preparação técnica.
+  botaoLabelSemTecnico?: string
   voltarHref: string
   voltarLabel: string
   exigeFolhaObra?: boolean
@@ -121,6 +123,12 @@ export default function NeFaseSimples({
               <button onClick={() => setAberta(null)} style={c.fechar} aria-label="Fechar">×</button>
             </div>
 
+            {aberta.sem_preparacao_tecnica && (
+              <div style={c.avisoSemTecnico}>
+                ⚡ Sem preparação técnica — ao concluir segue direto para o encaixotamento.
+              </div>
+            )}
+
             <NotaDetalhe nota={aberta} />
 
             {exigeFolhaObra && (
@@ -156,7 +164,9 @@ export default function NeFaseSimples({
               disabled={aGuardar || (exigeFolhaObra && !folhaOk)}
               style={{ ...c.btnPrimario, opacity: exigeFolhaObra && !folhaOk ? 0.5 : 1 }}
             >
-              {aGuardar ? 'A guardar...' : botaoLabel}
+              {aGuardar
+                ? 'A guardar...'
+                : (aberta.sem_preparacao_tecnica && botaoLabelSemTecnico) || botaoLabel}
             </button>
             {exigeFolhaObra && !folhaOk && (
               <span style={c.ajuda}>Conclui a folha de obra desta nota para poder avançar.</span>
@@ -169,7 +179,7 @@ export default function NeFaseSimples({
 }
 
 const c: Record<string, React.CSSProperties> = {
-  page: { maxWidth: 1040, margin: '0 auto', padding: 20 },
+  page: { maxWidth: 1320, margin: '0 auto', padding: 20 },
   cabecalho: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, gap: 12 },
   titulo: { fontSize: 22, fontWeight: 700, color: 'var(--primary)' },
   voltar: { color: 'var(--muted)', textDecoration: 'none', fontSize: 14 },
@@ -183,6 +193,7 @@ const c: Record<string, React.CSSProperties> = {
   backdrop: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, zIndex: 50 },
   painel: { background: 'var(--surface)', borderRadius: 12, padding: 18, width: '100%', maxWidth: 560, display: 'flex', flexDirection: 'column', gap: 12, maxHeight: '92vh', overflowY: 'auto' },
   painelTopo: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 18, color: 'var(--primary)' },
+  avisoSemTecnico: { background: '#fdf2e3', color: '#8a5a08', border: '1px solid #f0c987', borderRadius: 8, padding: '9px 12px', fontSize: 13.5, fontWeight: 600 },
   fechar: { background: 'transparent', border: 'none', fontSize: 24, lineHeight: 1, cursor: 'pointer', color: 'var(--muted)' },
   folhaBloco: { display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--background)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 },
   folhaLista: { listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 },

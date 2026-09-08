@@ -43,6 +43,10 @@ export default function NotaDetalhe({ nota }: { nota: NotaEncomenda }) {
         <Campo r="Capas" v={nota.capas ?? '—'} />
       </div>
 
+      {nota.sem_preparacao_tecnica && (
+        <div style={s.semTecnico}>⚡ Sem preparação técnica (segue direto para encaixotamento)</div>
+      )}
+
       {nota.detalhes_tecnicos && (
         <div style={s.bloco}>
           <div style={s.rot}>Detalhes técnicos</div>
@@ -94,6 +98,7 @@ const s: Record<string, React.CSSProperties> = {
   valor: { fontSize: 14, color: 'var(--foreground)' },
   texto: { fontSize: 14, color: 'var(--foreground)', whiteSpace: 'pre-wrap' },
   vazio: { fontSize: 13, color: 'var(--muted)' },
+  semTecnico: { background: '#fdf2e3', color: '#8a5a08', border: '1px solid #f0c987', borderRadius: 8, padding: '8px 12px', fontSize: 13, fontWeight: 600 },
   catBloco: { display: 'flex', flexDirection: 'column', gap: 2 },
   catTitulo: { fontSize: 13, fontWeight: 700, color: 'var(--primary)' },
   lista: { margin: '2px 0 6px', paddingLeft: 18 },
