@@ -5,6 +5,8 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { CartaPorteExtraida, CampoCarta, Confianca } from '@/types/cartaPorte'
 import { CAMPOS_CARTA } from '@/types/cartaPorte'
+import type { DespesaExtraida, CampoDespesa } from '@/types/despesa'
+import { CAMPOS_DESPESA } from '@/types/despesa'
 
 export const MODELO_DOC = 'claude-sonnet-4-6'
 
@@ -171,6 +173,63 @@ export async function extrairCartaPorte(ficheiro: FicheiroDoc): Promise<CartaPor
     dimensoes: texto(dados.dimensoes),
     data_expedicao: texto(dados.data_expedicao),
     servico: texto(dados.servico),
+    confianca,
+  }
+}
+
+// ─── Extração específica: talão / fatura de despesa ──────────────────────────
+
+const TOOL_DESPESA: Anthropic.Tool = {
+  name: 'registar_despesa',
+  description: 'Regista os dados extraídos de um talão ou fatura de despesa.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      fornecedor: nulavel('Nome do estabelecimento/fornecedor (ex.: "Repsol", "Continente", "Hotel Ibis").'),
+      data_despesa: nulavel('Data da despesa no documento, em formato ISO yyyy-mm-dd.'),
+      valor: { type: ['number', 'null'], description: 'Valor TOTAL pago (com IVA incluído), em euros.' },
+      iva: { type: ['number', 'null'], description: 'Montante de IVA, se estiver visível no documento.' },
+      num_documento: nulavel('Número do talão/fatura, como aparece.'),
+      confianca: {
+        type: 'object',
+        description: 'Nível de confiança de cada campo: alta, media ou baixa.',
+        properties: Object.fromEntries(CAMPOS_DESPESA.map((c) => [c, nivel])),
+      },
+    },
+    required: [...CAMPOS_DESPESA, 'confianca'],
+  },
+}
+
+const SISTEMA_DESPESA = `És um assistente que extrai dados de talões e faturas de despesas da All4laser,
+empresa portuguesa. Lês o documento (foto ou PDF) e extrais os campos pedidos EXATAMENTE como
+aparecem, sem inventar. Valores em euros com ponto decimal. O "valor" é o TOTAL pago (com IVA).
+Datas em formato ISO yyyy-mm-dd. Se um campo não existir ou não for legível, devolve null. Indica a
+confiança de cada campo: alta (claro e legível), media (parcial/ambíguo), baixa (ilegível ou deduzido).`
+
+const INSTRUCAO_DESPESA =
+  'Extrai os dados deste talão/fatura de despesa e regista-os com o nível de confiança de cada campo.'
+
+export async function extrairDespesa(ficheiro: FicheiroDoc): Promise<DespesaExtraida> {
+  const dados = await chamarExtracao(ficheiro, {
+    sistema: SISTEMA_DESPESA,
+    tool: TOOL_DESPESA,
+    instrucao: INSTRUCAO_DESPESA,
+    maxTokens: 1024,
+  })
+
+  const confRaw = (dados.confianca ?? {}) as Record<string, unknown>
+  const confianca: Partial<Record<CampoDespesa, Confianca>> = {}
+  for (const c of CAMPOS_DESPESA) {
+    const v = texto(confRaw[c])
+    if (v === 'alta' || v === 'media' || v === 'baixa') confianca[c] = v
+  }
+
+  return {
+    fornecedor: texto(dados.fornecedor),
+    data_despesa: texto(dados.data_despesa),
+    valor: numero(dados.valor),
+    iva: numero(dados.iva),
+    num_documento: texto(dados.num_documento),
     confianca,
   }
 }
