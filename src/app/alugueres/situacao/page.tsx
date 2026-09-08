@@ -12,7 +12,7 @@ import { listarClientesPicker, type EntidadeOpc } from '@/lib/contasCorrentes'
 import {
   carregarSituacaoAlugueres, carregarDisponiveis, guardarFichaSituacao, apagarFichaSituacao,
   procurarEquipamentosEmStock, colocarEmAluguer, terminarAluguer, listarEstadosDestino, propagarPack, totalMensalComPacks,
-  STATUS_ALUGUER_NAC, STATUS_ALUGUER_INT,
+  STATUS_ALUGUER_NAC, STATUS_ALUGUER_INT, definirQuadroPorStatus,
   classificar, inicioEfetivo, duracaoTexto, diasAte, alertaDe,
   type SituacaoAluguer, type Disponiveis, type EquipDisponivel, type FichaPatch, type Mercado, type EquipEmStock,
 } from '@/lib/situacaoAlugueres'
@@ -192,7 +192,7 @@ export default function SituacaoAtualPage() {
   return (
     <main style={c.page}>
       <div style={c.cabecalho}>
-        <h1 style={c.titulo}>Situação atual</h1>
+        <h1 style={c.titulo}>Lasers em aluguer</h1>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <button style={c.btnNovo} onClick={() => setNovo(true)}>＋ Novo aluguer</button>
           <Link href="/" style={c.voltar}>← Stock</Link>
@@ -478,7 +478,9 @@ function ModalFicha({ situacao, packsExistentes, zonasExistentes, onFechar, onGu
   const [clientes, setClientes] = useState<EntidadeOpc[]>([])
   const [clienteId, setClienteId] = useState(situacao.cliente_id ?? '')
   const [clienteNome, setClienteNome] = useState(situacao.cliente_nome ?? '')
-  const [mercado, setMercado] = useState<'' | Mercado>(situacao.mercado ?? '')
+  // O quadro (Nacional/Internacional) segue o STATUS do equipamento.
+  const quadroAtual: Mercado = classificar(situacao) === 'internacional' ? 'internacional' : 'nacional'
+  const [mercado, setMercado] = useState<Mercado>(quadroAtual)
   const [inicio, setInicio] = useState(situacao.data_inicio ?? situacao.data_saida ?? '')
   const [renovacao, setRenovacao] = useState(situacao.renovacao_automatica)
   const [fim, setFim] = useState(situacao.data_fim_prevista ?? '')
@@ -504,10 +506,6 @@ function ModalFicha({ situacao, packsExistentes, zonasExistentes, onFechar, onGu
     setClienteId(m?.id ?? '')
   }
 
-  // País do cliente escolhido (para o texto "Automático") — do picker ou da própria ficha.
-  const paisClienteEscolhido = (clientes.find((c2) => c2.id === clienteId)?.pais ?? (clienteId ? situacao.cliente_pais : null) ?? '').trim() || null
-  const paisClienteEhPT = ['portugal', 'pt'].includes((paisClienteEscolhido ?? '').toLowerCase())
-
   async function guardar() {
     setErro(null)
     if (fim && inicio && fim < inicio) return setErro('O fim previsto não pode ser anterior ao início.')
@@ -531,6 +529,17 @@ function ModalFicha({ situacao, packsExistentes, zonasExistentes, onFechar, onGu
     }
     const { error } = await guardarFichaSituacao(situacao.equipamento_id, patch, autor)
     if (error) { setAGuardar(false); return setErro('Erro ao guardar: ' + error.message) }
+
+    // Mudar de quadro = mudar o STATUS do equipamento. Se mudou, recarrega (a linha
+    // passa para o outro quadro).
+    if (mercado !== quadroAtual) {
+      const { error: eq } = await definirQuadroPorStatus(situacao.equipamento_id, mercado)
+      if (eq) { setAGuardar(false); return setErro('Erro ao mudar de quadro: ' + eq.message) }
+      setAGuardar(false)
+      onFechar()
+      onRecarregar()
+      return
+    }
     // Pack: aplica valor/cliente/mercado/zona a todos os equipamentos do mesmo pack e recarrega.
     if (packTrim) {
       const { error: e2 } = await propagarPack(packTrim, { valor_mensal: valorNum, cliente_id: clienteId || null, mercado: mercado || null, zona: zonaTrim }, autor)
@@ -613,12 +622,14 @@ function ModalFicha({ situacao, packsExistentes, zonasExistentes, onFechar, onGu
           {zonasExistentes.map((z) => <option key={z} value={z} />)}
         </datalist>
 
-        <label style={c.label}>Mercado (quadro)</label>
-        <select style={c.input} value={mercado} onChange={(e) => setMercado(e.target.value as '' | Mercado)}>
-          <option value="">Automático — pelo país do cliente{paisClienteEscolhido ? ` (${paisClienteEscolhido} → ${paisClienteEhPT ? 'Nacional' : 'Internacional'})` : ' (sem país → Por classificar)'}</option>
-          <option value="nacional">🇵🇹 Nacional (forçar)</option>
-          <option value="internacional">🌍 Internacional (forçar)</option>
+        <label style={c.label}>Quadro (segue o status do equipamento)</label>
+        <select style={c.input} value={mercado} onChange={(e) => setMercado(e.target.value as Mercado)}>
+          <option value="nacional">🇵🇹 Nacional</option>
+          <option value="internacional">🌍 Internacional</option>
         </select>
+        {mercado !== quadroAtual && (
+          <span style={c.notaLigacao}>Ao guardar, o status passa a &quot;Aluguer {mercado}&quot; e o equipamento muda para o quadro {mercado === 'internacional' ? 'Internacionais' : 'Nacionais'}.</span>
+        )}
 
         <label style={c.label}>Localização (cidade / país)</label>
         <input style={c.input} value={local} onChange={(e) => setLocal(e.target.value)} placeholder="Ex.: Porto, Portugal" />
