@@ -9,7 +9,7 @@ import { useAuth } from '@/lib/auth'
 import RegistarDespesa from '@/components/despesas/RegistarDespesa'
 import {
   listarTipos, listarMinhasDespesas, apagarDespesa, atualizarDespesa,
-  listarMeusFundos, criarFundo, apagarFundo, calcularExtrato,
+  listarMeusFundosDoColaborador, criarFundo, apagarFundo, calcularExtrato,
   listarAlugueresAtivos, urlFotoDespesa, listarFotosDespesa, mesCorrente, mesFechado,
 } from '@/lib/despesas'
 import type { Despesa, DespesaTipo, Fundo, AluguerAtivoOpc, TipoFundo } from '@/types/despesa'
@@ -18,7 +18,8 @@ const eur = (v: number) => v.toLocaleString('pt-PT', { style: 'currency', curren
 const dataPt = (d: string) => { const [a, m, dia] = d.split('-'); return dia ? `${dia}/${m}/${a}` : d }
 
 export default function MinhasDespesasPage() {
-  const { perfil } = useAuth()
+  const { perfil, isFinanceiro } = useAuth()
+  const uid = perfil?.id ?? null
   const autor = useMemo(() => ({ id: perfil?.id ?? null, nome: perfil?.nome ?? perfil?.email ?? null }), [perfil])
 
   const [mes, setMes] = useState(mesCorrente())
@@ -35,10 +36,13 @@ export default function MinhasDespesasPage() {
   const nomeTipo = (id: string | null) => tipos.find((t) => t.id === id)?.nome ?? '—'
 
   const carregar = useCallback(async () => {
+    if (!uid) return
     setCarregando(true)
-    const [ds, fs, fch] = await Promise.all([listarMinhasDespesas(mes), listarMeusFundos(mes), mesFechado(mes)])
+    const [ds, fs, fch] = await Promise.all([
+      listarMinhasDespesas(uid, mes), listarMeusFundosDoColaborador(uid, mes), mesFechado(mes),
+    ])
     setDespesas(ds); setFundos(fs); setFechado(fch); setCarregando(false)
-  }, [mes])
+  }, [mes, uid])
 
   useEffect(() => {
     listarTipos().then(setTipos)
@@ -72,7 +76,10 @@ export default function MinhasDespesasPage() {
           <h1 style={c.titulo}>Despesas de Alugueres</h1>
           <Link href="/alugueres" style={c.voltar}>← Alugueres</Link>
         </div>
-        <button style={c.btnRegistar} onClick={() => setRegistar(true)}>➕ Registar Despesa</button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {isFinanceiro && <Link href="/alugueres/despesas/gestao" style={c.btnGestao}>📊 Gestão</Link>}
+          <button style={c.btnRegistar} onClick={() => setRegistar(true)}>➕ Registar Despesa</button>
+        </div>
       </div>
 
       {msg && <div style={c.ok}>{msg}</div>}
@@ -355,6 +362,7 @@ const c: Record<string, React.CSSProperties> = {
   titulo: { fontSize: 22, fontWeight: 700, color: 'var(--primary)', margin: '0 0 4px' },
   voltar: { color: 'var(--muted)', textDecoration: 'none', fontSize: 14 },
   btnRegistar: { background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 10, padding: '12px 18px', fontWeight: 700, cursor: 'pointer', fontSize: 15 },
+  btnGestao: { background: '#fff', color: 'var(--primary)', border: '1px solid var(--primary)', borderRadius: 10, padding: '12px 16px', fontWeight: 700, cursor: 'pointer', fontSize: 15, textDecoration: 'none' },
   ok: { background: '#e6f7f1', color: '#00875f', border: '1px solid #00A87A', borderRadius: 8, padding: '10px 12px', fontSize: 14, fontWeight: 600, marginBottom: 14 },
   secao: { marginBottom: 22 },
   secaoTopo: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' },
