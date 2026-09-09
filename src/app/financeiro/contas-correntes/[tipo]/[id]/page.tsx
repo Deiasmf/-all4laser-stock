@@ -9,6 +9,7 @@ import {
   type MovimentoCC, type EntidadeTipo, type LinhaExtrato,
 } from '@/lib/contasCorrentes'
 import { categoriaInfo } from '@/lib/categorizacaoFinanceira'
+import { alocacoesBancariasPorFatura, type OrigemBanco } from '@/lib/conciliacaoBancaria'
 
 export default function ExtratoEntidadePage() {
   const params = useParams<{ tipo: string; id: string }>()
@@ -16,13 +17,18 @@ export default function ExtratoEntidadePage() {
   const id = params.id
 
   const [movs, setMovs] = useState<MovimentoCC[]>([])
+  const [mapaBanco, setMapaBanco] = useState<Map<string, OrigemBanco[]>>(new Map())
   const [carregando, setCarregando] = useState(true)
   const [de, setDe] = useState('')
   const [ate, setAte] = useState('')
   const [estado, setEstado] = useState('')
 
   const recarregar = useCallback(async () => {
-    setMovs(await movimentosDaEntidade(tipo, id))
+    const m = await movimentosDaEntidade(tipo, id)
+    setMovs(m)
+    // Rastreio (origem "banco"): pagamentos vindos da conciliação bancária.
+    const faturaIds = m.filter((x) => x.tipo_documento === 'fatura').map((x) => x.id)
+    setMapaBanco(await alocacoesBancariasPorFatura(faturaIds))
     setCarregando(false)
   }, [tipo, id])
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -107,14 +113,14 @@ export default function ExtratoEntidadePage() {
             <span style={{ textAlign: 'center' }}>Estado</span>
             <span style={{ textAlign: 'center' }}>Pagamento</span>
           </div>
-          {linhas.map((l) => <LinhaMov key={l.id} l={l} aoMudar={recarregar} />)}
+          {linhas.map((l) => <LinhaMov key={l.id} l={l} banco={mapaBanco.get(l.id)} aoMudar={recarregar} />)}
         </div>
       )}
     </main>
   )
 }
 
-function LinhaMov({ l, aoMudar }: { l: LinhaExtrato; aoMudar: () => Promise<void> }) {
+function LinhaMov({ l, banco, aoMudar }: { l: LinhaExtrato; banco?: OrigemBanco[]; aoMudar: () => Promise<void> }) {
   const td = tipoDocInfo(l.tipo_documento)
   const cat = categoriaInfo(l.categoria)
   const proForma = l.tipo_documento === 'pro_forma'
@@ -139,6 +145,11 @@ function LinhaMov({ l, aoMudar }: { l: LinhaExtrato; aoMudar: () => Promise<void
         {cat && <span style={{ ...c.badge, color: cat.cor, background: cat.bg, marginLeft: 6 }}>{cat.icon} {cat.label}</span>}
         {proForma && <span style={c.notas} title="A pró-forma não entra no saldo da conta corrente"> · fora do saldo</span>}
         {l.notas && <span style={c.notas} title={l.notas}> · {l.notas}</span>}
+        {banco && banco.length > 0 && (
+          <span style={c.banco} title={banco.map((b) => `${b.conta_nome} · ${formatarData(b.data)}: ${b.descritivo} (${formatarEuro(b.valor_aplicado)})`).join('\n')}>
+            {' '}· 🏦 banco {formatarData(banco[0].data)}{banco.length > 1 ? ` (+${banco.length - 1})` : ''}
+          </span>
+        )}
       </span>
       <span style={c.muted}>{formatarData(l.data_vencimento)}</span>
       <span style={{ textAlign: 'right' }}>{l.valor_debito ? formatarEuro(l.valor_debito) : '—'}</span>
@@ -188,5 +199,6 @@ const c: Record<string, React.CSSProperties> = {
   cab: { fontWeight: 700, color: 'var(--muted)', fontSize: 12, borderBottom: '2px solid var(--border)' },
   muted: { color: 'var(--muted)', fontSize: 13 },
   notas: { color: 'var(--muted)', fontSize: 12.5 },
+  banco: { color: '#065F46', fontSize: 12, fontWeight: 600, whiteSpace: 'pre-line' },
   badge: { fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '2px 8px', whiteSpace: 'nowrap' },
 }
