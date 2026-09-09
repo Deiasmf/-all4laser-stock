@@ -62,6 +62,8 @@ next-env.d.ts
 *.xlsx
 *.xls
 _pecas_*.*
+# exemplos com dados reais (ex.: extratos bancários) — nunca versionar
+/exemplos/
 
 # Documentos de origem locais (não versionar)
 *.pdf
