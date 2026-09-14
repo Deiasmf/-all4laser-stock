@@ -128,6 +128,14 @@ export default function EquipaPage() {
                         <button style={c.btnSecMini} onClick={() => setAnexosAberto((v) => (v === t.id ? null : t.id))} title="Ver anexos">📎</button>
                       </div>
                       {t.descricao && <div style={c.desc}>{t.descricao}</div>}
+                      {(t.etiquetas.length > 0 || t.sub.total > 0) && (
+                        <div style={c.metaLinha}>
+                          {t.etiquetas.map((e) => (
+                            <span key={e.id} style={{ ...c.chip, color: e.cor, background: `${e.cor}1A` }}>{e.nome}</span>
+                          ))}
+                          {t.sub.total > 0 && <span style={c.subProg}>☑ {t.sub.feitas}/{t.sub.total} subtarefas</span>}
+                        </div>
+                      )}
                       <div style={c.assignees}>
                         {t.assignees.length === 0 ? <span style={c.muted}>Sem destinatários.</span> : t.assignees.map((a) => {
                           const ei = estadoInfo(a.estado, estados)
@@ -183,6 +191,9 @@ const c: Record<string, React.CSSProperties> = {
   prazo: { fontSize: 12.5, color: 'var(--muted)', whiteSpace: 'nowrap' },
   prazoAtraso: { color: '#B91C1C', fontWeight: 700 },
   desc: { color: 'var(--muted)', fontSize: 13, marginTop: 4, whiteSpace: 'pre-wrap' },
+  metaLinha: { display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 },
+  chip: { borderRadius: 999, padding: '2px 8px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' },
+  subProg: { fontSize: 11.5, color: 'var(--muted)', fontWeight: 600 },
   assignees: { display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 },
   assignee: { fontSize: 12.5, background: '#f4f5f7', borderRadius: 999, padding: '3px 10px', color: '#374151' },
   assigneeCurso: { background: '#FEF3C7', color: '#92400E' },

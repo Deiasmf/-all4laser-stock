@@ -91,6 +91,7 @@ export type Tarefa = {
   descricao: string | null
   prioridade: Prioridade
   data_limite: string | null
+  notas: string | null            // anotações (HTML simples), autosave
   created_at: string
   updated_at: string
 }
@@ -103,16 +104,49 @@ export type Assignee = {
   aguarda_o_que: string | null
 }
 
-// Uma tarefa como o próprio utilizador a vê (com o SEU estado).
+// Etiqueta (multi por tarefa, gerível por staff). notion_tag_name liga à tag do
+// Notion (Parte B). "ordem" ordena a lista de etiquetas.
+export type Etiqueta = {
+  id: string
+  nome: string
+  cor: string
+  notion_tag_name: string | null
+  ordem: number
+  ativo: boolean
+}
+
+// Subtarefa (checklist dentro de uma tarefa).
+export type Subtarefa = {
+  id: string
+  task_id: string
+  titulo: string
+  concluida: boolean
+  concluida_em: string | null
+  ordem: number
+  created_at: string
+}
+
+export type SubProgresso = { feitas: number; total: number }
+
+// Uma tarefa como o próprio utilizador a vê (com o SEU estado) + campos "Notion".
 export type MinhaTarefa = Tarefa & {
   assigneeId: string
   meuEstado: EstadoTarefa
   meuConcluidaEm: string | null
   meuAguardaOQue: string | null
+  ordemManual: number | null
+  etiquetas: Etiqueta[]
+  sub: SubProgresso
+  anexos: number
 }
 
-// Uma tarefa com todos os destinatários (para o acompanhamento do admin).
-export type TarefaComAssignees = Tarefa & { assignees: Assignee[] }
+// Uma tarefa com todos os destinatários (para o acompanhamento do admin/equipa).
+export type TarefaComAssignees = Tarefa & {
+  assignees: Assignee[]
+  etiquetas: Etiqueta[]
+  sub: SubProgresso
+  anexos: number
+}
 
 export type TarefaInput = {
   titulo: string
@@ -163,28 +197,114 @@ export function ordenarTarefas<T extends { prioridade: string; data_limite: stri
   })
 }
 
+// ─── Badge de prazo (hoje / amanhã / atrasada) ───────────────────────────────
+export type PrazoBadge = { texto: string; cor: string; bg: string }
+
+// Devolve um badge com cor quando o prazo é hoje, amanhã ou já passou (e a
+// tarefa não está concluída). Para datas mais longínquas devolve null (a vista
+// mostra a data normal).
+export function prazoBadge(dataLimite: string | null, concluida = false): PrazoBadge | null {
+  if (!dataLimite || concluida) return null
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0)
+  const d = new Date(dataLimite + 'T00:00:00')
+  const dias = Math.round((d.getTime() - hoje.getTime()) / 86400000)
+  if (dias < 0) return { texto: 'Atrasada', cor: '#B91C1C', bg: '#FEF2F2' }
+  if (dias === 0) return { texto: 'Hoje', cor: '#B45309', bg: '#FEF3C7' }
+  if (dias === 1) return { texto: 'Amanhã', cor: '#1E40AF', bg: '#DBEAFE' }
+  return null
+}
+
 // ─── Tarefas ─────────────────────────────────────────────────────────────────
 
-// As minhas tarefas (onde sou destinatário), já com o meu estado.
+// Etiquetas de várias tarefas de uma vez → mapa task_id → Etiqueta[] (ordenadas).
+async function etiquetasPorTarefa(taskIds: string[]): Promise<Map<string, Etiqueta[]>> {
+  const mapa = new Map<string, Etiqueta[]>()
+  if (taskIds.length === 0) return mapa
+  const { data } = await supabase.from('user_task_etiquetas')
+    .select('task_id, task_etiquetas(id, nome, cor, notion_tag_name, ordem, ativo)')
+    .in('task_id', taskIds)
+  const linhas = (data as unknown as { task_id: string; task_etiquetas: Etiqueta | null }[]) ?? []
+  for (const l of linhas) {
+    if (!l.task_etiquetas) continue
+    const arr = mapa.get(l.task_id) ?? []
+    arr.push(l.task_etiquetas)
+    mapa.set(l.task_id, arr)
+  }
+  for (const arr of mapa.values()) arr.sort((a, b) => a.ordem - b.ordem)
+  return mapa
+}
+
+// Progresso de subtarefas de várias tarefas → mapa task_id → {feitas, total}.
+async function subProgressoPorTarefa(taskIds: string[]): Promise<Map<string, SubProgresso>> {
+  const mapa = new Map<string, SubProgresso>()
+  if (taskIds.length === 0) return mapa
+  const { data } = await supabase.from('user_task_subtarefas')
+    .select('task_id, concluida').in('task_id', taskIds)
+  for (const l of (data as { task_id: string; concluida: boolean }[]) ?? []) {
+    const cur = mapa.get(l.task_id) ?? { feitas: 0, total: 0 }
+    cur.total++
+    if (l.concluida) cur.feitas++
+    mapa.set(l.task_id, cur)
+  }
+  return mapa
+}
+
+// Nº de anexos por tarefa → mapa task_id → contagem (para a coluna "Anexos").
+async function anexosPorTarefa(taskIds: string[]): Promise<Map<string, number>> {
+  const mapa = new Map<string, number>()
+  if (taskIds.length === 0) return mapa
+  const { data } = await supabase.from('user_task_attachments')
+    .select('task_id').in('task_id', taskIds)
+  for (const l of (data as { task_id: string }[]) ?? []) {
+    mapa.set(l.task_id, (mapa.get(l.task_id) ?? 0) + 1)
+  }
+  return mapa
+}
+
+const SEM_SUB: SubProgresso = { feitas: 0, total: 0 }
+
+// As minhas tarefas (onde sou destinatário), já com o meu estado, etiquetas e
+// progresso de subtarefas.
 export async function listarMinhasTarefas(userId: string): Promise<MinhaTarefa[]> {
   const { data } = await supabase
     .from('user_task_assignees')
-    .select('id, estado, concluida_em, aguarda_o_que, user_tasks(*)')
+    .select('id, estado, concluida_em, aguarda_o_que, ordem_manual, user_tasks(*)')
     .eq('user_id', userId)
-  const linhas = (data as unknown as { id: string; estado: EstadoTarefa; concluida_em: string | null; aguarda_o_que: string | null; user_tasks: Tarefa | null }[]) ?? []
-  return linhas
-    .filter((l) => l.user_tasks)
-    .map((l) => ({ ...(l.user_tasks as Tarefa), assigneeId: l.id, meuEstado: l.estado, meuConcluidaEm: l.concluida_em, meuAguardaOQue: l.aguarda_o_que }))
+  const linhas = (data as unknown as { id: string; estado: EstadoTarefa; concluida_em: string | null; aguarda_o_que: string | null; ordem_manual: number | null; user_tasks: Tarefa | null }[]) ?? []
+  const validas = linhas.filter((l) => l.user_tasks)
+  const ids = validas.map((l) => (l.user_tasks as Tarefa).id)
+  const [etiquetas, sub, anexos] = await Promise.all([
+    etiquetasPorTarefa(ids), subProgressoPorTarefa(ids), anexosPorTarefa(ids),
+  ])
+  return validas.map((l) => {
+    const t = l.user_tasks as Tarefa
+    return {
+      ...t,
+      assigneeId: l.id, meuEstado: l.estado, meuConcluidaEm: l.concluida_em,
+      meuAguardaOQue: l.aguarda_o_que, ordemManual: l.ordem_manual,
+      etiquetas: etiquetas.get(t.id) ?? [], sub: sub.get(t.id) ?? SEM_SUB,
+      anexos: anexos.get(t.id) ?? 0,
+    }
+  })
 }
 
-// Acompanhamento (admin): todas as tarefas com todos os destinatários.
+// Acompanhamento (equipa): todas as tarefas com todos os destinatários + etiquetas
+// e progresso de subtarefas.
 export async function listarTodasTarefas(): Promise<TarefaComAssignees[]> {
   const { data } = await supabase
     .from('user_tasks')
     .select('*, user_task_assignees(id, user_id, estado, concluida_em, aguarda_o_que)')
     .order('created_at', { ascending: false })
   const linhas = (data as unknown as (Tarefa & { user_task_assignees: Assignee[] | null })[]) ?? []
-  return linhas.map((t) => ({ ...t, assignees: t.user_task_assignees ?? [] }))
+  const ids = linhas.map((t) => t.id)
+  const [etiquetas, sub, anexos] = await Promise.all([
+    etiquetasPorTarefa(ids), subProgressoPorTarefa(ids), anexosPorTarefa(ids),
+  ])
+  return linhas.map((t) => ({
+    ...t, assignees: t.user_task_assignees ?? [],
+    etiquetas: etiquetas.get(t.id) ?? [], sub: sub.get(t.id) ?? SEM_SUB,
+    anexos: anexos.get(t.id) ?? 0,
+  }))
 }
 
 export async function criarTarefa(input: TarefaInput, createdBy: string) {
@@ -231,6 +351,106 @@ export async function notificarConclusaoTarefa(taskId: string): Promise<void> {
 
 export async function apagarTarefa(id: string) {
   return supabase.from('user_tasks').delete().eq('id', id)   // cascata: destinatários + comentários
+}
+
+// Guarda as anotações (HTML simples) da tarefa. Usado pelo autosave do editor.
+export async function guardarNotas(taskId: string, notas: string | null) {
+  return supabase.from('user_tasks').update({ notas }).eq('id', taskId)
+}
+
+// ─── Ordem manual da MINHA lista (vista "Lista", arrasto) ────────────────────
+// Recebe os assigneeId pela ordem desejada e grava ordem_manual = índice.
+export async function reordenarMinhasTarefas(assigneeIdsOrdenados: string[]) {
+  await Promise.all(
+    assigneeIdsOrdenados.map((id, i) =>
+      supabase.from('user_task_assignees').update({ ordem_manual: i }).eq('id', id),
+    ),
+  )
+}
+
+// ─── Preferência de vista (tabela | lista) por utilizador ────────────────────
+export type Vista = 'tabela' | 'lista'
+
+export async function obterVista(userId: string): Promise<Vista> {
+  const { data } = await supabase.from('user_task_prefs')
+    .select('vista').eq('user_id', userId).maybeSingle()
+  return ((data as { vista: Vista } | null)?.vista) ?? 'tabela'
+}
+
+export async function guardarVista(userId: string, vista: Vista) {
+  return supabase.from('user_task_prefs')
+    .upsert({ user_id: userId, vista, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
+}
+
+// ─── Etiquetas (geríveis por staff) ──────────────────────────────────────────
+
+export async function listarEtiquetas(incluirInativas = false): Promise<Etiqueta[]> {
+  let q = supabase.from('task_etiquetas')
+    .select('id, nome, cor, notion_tag_name, ordem, ativo')
+    .order('ordem', { ascending: true })
+  if (!incluirInativas) q = q.eq('ativo', true)
+  const { data } = await q
+  return (data as Etiqueta[]) ?? []
+}
+
+export async function criarEtiqueta(nome: string, cor: string) {
+  return supabase.from('task_etiquetas')
+    .insert({ nome: nome.trim(), cor }).select().single()
+}
+
+export async function atualizarEtiqueta(id: string, patch: Partial<Pick<Etiqueta, 'nome' | 'cor' | 'ordem' | 'ativo'>>) {
+  return supabase.from('task_etiquetas').update(patch).eq('id', id)
+}
+
+// "Apagar" = arquivar (ativo=false), para não partir tarefas que a usam.
+export async function arquivarEtiqueta(id: string) {
+  return supabase.from('task_etiquetas').update({ ativo: false }).eq('id', id)
+}
+
+export async function ligarEtiqueta(taskId: string, etiquetaId: string) {
+  return supabase.from('user_task_etiquetas')
+    .upsert({ task_id: taskId, etiqueta_id: etiquetaId }, { onConflict: 'task_id,etiqueta_id' })
+}
+
+export async function desligarEtiqueta(taskId: string, etiquetaId: string) {
+  return supabase.from('user_task_etiquetas')
+    .delete().eq('task_id', taskId).eq('etiqueta_id', etiquetaId)
+}
+
+// ─── Subtarefas (checklist) ──────────────────────────────────────────────────
+
+export async function listarSubtarefas(taskId: string): Promise<Subtarefa[]> {
+  const { data } = await supabase.from('user_task_subtarefas')
+    .select('id, task_id, titulo, concluida, concluida_em, ordem, created_at')
+    .eq('task_id', taskId)
+    .order('ordem', { ascending: true })
+  return (data as Subtarefa[]) ?? []
+}
+
+export async function criarSubtarefa(taskId: string, titulo: string, ordem: number, createdBy: string | null) {
+  return supabase.from('user_task_subtarefas')
+    .insert({ task_id: taskId, titulo: titulo.trim(), ordem, created_by: createdBy })
+    .select().single()
+}
+
+export async function renomearSubtarefa(id: string, titulo: string) {
+  return supabase.from('user_task_subtarefas').update({ titulo: titulo.trim() }).eq('id', id)
+}
+
+export async function toggleSubtarefa(id: string, concluida: boolean) {
+  return supabase.from('user_task_subtarefas')
+    .update({ concluida, concluida_em: concluida ? new Date().toISOString() : null })
+    .eq('id', id)
+}
+
+export async function apagarSubtarefa(id: string) {
+  return supabase.from('user_task_subtarefas').delete().eq('id', id)
+}
+
+export async function reordenarSubtarefas(idsOrdenados: string[]) {
+  await Promise.all(
+    idsOrdenados.map((id, i) => supabase.from('user_task_subtarefas').update({ ordem: i }).eq('id', id)),
+  )
 }
 
 // ─── Comentários (respostas) ─────────────────────────────────────────────────
