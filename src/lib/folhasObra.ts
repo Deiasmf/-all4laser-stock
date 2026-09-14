@@ -217,10 +217,13 @@ export async function pesquisarEquipamentos(q: string): Promise<EquipOpc[]> {
 
 export type TecnicoOpc = { id: string; nome: string | null; email: string | null }
 
+// Só os perfis marcados como técnico (profiles.e_tecnico) — não a app toda.
+// Quem deixa de ser técnico mantém a conta e os acessos; só sai desta lista.
 export async function listarTecnicos(): Promise<TecnicoOpc[]> {
   const { data } = await supabase
     .from('profiles')
     .select('id, nome, email')
+    .eq('e_tecnico', true)
     .order('nome', { nullsFirst: false })
   return (data as TecnicoOpc[]) ?? []
 }

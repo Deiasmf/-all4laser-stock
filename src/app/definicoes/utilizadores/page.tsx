@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth, type Role } from '@/lib/auth'
 
-type Utilizador = { id: string; nome: string | null; email: string | null; role: string }
+type Utilizador = { id: string; nome: string | null; email: string | null; role: string; e_tecnico: boolean }
 
 const ROLES: { valor: Role; label: string; cor: string; bg: string; ajuda: string }[] = [
   { valor: 'admin', label: 'Administrador', cor: '#7C2D12', bg: '#FEF3C7', ajuda: 'Acesso total, incluindo Financeiro e gestão de utilizadores.' },
@@ -24,7 +24,7 @@ export default function GestaoUtilizadoresPage() {
   const [msg, setMsg] = useState<string | null>(null)
 
   const carregar = useCallback(async () => {
-    const { data } = await supabase.from('profiles').select('id, nome, email, role').order('nome')
+    const { data } = await supabase.from('profiles').select('id, nome, email, role, e_tecnico').order('nome')
     setLista((data as Utilizador[]) ?? [])
     setCarregando(false)
   }, [])
@@ -32,6 +32,20 @@ export default function GestaoUtilizadoresPage() {
   // setState corre só após o await dentro de carregar()
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { if (isGestorUtilizadores) carregar() }, [isGestorUtilizadores, carregar])
+
+  // Marca/desmarca quem aparece na lista de Técnico (Folhas de Obra, Comissões).
+  // Não mexe no acesso à app: desmarcar não apaga nem bloqueia o utilizador.
+  async function mudarTecnico(u: Utilizador, e_tecnico: boolean) {
+    setAGuardar(u.id); setMsg(null)
+    const { error } = await supabase.rpc('admin_set_tecnico', { p_user_id: u.id, p_e_tecnico: e_tecnico })
+    if (error) {
+      setMsg('⚠️ ' + error.message)
+    } else {
+      setMsg(`✅ ${u.nome ?? u.email} ${e_tecnico ? 'passa a constar' : 'deixa de constar'} na lista de técnicos.`)
+      await carregar()
+    }
+    setAGuardar(null)
+  }
 
   async function mudarRole(u: Utilizador, novo: string) {
     if (novo === u.role) return
@@ -54,7 +68,7 @@ export default function GestaoUtilizadoresPage() {
     <main style={c.page}>
       <div style={c.cabecalho}>
         <h1 style={c.titulo}>👤 Gestão de Utilizadores</h1>
-        <p style={c.sub}>Atribui o role de cada membro da equipa. Só os administradores veem este ecrã.</p>
+        <p style={c.sub}>Atribui o role de cada membro da equipa e marca quem é técnico. Só os administradores veem este ecrã.</p>
       </div>
 
       {msg && <div style={c.aviso}>{msg}</div>}
@@ -67,6 +81,10 @@ export default function GestaoUtilizadoresPage() {
             <span style={c.muted}>{r.ajuda}</span>
           </span>
         ))}
+        <span style={c.legendaItem}>
+          <span style={{ ...c.badge, color: '#1D4ED8', background: '#DBEAFE' }}>Técnico</span>
+          <span style={c.muted}>Aparece na lista de Técnico das Folhas de Obra e das Comissões. Desmarcar não retira o acesso à app.</span>
+        </span>
       </div>
 
       {carregando ? (
@@ -79,6 +97,7 @@ export default function GestaoUtilizadoresPage() {
             <span>Nome</span>
             <span>Email</span>
             <span>Role</span>
+            <span>Técnico</span>
           </div>
           {lista.map((u) => {
             const euProprio = u.id === perfil?.id
@@ -101,6 +120,15 @@ export default function GestaoUtilizadoresPage() {
                     {ROLES.map((r) => <option key={r.valor} value={r.valor}>{r.label}</option>)}
                   </select>
                 </span>
+                <label style={c.tecnicoCelula} title="Aparece na lista de Técnico das Folhas de Obra e das Comissões.">
+                  <input
+                    type="checkbox"
+                    checked={u.e_tecnico}
+                    disabled={aGuardar === u.id}
+                    onChange={(e) => mudarTecnico(u, e.target.checked)}
+                  />
+                  <span style={c.muted}>Técnico</span>
+                </label>
               </div>
             )
           })}
@@ -120,9 +148,10 @@ const c: Record<string, React.CSSProperties> = {
   legenda: { display: 'flex', flexDirection: 'column', gap: 6, background: 'var(--accent-bg, #eef1f6)', borderRadius: 10, padding: 12, marginBottom: 14 },
   legendaItem: { display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, flexWrap: 'wrap' },
   tabela: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 8, overflowX: 'auto' },
-  linha: { display: 'grid', gridTemplateColumns: '1.3fr 1.6fr 1.4fr', gap: 8, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center', minWidth: 620 },
+  linha: { display: 'grid', gridTemplateColumns: '1.3fr 1.6fr 1.4fr 0.7fr', gap: 8, padding: '10px 8px', fontSize: 14, borderBottom: '1px solid #f2f2f2', alignItems: 'center', minWidth: 700 },
   cab: { fontWeight: 700, color: 'var(--muted)', fontSize: 12, borderBottom: '2px solid var(--border)' },
   badge: { fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '2px 10px', whiteSpace: 'nowrap' },
   euTag: { color: 'var(--muted)', fontWeight: 400, fontSize: 12 },
   select: { padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13 },
+  tecnicoCelula: { display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' },
 }

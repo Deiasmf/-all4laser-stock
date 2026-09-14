@@ -19,6 +19,12 @@ Regras técnicas:
 - No frontend (src/lib/auth.tsx): `isAdmin` significa "staff (pode gerir)", NÃO o role admin;
   para a Gestão de Utilizadores usar `isGestorUtilizadores` (= role 'admin')
 
+**Quem é técnico** é independente do role: `profiles.e_tecnico` (só admin marca, RPC
+`admin_set_tecnico`, no mesmo ecrã /definicoes/utilizadores). É esta flag que alimenta a
+lista "Técnico" das Folhas de Obra e das Comissões (`listarTecnicos()`), que antes mostrava
+toda a app. Desmarcar NÃO apaga nem bloqueia o utilizador — só o tira dessa lista; as FO
+antigas mantêm o técnico já gravado.
+
 ## Módulo Tracking (Área Administrativa)
 Separador `/admin-dept/tracking`: todos os envios com tracking / AWB / carta de porte.
 Acesso: todo o staff (`is_staff()` via `has_administrativo_access()`). Código em

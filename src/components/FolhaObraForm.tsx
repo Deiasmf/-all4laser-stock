@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFormDraft, RascunhoAviso } from '@/lib/useFormDraft'
 import {
   listarTecnicos, pesquisarClientes, pesquisarEquipamentos,
@@ -99,6 +99,14 @@ export default function FolhaObraForm({ inicial, submitLabel, aGuardar, erro, on
     return () => { activo = false }
   }, [])
 
+  // A lista só traz quem está marcado como técnico. Se esta FO já tinha outro
+  // técnico atribuído (de antes), mantemo-lo como opção para não o perder ao gravar.
+  const opcoesTecnicos = useMemo<TecnicoOpc[]>(() => {
+    const anterior = inicial?.tecnico_id
+    if (!anterior || tecnicos.some((t) => t.id === anterior)) return tecnicos
+    return [...tecnicos, { id: anterior, nome: inicial?.tecnico_nome ?? null, email: null }]
+  }, [tecnicos, inicial?.tecnico_id, inicial?.tecnico_nome])
+
   const mostrarAlex = forcarAlex || ehCandelaAlex(equipamentoModelo)
 
   function escolherCliente(c: ClienteOpc) {
@@ -156,7 +164,7 @@ export default function FolhaObraForm({ inicial, submitLabel, aGuardar, erro, on
   function submeter() {
     setErroLocal(null)
     if (!dataIntervencao) { setErroLocal('Indica a data da intervenção.'); return }
-    const tecnico = tecnicos.find((t) => t.id === tecnicoId)
+    const tecnico = opcoesTecnicos.find((t) => t.id === tecnicoId)
     const input: FolhaInput = {
       data_intervencao: dataIntervencao,
       cliente_id: clienteId,
@@ -202,7 +210,7 @@ export default function FolhaObraForm({ inicial, submitLabel, aGuardar, erro, on
           <Campo rotulo="Técnico">
             <select value={tecnicoId} onChange={(e) => setTecnicoId(e.target.value)} style={f.input}>
               <option value="">—</option>
-              {tecnicos.map((t) => <option key={t.id} value={t.id}>{t.nome ?? t.email}</option>)}
+              {opcoesTecnicos.map((t) => <option key={t.id} value={t.id}>{t.nome ?? t.email ?? '—'}</option>)}
             </select>
           </Campo>
           <Campo rotulo="Estado">
