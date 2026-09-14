@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import { listarTemplates, atualizarTemplate, obterSettings, atualizarSettings } from '@/lib/freight'
 import { remetenteValido, type FreightEmailTemplate, type IdiomaFreight } from '@/types/freight'
+import { obterConfigAssinatura, atualizarAssinaturaDoGmail, guardarAssinaturaManual, type EmailConfig } from '@/lib/emailAssinaturaClient'
 
 const PLACEHOLDERS = ['saudacao', 'tipo', 'origem', 'destino', 'datas', 'tabela_volumes', 'extras', 'prazo_resposta']
 
@@ -14,11 +15,16 @@ export default function TemplatesPage() {
   const [dias, setDias] = useState(3)
   const [remetentesTexto, setRemetentesTexto] = useState('')
   const [toast, setToast] = useState<string | null>(null)
+  const [assinatura, setAssinatura] = useState<EmailConfig | null>(null)
+  const [assinaturaManual, setAssinaturaManual] = useState('')
+  const [sigOcupado, setSigOcupado] = useState(false)
 
   const carregar = useCallback(async () => {
     setTemplates(await listarTemplates())
     const st = await obterSettings()
     if (st) { setDias(st.dias_uteis_alerta); setRemetentesTexto((st.remetentes ?? []).join(', ')) }
+    const r = await obterConfigAssinatura()
+    if (r.ok && r.config) { setAssinatura(r.config); setAssinaturaManual(r.config.assinatura_manual_html ?? '') }
   }, [])
   useEffect(() => { carregar() }, [carregar])
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 3000); return () => clearTimeout(t) }, [toast])
@@ -37,6 +43,21 @@ export default function TemplatesPage() {
     if (remetentes.length === 0) { setToast('Indica pelo menos um remetente.'); return }
     const { error } = await atualizarSettings(dias, remetentes)
     setToast(error ? 'Erro: ' + error.message : 'Configuração guardada.')
+  }
+
+  async function atualizarDoGmail() {
+    setSigOcupado(true)
+    const r = await atualizarAssinaturaDoGmail()
+    setSigOcupado(false)
+    setToast(r.ok ? 'Assinatura atualizada a partir do Gmail.' : 'Erro: ' + (r.erro ?? ''))
+    if (r.ok) await carregar()
+  }
+  async function guardarManual() {
+    setSigOcupado(true)
+    const r = await guardarAssinaturaManual(assinaturaManual)
+    setSigOcupado(false)
+    setToast(r.ok ? 'Assinatura manual guardada.' : 'Erro: ' + (r.erro ?? ''))
+    if (r.ok) await carregar()
   }
 
   if (perfilCarregado && !isAdministrativo) return <main style={c.page}><p style={c.muted}>Sem acesso.</p></main>
@@ -75,6 +96,21 @@ export default function TemplatesPage() {
         <div style={c.acoes}><button style={c.btnPrimario} onClick={guardarConfig}>Guardar configuração</button></div>
       </section>
 
+      <section style={c.card}>
+        <h2 style={c.h2}>Assinatura dos emails</h2>
+        <p style={c.dica}>Assinatura única usada no fim de todos os emails enviados pela app (cotações, fichas, faturas de aluguer, avisos). Fonte atual: <strong>{assinatura?.fonte === 'gmail' ? 'Gmail (comercial@)' : 'manual'}</strong>{assinatura?.atualizada_em ? ` · atualizada ${new Date(assinatura.atualizada_em).toLocaleString('pt-PT')}` : ''}.</p>
+
+        <div style={c.sigPreviewRot}><span style={c.rot}>Pré-visualização (em uso)</span></div>
+        <div style={c.sigPreview} dangerouslySetInnerHTML={{ __html: assinatura?.assinatura_html || '<span style="color:#999">(vazia)</span>' }} />
+
+        <div style={c.acoes}>
+          <button style={c.btnSec} disabled={sigOcupado} onClick={atualizarDoGmail}>{sigOcupado ? 'A obter…' : '↻ Atualizar do Gmail'}</button>
+        </div>
+        <p style={c.dica}>Se o botão der erro de permissão, é preciso acrescentar o scope <code style={c.code}>gmail.settings.basic</code> à delegação da Service Account no Google Admin. Em alternativa, cola aqui o HTML da assinatura:</p>
+        <textarea style={c.textarea} value={assinaturaManual} placeholder="<div>...HTML da assinatura...</div>" onChange={(e) => setAssinaturaManual(e.target.value)} />
+        <div style={c.acoes}><button style={c.btnPrimario} disabled={sigOcupado} onClick={guardarManual}>Guardar assinatura manual</button></div>
+      </section>
+
       {toast && <div style={c.toast}>{toast}</div>}
     </main>
   )
@@ -95,6 +131,9 @@ const c: Record<string, React.CSSProperties> = {
   textarea: { padding: '10px', border: '1px solid #d1d5db', borderRadius: 8, font: 'inherit', minHeight: 220, fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 13 },
   acoes: { display: 'flex', justifyContent: 'flex-end' },
   btnPrimario: { padding: '8px 14px', border: 'none', borderRadius: 8, background: '#111827', color: '#fff', fontWeight: 700, cursor: 'pointer', font: 'inherit' },
+  btnSec: { padding: '8px 14px', border: '1px solid #d1d5db', borderRadius: 8, background: '#fff', fontWeight: 600, cursor: 'pointer', font: 'inherit' },
+  sigPreviewRot: { marginTop: 4 },
+  sigPreview: { border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, background: '#fafafa', minHeight: 40 },
   muted: { color: 'var(--muted)', padding: 24, textAlign: 'center' },
   toast: { position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', background: '#111827', color: '#fff', padding: '10px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, zIndex: 60 },
 }

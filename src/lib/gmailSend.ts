@@ -77,7 +77,26 @@ function encodeAssunto(assunto: string): string {
 
 export type AnexoGmail = { filename: string; contentBase64: string; mimeType?: string }
 
-function construirMime(opts: { de: string; para: string[]; cc?: string[]; assunto: string; corpoTexto: string; anexos?: AnexoGmail[] }): string {
+// Parte multipart/alternative (texto + HTML) — os clientes escolhem a versão.
+function parteAlternativa(corpoTexto: string, corpoHtml: string, boundary: string): string[] {
+  return [
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    '',
+    `--${boundary}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    'Content-Transfer-Encoding: base64',
+    '',
+    Buffer.from(corpoTexto, 'utf8').toString('base64'),
+    `--${boundary}`,
+    'Content-Type: text/html; charset="UTF-8"',
+    'Content-Transfer-Encoding: base64',
+    '',
+    Buffer.from(corpoHtml, 'utf8').toString('base64'),
+    `--${boundary}--`,
+  ]
+}
+
+function construirMime(opts: { de: string; para: string[]; cc?: string[]; assunto: string; corpoTexto: string; corpoHtml?: string; anexos?: AnexoGmail[] }): string {
   const cabecalho = [
     `From: ${opts.de}`,
     `To: ${opts.para.join(', ')}`,
@@ -85,25 +104,22 @@ function construirMime(opts: { de: string; para: string[]; cc?: string[]; assunt
     `Subject: ${encodeAssunto(opts.assunto)}`,
     'MIME-Version: 1.0',
   ]
+  const temHtml = !!(opts.corpoHtml && opts.corpoHtml.trim())
   const corpoB64 = Buffer.from(opts.corpoTexto, 'utf8').toString('base64')
+  const rnd = () => crypto.randomBytes(12).toString('hex')
 
+  // Sem anexos: corpo simples (texto) ou alternativo (texto+HTML).
   if (!opts.anexos?.length) {
+    if (temHtml) return [...cabecalho, ...parteAlternativa(opts.corpoTexto, opts.corpoHtml!, `alt_${rnd()}`)].join('\r\n')
     return [...cabecalho, 'Content-Type: text/plain; charset="UTF-8"', 'Content-Transfer-Encoding: base64', '', corpoB64].join('\r\n')
   }
 
-  // multipart/mixed: corpo de texto + anexos.
-  const b = `a4l_${crypto.randomBytes(12).toString('hex')}`
+  // Com anexos: multipart/mixed { corpo (texto ou texto+HTML) + anexos }.
+  const b = `mix_${rnd()}`
   const wrap = (s: string) => s.replace(/(.{76})/g, '$1\r\n')
-  const partes: string[] = [
-    ...cabecalho,
-    `Content-Type: multipart/mixed; boundary="${b}"`,
-    '',
-    `--${b}`,
-    'Content-Type: text/plain; charset="UTF-8"',
-    'Content-Transfer-Encoding: base64',
-    '',
-    corpoB64,
-  ]
+  const partes: string[] = [...cabecalho, `Content-Type: multipart/mixed; boundary="${b}"`, '', `--${b}`]
+  if (temHtml) partes.push(...parteAlternativa(opts.corpoTexto, opts.corpoHtml!, `alt_${rnd()}`))
+  else partes.push('Content-Type: text/plain; charset="UTF-8"', 'Content-Transfer-Encoding: base64', '', corpoB64)
   for (const a of opts.anexos) {
     partes.push(
       `--${b}`,
@@ -134,6 +150,7 @@ export async function enviarGmail(opts: {
   cc?: string[]
   assunto: string
   corpoTexto: string
+  corpoHtml?: string        // se presente, envia multipart/alternative (texto + HTML)
   remetente?: string
   anexos?: AnexoGmail[]
 }): Promise<ResultadoGmail> {
@@ -149,7 +166,7 @@ export async function enviarGmail(opts: {
   const de = `All4laser <${remetente}>`
   try {
     const token = await obterAccessToken(sa, remetente)
-    const raw = base64url(construirMime({ de, para, cc, assunto: opts.assunto, corpoTexto: opts.corpoTexto, anexos: opts.anexos }))
+    const raw = base64url(construirMime({ de, para, cc, assunto: opts.assunto, corpoTexto: opts.corpoTexto, corpoHtml: opts.corpoHtml, anexos: opts.anexos }))
     const r = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },

@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { enviarGmail } from '@/lib/gmailSend'
+import { obterAssinaturaHtml, corpoHtmlComAssinatura } from '@/lib/emailAssinatura'
 import {
   render, varsAssunto, moradaOrigem, moradaDestino, datasTexto, extrasTexto,
   tabelaVolumesEmail, tipoTransporteAdjetivo, remetenteValido,
@@ -59,8 +60,9 @@ export async function POST(req: Request) {
     return Response.json({ ok: false, erro: 'Sem permissão.' }, { status: 403 })
   }
 
-  // 3) Corpo do pedido.
-  let corpo: { requestId?: string; recipientIds?: string[] }
+  // 3) Corpo do pedido. Aceita assunto/corpo já EDITADOS na pré-visualização
+  //    (o corpo editado mantém o token {{saudacao}}, substituído por transitário).
+  let corpo: { requestId?: string; recipientIds?: string[]; assunto?: string; corpo?: string }
   try { corpo = await req.json() } catch { return Response.json({ ok: false, erro: 'JSON inválido.' }, { status: 400 }) }
   const requestId = corpo.requestId
   if (!requestId) return Response.json({ ok: false, erro: 'Falta requestId.' }, { status: 400 })
@@ -88,8 +90,11 @@ export async function POST(req: Request) {
   if (destinatarios.length === 0) return Response.json({ ok: false, erro: 'Sem destinatários pendentes.' }, { status: 400 })
 
   // 5) Variáveis comuns do corpo (as específicas do destinatário juntam-se no loop).
-  const assunto = (pedido.assunto_email && pedido.assunto_email.trim())
+  const assunto = (corpo.assunto && corpo.assunto.trim())
+    || (pedido.assunto_email && pedido.assunto_email.trim())
     || render(template.assunto_template, varsAssunto(pedido))
+  // Corpo base: o editado na pré-visualização (se veio) ou o template.
+  const baseCorpo = (typeof corpo.corpo === 'string' && corpo.corpo.trim()) ? corpo.corpo : template.corpo_template
   // Remetente do pedido (validado); só contas @all4laser.com podem ser
   // personificadas. Fallback seguro para comercial@ se estiver em falta/inválido.
   const remetente = remetenteValido(pedido.remetente) ? pedido.remetente!.trim() : 'comercial@all4laser.com'
@@ -102,16 +107,18 @@ export async function POST(req: Request) {
     extras: extrasTexto(pedido, pedido.idioma),
     prazo_resposta: prazoRespostaData(dias),
   }
+  const assinatura = await obterAssinaturaHtml(db)   // fonte única (Gmail/manual)
 
   // 6) Envio individual, com throttling e retry.
   const resultados: { id: string; ok: boolean; erro?: string }[] = []
   for (let i = 0; i < destinatarios.length; i++) {
     const d = destinatarios[i]
-    const corpoEmail = render(template.corpo_template, { ...varsComuns, saudacao: d.saudacao ?? d.nome_empresa ?? '' })
+    const corpoEmail = render(baseCorpo, { ...varsComuns, saudacao: d.saudacao ?? d.nome_empresa ?? '' })
+    const corpoHtml = corpoHtmlComAssinatura(corpoEmail, assinatura)   // corpo em HTML + assinatura única
 
     let ok = false, erroEnvio: string | undefined, messageId: string | undefined, threadId: string | undefined
     for (let tentativa = 1; tentativa <= TENTATIVAS_MAX && !ok; tentativa++) {
-      const r = await enviarGmail({ para: d.emails, assunto, corpoTexto: corpoEmail, remetente })
+      const r = await enviarGmail({ para: d.emails, assunto, corpoTexto: corpoEmail, corpoHtml, remetente })
       if (r.ok) { ok = true; messageId = r.messageId; threadId = r.threadId }
       else { erroEnvio = r.erro; if (tentativa < TENTATIVAS_MAX) await sleep(400) }
     }
@@ -123,6 +130,8 @@ export async function POST(req: Request) {
       enviado_em: ok ? new Date().toISOString() : d.enviado_em,
       gmail_message_id: messageId ?? d.gmail_message_id,
       gmail_thread_id: threadId ?? d.gmail_thread_id,
+      assunto_final: assunto,      // texto EXATO que seguiu para este destinatário
+      corpo_final: corpoEmail,
     }).eq('id', d.id)
 
     resultados.push({ id: d.id, ok, erro: ok ? undefined : erroEnvio })

@@ -332,10 +332,12 @@ export async function listarEnviosEquipamento(equipamentoId: string): Promise<En
 export function emailFichaDefault(idioma: string, nomeEquip: string): { assunto: string; corpo: string } {
   const n = nomeEquip || 'equipamento'
   switch (idioma) {
-    case 'en': return { assunto: `All4laser – ${n}`, corpo: `Hello,\n\nPlease find attached the product sheet for the ${n}. We remain at your disposal for any questions or to arrange a viewing.\n\nBest regards,\nAll4laser Sales Team` }
-    case 'es': return { assunto: `All4laser – ${n}`, corpo: `Buenas tardes,\n\nAdjuntamos la ficha del equipo ${n}. Quedamos a su disposición para cualquier aclaración o para concertar una visita.\n\nUn cordial saludo,\nEquipo Comercial All4laser` }
-    case 'fr': return { assunto: `All4laser – ${n}`, corpo: `Bonjour,\n\nVeuillez trouver ci-joint la fiche de l'équipement ${n}. Nous restons à votre disposition pour toute question ou pour organiser une visite.\n\nCordialement,\nÉquipe Commerciale All4laser` }
-    default: return { assunto: `All4laser – ${n}`, corpo: `Boa tarde,\n\nConforme o interesse demonstrado, segue em anexo a ficha do equipamento ${n}. Ficamos ao dispor para qualquer esclarecimento ou para agendar uma visita.\n\nCom os melhores cumprimentos,\nEquipa Comercial All4laser` }
+    // Nota: a assinatura vem da fonte única (email_config) e é acrescentada no
+    // envio; por isso o texto default termina no cumprimento, sem repetir a empresa.
+    case 'en': return { assunto: `All4laser – ${n}`, corpo: `Hello,\n\nPlease find attached the product sheet for the ${n}. We remain at your disposal for any questions or to arrange a viewing.\n\nBest regards,` }
+    case 'es': return { assunto: `All4laser – ${n}`, corpo: `Buenas tardes,\n\nAdjuntamos la ficha del equipo ${n}. Quedamos a su disposición para cualquier aclaración o para concertar una visita.\n\nUn cordial saludo,` }
+    case 'fr': return { assunto: `All4laser – ${n}`, corpo: `Bonjour,\n\nVeuillez trouver ci-joint la fiche de l'équipement ${n}. Nous restons à votre disposition pour toute question ou pour organiser une visite.\n\nCordialement,` }
+    default: return { assunto: `All4laser – ${n}`, corpo: `Boa tarde,\n\nConforme o interesse demonstrado, segue em anexo a ficha do equipamento ${n}. Ficamos ao dispor para qualquer esclarecimento ou para agendar uma visita.\n\nCom os melhores cumprimentos,` }
   }
 }
 export function labelFichaOnline(idioma: string): string {

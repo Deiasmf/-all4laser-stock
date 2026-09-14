@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { enviarGmail } from '@/lib/gmailSend'
+import { obterAssinaturaHtml, corpoHtmlComAssinatura } from '@/lib/emailAssinatura'
 import {
   render, periodoDoMes, nFaturaDoNome, formatarValor,
   type FaturaEmailVars, type TemplateChave,
@@ -60,6 +61,7 @@ export async function POST(req: Request) {
   for (const t of (tmplRows as { chave: string; assunto_template: string; corpo_template: string }[] | null) ?? []) {
     templates.set(t.chave, t)
   }
+  const assinatura = await obterAssinaturaHtml(db)   // assinatura única (após o bloco do colaborador)
 
   const resultados: { faturacaoId: string; estado: 'enviado' | 'falhou'; motivo?: string }[] = []
 
@@ -130,7 +132,7 @@ export async function POST(req: Request) {
       let enviado = false, ultimoErro = '', msgId: string | undefined, threadId: string | undefined
       for (let tent = 0; tent < TENTATIVAS_MAX && !enviado; tent++) {
         if (tent > 0) await sleep(400)
-        const r = await enviarGmail({ para: [para], cc, assunto: assunto!, corpoTexto: corpo!, anexos: [{ filename: nomeFicheiro, contentBase64: base64, mimeType: mime }] })
+        const r = await enviarGmail({ para: [para], cc, assunto: assunto!, corpoTexto: corpo!, corpoHtml: corpoHtmlComAssinatura(corpo!, assinatura), anexos: [{ filename: nomeFicheiro, contentBase64: base64, mimeType: mime }] })
         if (r.ok) { enviado = true; msgId = r.messageId; threadId = r.threadId }
         else { ultimoErro = r.erro ?? 'Falha no envio.'; if (!r.configurado) break }
       }
