@@ -58,6 +58,7 @@ export default function DetalhePedidoPage() {
   const [pedido, setPedido] = useState<FreightRequest | null>(null)
   const [editor, setEditor] = useState<EstadoEditor | null>(null)
   const [assunto, setAssunto] = useState('')
+  const [corpoEditado, setCorpoEditado] = useState<string | null>(null)  // corpo editado à mão (mantém {{saudacao}})
   const [boxes, setBoxes] = useState<StandardBox[]>([])
   const [templates, setTemplates] = useState<FreightEmailTemplate[]>([])
   const [grupos, setGrupos] = useState<ForwarderGroup[]>([])
@@ -115,10 +116,10 @@ export default function DetalhePedidoPage() {
     return render(template.assunto_template, varsAssunto(editor.pedido))
   }, [editor, template])
 
-  // Pré-visualização (usa o 1.º destinatário como exemplo de saudação).
-  const preview = useMemo(() => {
-    if (!editor || !template) return null
-    const exemplo = destinatarios[0]
+  // Corpo BASE: template já com os dados do pedido, mas mantendo {{saudacao}}
+  // (substituída por transitário no envio).
+  const corpoBase = useMemo(() => {
+    if (!editor || !template) return ''
     const vars: Record<string, string> = {
       tipo: tipoTransporteAdjetivo(editor.pedido.tipo_transporte),
       origem: moradaOrigem(editor.pedido),
@@ -127,13 +128,24 @@ export default function DetalhePedidoPage() {
       tabela_volumes: tabelaVolumesEmail(editor.linhas, editor.pedido.idioma),
       extras: extrasTexto(editor.pedido, editor.pedido.idioma),
       prazo_resposta: diasUteisAhead(diasAlerta),
-      saudacao: exemplo?.saudacao ?? exemplo?.nome_empresa ?? '[nome do transitário]',
+      saudacao: '{{saudacao}}',
     }
+    return render(template.corpo_template, vars)
+  }, [editor, template, diasAlerta])
+
+  // Corpo em uso = o editado à mão (se houver) ou o base.
+  const corpoEfetivo = corpoEditado ?? corpoBase
+
+  // Pré-visualização (usa o 1.º destinatário como exemplo de saudação).
+  const preview = useMemo(() => {
+    if (!editor || !template) return null
+    const exemplo = destinatarios[0]
+    const saud = exemplo?.saudacao ?? exemplo?.nome_empresa ?? '[nome do transitário]'
     return {
       assunto: (assunto.trim() || assuntoSugerido),
-      corpo: render(template.corpo_template, vars),
+      corpo: corpoEfetivo.replace(/\{\{\s*saudacao\s*\}\}/g, saud),
     }
-  }, [editor, template, destinatarios, assunto, assuntoSugerido, diasAlerta])
+  }, [editor, template, destinatarios, assunto, assuntoSugerido, corpoEfetivo])
 
   const fechado = pedido?.estado === 'fechado' || pedido?.estado === 'cancelado'
   const nomeForwarder = (fid: string | null) => forwarders.find((f) => f.id === fid)?.nome ?? '—'
@@ -212,7 +224,7 @@ export default function DetalhePedidoPage() {
       const r = await fetch('/api/freight/send', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requestId: id, recipientIds }),
+        body: JSON.stringify({ requestId: id, recipientIds, assunto: (assunto.trim() || assuntoSugerido), corpo: corpoEfetivo }),
       })
       const j = await r.json()
       if (!r.ok || !j.ok) setToast('Envio: ' + (j.erro ?? `erro ${r.status}`))
@@ -350,13 +362,17 @@ export default function DetalhePedidoPage() {
           </div>
         )}
 
-        {/* Pré-visualização */}
+        {/* Pré-visualização com edição livre (aplica-se a este envio; o template não muda) */}
         {preview && (
           <details style={c.preview}>
-            <summary style={c.previewSum}>Pré-visualização do email</summary>
+            <summary style={c.previewSum}>Pré-visualização do email (editável)</summary>
             <div style={c.previewBox}>
               <div style={c.previewAssunto}><strong>Assunto:</strong> {preview.assunto}</div>
-              <pre style={c.previewCorpo}>{preview.corpo}</pre>
+              <div style={c.previewNota}>
+                Corpo editável para este envio. <code style={c.code}>{'{{saudacao}}'}</code> é substituído pela saudação de cada transitário.
+                {corpoEditado != null && <button type="button" style={c.linkBtn} onClick={() => setCorpoEditado(null)}>repor do template</button>}
+              </div>
+              <textarea style={c.previewEditor} value={corpoEfetivo} onChange={(e) => setCorpoEditado(e.target.value)} />
             </div>
           </details>
         )}
@@ -486,6 +502,10 @@ const c: Record<string, React.CSSProperties> = {
   previewBox: { marginTop: 8 },
   previewAssunto: { fontSize: 13, marginBottom: 8 },
   previewCorpo: { whiteSpace: 'pre-wrap', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 12, background: '#fff', border: '1px solid #eee', borderRadius: 6, padding: 10, margin: 0, overflowX: 'auto' },
+  previewNota: { fontSize: 12, color: 'var(--muted)', marginBottom: 6 },
+  previewEditor: { width: '100%', minHeight: 260, boxSizing: 'border-box', whiteSpace: 'pre-wrap', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 12.5, background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, padding: 10 },
+  code: { background: '#F3F4F6', borderRadius: 4, padding: '1px 5px', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 11.5 },
+  linkBtn: { background: 'none', border: 'none', color: '#2563EB', cursor: 'pointer', fontSize: 12, padding: 0, marginLeft: 6, textDecoration: 'underline' },
   tabelaWrap: { overflowX: 'auto' },
   tabela: { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
   th: { textAlign: 'left', padding: '8px', borderBottom: '2px solid #eee', color: 'var(--muted)', whiteSpace: 'nowrap', fontWeight: 700 },
