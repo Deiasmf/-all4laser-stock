@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { enviarGmail, type AnexoGmail } from '@/lib/gmailSend'
+import { obterAssinaturaHtml, corpoHtmlComAssinatura } from '@/lib/emailAssinatura'
 
 // Envio da ficha de produto por email (Gmail comercial@). O PDF é gerado no
 // cliente (jsPDF) e enviado em base64. Servidor: valida o utilizador
@@ -71,8 +72,9 @@ export async function POST(req: Request) {
     mimeType: 'application/pdf',
   }))
 
-  // 4. Enviar (Gmail comercial@ por omissão)
-  const r = await enviarGmail({ para: [para], cc, assunto, corpoTexto: corpo, anexos })
+  // 4. Enviar (Gmail comercial@ por omissão), com a assinatura única em HTML.
+  const assinatura = await obterAssinaturaHtml(db)
+  const r = await enviarGmail({ para: [para], cc, assunto, corpoTexto: corpo, corpoHtml: corpoHtmlComAssinatura(corpo, assinatura), anexos })
   if (!r.ok) return Response.json({ ok: false, erro: r.erro ?? 'Falha no envio.', configurado: r.configurado }, { status: 502 })
 
   // 5. Registo (histórico por equipamento e por lead)

@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { enviarEmail } from '@/lib/email'
+import { obterAssinaturaHtml } from '@/lib/emailAssinatura'
 import { alocarFaturas, contaParaSaldo, formatarEuro, formatarData, type MovimentoCC } from '@/lib/contasCorrentes'
 import {
   elegivelAuto, preencherModelo, diasDesde, textoAtraso,
@@ -98,12 +99,13 @@ async function calcularEmAberto(
     .filter((c) => c.porLiquidar > 0.005)
 }
 
-function corpoHtml(mensagem: string, c: Candidato): string {
+function corpoHtml(mensagem: string, c: Candidato, assinatura = ''): string {
   const paragrafos = mensagem
     .split(/\n{2,}/)
     .map((p) => `<p style="margin:0 0 12px">${p.replace(/\n/g, '<br>')}</p>`)
     .join('')
   const doc = c.mov.documento_ref ?? 'documento'
+  const assin = assinatura && assinatura.trim() ? `<br><div>${assinatura}</div>` : ''
   return `<div style="font-family:Arial,sans-serif;color:#222;font-size:14px;line-height:1.55">
     ${paragrafos}
     <table style="border-collapse:collapse;font-size:13.5px;margin-top:8px">
@@ -112,7 +114,8 @@ function corpoHtml(mensagem: string, c: Candidato): string {
       <tr><td style="padding:4px 10px;color:#666">Vencimento</td><td style="padding:4px 10px">${formatarData(c.mov.data_vencimento)}</td></tr>
       <tr><td style="padding:4px 10px;color:#666">Valor em dívida</td><td style="padding:4px 10px"><strong>${formatarEuro(c.porLiquidar)}</strong> · ${textoAtraso(c.diasAtraso)}</td></tr>
     </table>
-    <p style="color:#888;font-size:12px;margin-top:18px">All4laser · este email foi gerado automaticamente pela gestão de contas correntes.</p>
+    ${assin}
+    <p style="color:#888;font-size:12px;margin-top:18px">Este email foi gerado automaticamente pela gestão de contas correntes.</p>
   </div>`
 }
 
@@ -126,6 +129,7 @@ async function enviarLote(
   let enviados = 0
   let falhas = 0
   const erros: string[] = []
+  const assinatura = await obterAssinaturaHtml(sb)   // assinatura única
 
   for (let i = 0; i < candidatos.length; i++) {
     const c = candidatos[i]
@@ -145,7 +149,7 @@ async function enviarLote(
     }
     if (ctx.dryrun) { enviados++; continue }
 
-    const r = await enviarEmail({ para: c.email, assunto, html: corpoHtml(mensagem, c) })
+    const r = await enviarEmail({ para: c.email, assunto, html: corpoHtml(mensagem, c, assinatura) })
     const ok = r.ok
     if (ok) enviados++
     else { falhas++; erros.push(`${doc}: ${r.motivo ?? 'falha no envio'}`) }

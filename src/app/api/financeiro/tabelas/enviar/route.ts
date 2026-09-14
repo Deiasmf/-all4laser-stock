@@ -1,4 +1,6 @@
+import { createClient } from '@supabase/supabase-js'
 import { enviarEmail } from '@/lib/email'
+import { obterAssinaturaHtml } from '@/lib/emailAssinatura'
 
 // Envia por email uma tabela do Financeiro já exportada no cliente (Excel/PDF),
 // como anexo. O ficheiro chega em base64 para evitar re-gerar no servidor.
@@ -33,9 +35,17 @@ export async function POST(req: Request) {
     ? `<p>${(corpo.mensagem ?? '').trim().replace(/\n/g, '<br/>')}</p>`
     : '<p>Em anexo segue a tabela.</p>'
 
+  // Assinatura única (fonte: email_config). Leitura com service role.
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  let assinatura = ''
+  if (url && serviceKey) {
+    assinatura = await obterAssinaturaHtml(createClient(url, serviceKey, { auth: { persistSession: false } }))
+  }
   const html = `
     ${mensagemHtml}
-    <p>Com os melhores cumprimentos,<br/>All4laser</p>
+    <p>Com os melhores cumprimentos,</p>
+    ${assinatura ? `<div>${assinatura}</div>` : ''}
   `
 
   const r = await enviarEmail({

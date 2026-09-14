@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { enviarGmail } from '@/lib/gmailSend'
+import { obterAssinaturaHtml, corpoHtmlComAssinatura } from '@/lib/emailAssinatura'
 import {
   render, varsAssunto, moradaOrigem, moradaDestino, datasTexto, extrasTexto,
   tabelaVolumesEmail, tipoTransporteAdjetivo, remetenteValido,
@@ -102,16 +103,18 @@ export async function POST(req: Request) {
     extras: extrasTexto(pedido, pedido.idioma),
     prazo_resposta: prazoRespostaData(dias),
   }
+  const assinatura = await obterAssinaturaHtml(db)   // fonte única (Gmail/manual)
 
   // 6) Envio individual, com throttling e retry.
   const resultados: { id: string; ok: boolean; erro?: string }[] = []
   for (let i = 0; i < destinatarios.length; i++) {
     const d = destinatarios[i]
     const corpoEmail = render(template.corpo_template, { ...varsComuns, saudacao: d.saudacao ?? d.nome_empresa ?? '' })
+    const corpoHtml = corpoHtmlComAssinatura(corpoEmail, assinatura)   // corpo em HTML + assinatura única
 
     let ok = false, erroEnvio: string | undefined, messageId: string | undefined, threadId: string | undefined
     for (let tentativa = 1; tentativa <= TENTATIVAS_MAX && !ok; tentativa++) {
-      const r = await enviarGmail({ para: d.emails, assunto, corpoTexto: corpoEmail, remetente })
+      const r = await enviarGmail({ para: d.emails, assunto, corpoTexto: corpoEmail, corpoHtml, remetente })
       if (r.ok) { ok = true; messageId = r.messageId; threadId = r.threadId }
       else { erroEnvio = r.erro; if (tentativa < TENTATIVAS_MAX) await sleep(400) }
     }
