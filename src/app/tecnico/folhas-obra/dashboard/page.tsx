@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { listarFolhas } from '@/lib/folhasObra'
 import {
-  ESTADO_FOLHA_CONFIG, ESTADO_FOLHA_OPCOES, TIPOS_SERVICO,
+  ESTADO_FOLHA_CONFIG, ESTADO_FOLHA_OPCOES, TIPOS_SERVICO, TIPOS_SERVICO_LEGADO,
   type FolhaObra,
 } from '@/types/folhaObra'
 
@@ -109,7 +109,7 @@ export default function DashboardFolhas() {
 
           <section style={c.seccao}>
             <div style={c.seccaoTitulo}>Por tipo de serviço</div>
-            {TIPOS_SERVICO.map((t) => (
+            {[...TIPOS_SERVICO, ...TIPOS_SERVICO_LEGADO.filter((t) => stats.porTipo.get(t))].map((t) => (
               <Barra key={t} rotulo={t} valor={stats.porTipo.get(t) ?? 0} max={stats.total} cor="var(--primary)" />
             ))}
             {stats.porTipo.get('Sem tipo') ? (

@@ -1,15 +1,16 @@
 export type EstadoFolha = 'rascunho' | 'pendente_assinatura' | 'concluida'
 
 export type TipoServico =
-  | 'Reparação'
   | 'Reparação em garantia'
   | 'Reparação fora de garantia'
   | 'Retira reparação'
   | 'Manutenção preventiva'
   | 'Preparação para saída'
+  | 'Instalação e formação'
+  // Legado: já não se escolhem, mas existem em FO antigas.
+  | 'Reparação'
   | 'Instalação'
   | 'Formação técnica'
-  | 'Instalação e formação'
   | 'Outro'
 
 export type FolhaObra = {
@@ -111,16 +112,22 @@ export type FolhaInput = {
   estado: EstadoFolha
 }
 
+// Opções oferecidas ao preencher uma FO.
 export const TIPOS_SERVICO: TipoServico[] = [
-  'Reparação',
   'Reparação em garantia',
   'Reparação fora de garantia',
   'Retira reparação',
   'Manutenção preventiva',
   'Preparação para saída',
+  'Instalação e formação',
+]
+
+// Tipos que deixaram de ser oferecidos. Não desaparecem: as FO antigas mantêm-nos,
+// a BD continua a aceitá-los e o dashboard mostra-os enquanto houver folhas com eles.
+export const TIPOS_SERVICO_LEGADO: TipoServico[] = [
+  'Reparação',
   'Instalação',
   'Formação técnica',
-  'Instalação e formação',
   'Outro',
 ]
 

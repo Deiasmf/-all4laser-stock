@@ -99,6 +99,14 @@ export default function FolhaObraForm({ inicial, submitLabel, aGuardar, erro, on
     return () => { activo = false }
   }, [])
 
+  // Uma FO antiga pode ter um tipo de serviço que já não se oferece: mantemo-lo
+  // como opção para não o perder ao gravar.
+  const opcoesTipoServico = useMemo<TipoServico[]>(() => {
+    const anterior = inicial?.tipo_servico
+    if (!anterior || TIPOS_SERVICO.includes(anterior)) return TIPOS_SERVICO
+    return [...TIPOS_SERVICO, anterior]
+  }, [inicial?.tipo_servico])
+
   // A lista só traz quem está marcado como técnico. Se esta FO já tinha outro
   // técnico atribuído (de antes), mantemo-lo como opção para não o perder ao gravar.
   const opcoesTecnicos = useMemo<TecnicoOpc[]>(() => {
@@ -204,7 +212,7 @@ export default function FolhaObraForm({ inicial, submitLabel, aGuardar, erro, on
           <Campo rotulo="Tipo de serviço">
             <select value={tipoServico} onChange={(e) => setTipoServico(e.target.value as TipoServico | '')} style={f.input}>
               <option value="">—</option>
-              {TIPOS_SERVICO.map((t) => <option key={t} value={t}>{t}</option>)}
+              {opcoesTipoServico.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </Campo>
           <Campo rotulo="Técnico">
