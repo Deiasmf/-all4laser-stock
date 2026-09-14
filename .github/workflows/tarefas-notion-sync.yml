@@ -1,0 +1,24 @@
+name: Tarefas — sincronização Notion
+
+# Sincroniza "A Minha Área" ↔ Notion (base "Tasks") nos dois sentidos, a cada
+# 10 minutos em dias úteis. Fica aqui (e não em vercel.json) porque o plano
+# Hobby da Vercel limita os crons — mesmo padrão do keyinvoice/leads/pedidos.
+#
+# A rota é idempotente (dedup por notion_page_id e por last_edited/updated_at),
+# por isso correr repetido não duplica. Usa CRON_SECRET e o NOTION_TOKEN do
+# servidor. Para simular sem gravar: acrescentar ?dryrun=1 ao URL.
+
+on:
+  schedule:
+    - cron: '*/10 8-19 * * 1-5' # a cada 10 min, dias úteis, ~horário de trabalho (UTC)
+  workflow_dispatch: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar endpoint de sincronização Notion
+        run: |
+          curl -sS --fail-with-body --max-time 295 \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://all4laser-stock.vercel.app/api/tarefas/notion-sync"
