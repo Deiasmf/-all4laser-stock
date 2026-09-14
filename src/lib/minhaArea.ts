@@ -135,6 +135,7 @@ export type MinhaTarefa = Tarefa & {
   meuConcluidaEm: string | null
   meuAguardaOQue: string | null
   ordemManual: number | null
+  arquivadaEm: string | null
   etiquetas: Etiqueta[]
   sub: SubProgresso
   anexos: number
@@ -268,9 +269,9 @@ const SEM_SUB: SubProgresso = { feitas: 0, total: 0 }
 export async function listarMinhasTarefas(userId: string): Promise<MinhaTarefa[]> {
   const { data } = await supabase
     .from('user_task_assignees')
-    .select('id, estado, concluida_em, aguarda_o_que, ordem_manual, user_tasks(*)')
+    .select('id, estado, concluida_em, aguarda_o_que, ordem_manual, arquivada_em, user_tasks(*)')
     .eq('user_id', userId)
-  const linhas = (data as unknown as { id: string; estado: EstadoTarefa; concluida_em: string | null; aguarda_o_que: string | null; ordem_manual: number | null; user_tasks: Tarefa | null }[]) ?? []
+  const linhas = (data as unknown as { id: string; estado: EstadoTarefa; concluida_em: string | null; aguarda_o_que: string | null; ordem_manual: number | null; arquivada_em: string | null; user_tasks: Tarefa | null }[]) ?? []
   const validas = linhas.filter((l) => l.user_tasks)
   const ids = validas.map((l) => (l.user_tasks as Tarefa).id)
   const [etiquetas, sub, anexos] = await Promise.all([
@@ -281,7 +282,7 @@ export async function listarMinhasTarefas(userId: string): Promise<MinhaTarefa[]
     return {
       ...t,
       assigneeId: l.id, meuEstado: l.estado, meuConcluidaEm: l.concluida_em,
-      meuAguardaOQue: l.aguarda_o_que, ordemManual: l.ordem_manual,
+      meuAguardaOQue: l.aguarda_o_que, ordemManual: l.ordem_manual, arquivadaEm: l.arquivada_em,
       etiquetas: etiquetas.get(t.id) ?? [], sub: sub.get(t.id) ?? SEM_SUB,
       anexos: anexos.get(t.id) ?? 0,
     }
@@ -351,6 +352,28 @@ export async function notificarConclusaoTarefa(taskId: string): Promise<void> {
 
 export async function apagarTarefa(id: string) {
   return supabase.from('user_tasks').delete().eq('id', id)   // cascata: destinatários + comentários
+}
+
+// Arquivar/restaurar a MINHA tarefa (esconde da lista; a sync leva o estado
+// "Archived" ao Notion). É por destinatário — não afeta os outros.
+export async function arquivarMinha(assigneeId: string, arquivar: boolean) {
+  return supabase.from('user_task_assignees')
+    .update({ arquivada_em: arquivar ? new Date().toISOString() : null })
+    .eq('id', assigneeId)
+}
+
+// Apagar em definitivo. Passa pelo endpoint para, se a tarefa estiver ligada ao
+// Notion, a mandar também para o lixo lá (senão o cron voltava a importá-la).
+export async function apagarTarefaComNotion(taskId: string): Promise<{ ok: boolean; erro?: string }> {
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  if (!token) return { ok: false, erro: 'Sessão em falta.' }
+  const res = await fetch('/api/tarefas/notion-delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ taskId }),
+  })
+  try { return await res.json() } catch { return { ok: false, erro: `Erro ${res.status}.` } }
 }
 
 // Guarda as anotações (HTML simples) da tarefa. Usado pelo autosave do editor.

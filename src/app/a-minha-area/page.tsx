@@ -9,6 +9,7 @@ import TarefaDetalheModal from '@/components/TarefaDetalheModal'
 import GestorEtiquetasModal from '@/components/GestorEtiquetasModal'
 import {
   listarMinhasTarefas, criarTarefa, mudarMeuEstado, atualizarTarefa, notificarConclusaoTarefa,
+  apagarTarefaComNotion,
   listarMeusRecados, marcarRecadoLido, listarRecadosEnviados, listarColaboradores,
   atualizarRecado, listarEstados, estadoInfo, slugConcluido, slugAberto,
   obterPrefNotificacao, guardarPrefNotificacao, listarEtiquetas, obterVista, guardarVista,
@@ -45,6 +46,7 @@ export default function MinhaAreaPage() {
   const [filtro, setFiltro] = useState<FiltroRapido>('todas')
   const [filtroEtiqueta, setFiltroEtiqueta] = useState<string>('')
   const [verConcluidas, setVerConcluidas] = useState(false)
+  const [verArquivadas, setVerArquivadas] = useState(false)
   const [pesquisa, setPesquisa] = useState('')
 
   // Modais / secções
@@ -85,6 +87,8 @@ export default function MinhaAreaPage() {
     const h = hoje(); const fimSemana = daquiA(7); const q = pesquisa.trim().toLowerCase()
     return tarefas.filter((t) => {
       const feita = eConcluida(t)
+      if (!verArquivadas && t.arquivadaEm) return false
+      if (verArquivadas && !t.arquivadaEm) return false
       if (!verConcluidas && feita) return false
       if (filtro === 'hoje' && t.data_limite !== h) return false
       if (filtro === 'semana' && !(t.data_limite && t.data_limite >= h && t.data_limite <= fimSemana && !feita)) return false
@@ -93,7 +97,7 @@ export default function MinhaAreaPage() {
       if (q && !(t.titulo.toLowerCase().includes(q) || (t.descricao ?? '').toLowerCase().includes(q))) return false
       return true
     })
-  }, [tarefas, verConcluidas, filtro, filtroEtiqueta, pesquisa, eConcluida])
+  }, [tarefas, verConcluidas, verArquivadas, filtro, filtroEtiqueta, pesquisa, eConcluida])
 
   // Vista tabela → ordenação vem da própria tabela. Vista lista → ordem manual.
   const paraLista = useMemo(() => {
@@ -128,6 +132,14 @@ export default function MinhaAreaPage() {
     const pos = new Map(ids.map((id, i) => [id, i]))
     setTarefas((prev) => prev.map((t) => pos.has(t.assigneeId) ? { ...t, ordemManual: pos.get(t.assigneeId)! } : t))
     await reordenarMinhasTarefas(ids)
+  }
+
+  async function apagar(t: MinhaTarefa) {
+    if (!window.confirm(`Apagar "${t.titulo}"?\n\nRemove a tarefa e, se estiver ligada ao Notion, envia-a para o lixo lá. Não é reversível.`)) return
+    const r = await apagarTarefaComNotion(t.id)
+    setDetalheId(null)
+    await recarregarTarefas()
+    if (!r.ok) window.alert('Não foi possível apagar: ' + (r.erro ?? ''))
   }
 
   async function adicionarTarefa() {
@@ -230,6 +242,9 @@ export default function MinhaAreaPage() {
               <button style={{ ...c.chipFiltro, ...(verConcluidas ? c.chipFiltroAtivo : {}) }} onClick={() => setVerConcluidas((v) => !v)}>
                 {verConcluidas ? '✓ ' : ''}Concluídas ({numConcluidas})
               </button>
+              <button style={{ ...c.chipFiltro, ...(verArquivadas ? c.chipFiltroAtivo : {}) }} onClick={() => setVerArquivadas((v) => !v)}>
+                {verArquivadas ? '✓ ' : ''}Arquivadas
+              </button>
             </div>
             <input value={pesquisa} onChange={(e) => setPesquisa(e.target.value)} placeholder="🔍 Pesquisar…" style={c.pesquisa} />
             <button style={c.btnSec} onClick={() => setGestorEtiquetas(true)}>🏷 Etiquetas</button>
@@ -309,6 +324,7 @@ export default function MinhaAreaPage() {
           autor={autor} uid={uid}
           onMudou={recarregarTarefas}
           onFechar={() => setDetalheId(null)}
+          onApagar={apagar}
         />
       )}
       {gestorEtiquetas && <GestorEtiquetasModal onFechar={() => { setGestorEtiquetas(false); carregar() }} />}

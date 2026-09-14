@@ -9,7 +9,7 @@ import SubtarefasTarefa from './SubtarefasTarefa'
 import NotasTarefa from './NotasTarefa'
 import EtiquetasTarefa from './EtiquetasTarefa'
 import {
-  atualizarTarefa, mudarMeuEstado, notificarConclusaoTarefa, estadoInfo,
+  atualizarTarefa, mudarMeuEstado, notificarConclusaoTarefa, estadoInfo, arquivarMinha,
   PRIORIDADES, type MinhaTarefa, type EstadoInfo, type Etiqueta, type Prioridade,
 } from '@/lib/minhaArea'
 
@@ -17,7 +17,7 @@ import {
 // estado, etiquetas, subtarefas, notas, comentários, histórico e anexos.
 // onMudou recarrega a lista do ecrã (para refletir estado/etiquetas/progresso).
 export default function TarefaDetalheModal({
-  tarefa, estados, etiquetasDisponiveis, autor, uid, onMudou, onFechar,
+  tarefa, estados, etiquetasDisponiveis, autor, uid, onMudou, onFechar, onApagar,
 }: {
   tarefa: MinhaTarefa
   estados: EstadoInfo[]
@@ -26,6 +26,7 @@ export default function TarefaDetalheModal({
   uid: string
   onMudou: () => void | Promise<void>
   onFechar: () => void
+  onApagar: (t: MinhaTarefa) => void | Promise<void>
 }) {
   const [titulo, setTitulo] = useState(tarefa.titulo)
   const [descricao, setDescricao] = useState(tarefa.descricao ?? '')
@@ -46,6 +47,10 @@ export default function TarefaDetalheModal({
     await mudarMeuEstado(tarefa.assigneeId, estado, concluido, aguarda)
     if (concluido) await notificarConclusaoTarefa(tarefa.id)
     await onMudou()
+  }
+  async function arquivar() {
+    await arquivarMinha(tarefa.assigneeId, !tarefa.arquivadaEm)
+    await onMudou(); onFechar()
   }
 
   return (
@@ -98,6 +103,13 @@ export default function TarefaDetalheModal({
         {seccao === 'comentarios' && <ComentariosTarefa taskId={tarefa.id} autor={autor} />}
         {seccao === 'historico' && <HistoricoTarefa taskId={tarefa.id} />}
         {seccao === 'anexos' && <AnexosTarefa taskId={tarefa.id} autorId={uid} />}
+
+        <div style={s.rodape}>
+          <button style={s.btnGhost} onClick={arquivar}>
+            {tarefa.arquivadaEm ? '↺ Restaurar' : '📥 Arquivar'}
+          </button>
+          <button style={s.btnApagar} onClick={() => onApagar(tarefa)}>🗑 Apagar</button>
+        </div>
       </div>
     </div>
   )
@@ -117,4 +129,7 @@ const s: Record<string, React.CSSProperties> = {
   abas: { display: 'flex', gap: 6, borderTop: '1px solid var(--border)', paddingTop: 12, flexWrap: 'wrap' },
   aba: { background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 11px', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
   abaAtiva: { background: 'var(--primary)', color: '#fff', borderColor: 'var(--primary)' },
+  rodape: { display: 'flex', gap: 8, justifyContent: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: 12 },
+  btnGhost: { background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 14px', fontWeight: 600, cursor: 'pointer', fontSize: 13 },
+  btnApagar: { background: '#fff', border: '1px solid #FCA5A5', color: '#B91C1C', borderRadius: 8, padding: '8px 14px', fontWeight: 700, cursor: 'pointer', fontSize: 13 },
 }
