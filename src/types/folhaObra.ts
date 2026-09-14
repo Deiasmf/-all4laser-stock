@@ -2,10 +2,14 @@ export type EstadoFolha = 'rascunho' | 'pendente_assinatura' | 'concluida'
 
 export type TipoServico =
   | 'Reparação'
+  | 'Reparação em garantia'
+  | 'Reparação fora de garantia'
+  | 'Retira reparação'
   | 'Manutenção preventiva'
   | 'Preparação para saída'
   | 'Instalação'
   | 'Formação técnica'
+  | 'Instalação e formação'
   | 'Outro'
 
 export type FolhaObra = {
@@ -109,10 +113,14 @@ export type FolhaInput = {
 
 export const TIPOS_SERVICO: TipoServico[] = [
   'Reparação',
+  'Reparação em garantia',
+  'Reparação fora de garantia',
+  'Retira reparação',
   'Manutenção preventiva',
   'Preparação para saída',
   'Instalação',
   'Formação técnica',
+  'Instalação e formação',
   'Outro',
 ]
 
