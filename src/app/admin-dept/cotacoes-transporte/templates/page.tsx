@@ -115,8 +115,9 @@ export default function TemplatesPage() {
 
           <div style={c.sep} />
           <p style={c.dica}>Email de <strong>agradecimento aos não escolhidos</strong> (nunca menciona o vencedor nem valores). Placeholders: {PLACEHOLDERS_AGRAD.map((p) => <code key={p} style={c.code}>{`{{${p}}}`}</code>)}</p>
-          <label style={c.campo}><span style={c.rot}>Assunto do agradecimento</span>
+          <label style={c.campo}><span style={c.rot}>Sufixo do assunto (juntado ao assunto original da cotação)</span>
             <input style={c.input} value={t.agrad_assunto ?? ''} onChange={(e) => alterar(t.idioma, { agrad_assunto: e.target.value })} />
+            <span style={c.dica}>O assunto final fica: <em>«assunto da cotação» — «este sufixo»</em>. Ex.: «…transporte para Espanha — Obrigado pela vossa cotação».</span>
           </label>
           <label style={c.campo}><span style={c.rot}>Corpo do agradecimento</span>
             <textarea style={c.textarea} value={t.agrad_corpo ?? ''} onChange={(e) => alterar(t.idioma, { agrad_corpo: e.target.value })} />

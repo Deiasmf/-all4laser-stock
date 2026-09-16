@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { enviarGmail } from '@/lib/gmailSend'
 import { obterAssinaturaHtml, corpoHtmlComAssinatura } from '@/lib/emailAssinatura'
-import { render, remetenteValido, type FreightRequest, type FreightRecipient, type FreightEmailTemplate } from '@/types/freight'
+import { render, varsAssunto, remetenteValido, type FreightRequest, type FreightRecipient, type FreightEmailTemplate } from '@/types/freight'
 
 // Envio do email de AGRADECIMENTO aos transitários NÃO escolhidos — UM email
 // individual por transitário (sem CC/BCC), cordial, sem mencionar o vencedor
@@ -66,12 +66,20 @@ export async function POST(req: Request) {
   const remetente = remetenteValido(pedido.remetente) ? pedido.remetente!.trim() : 'comercial@all4laser.com'
   const assinatura = await obterAssinaturaHtml(db, remetente)
   const referencia = pedido.numero ?? ''
-  const assunto = render(template.agrad_assunto, { referencia })
+  // Assunto = o assunto ORIGINAL da cotação (para o transitário identificar o
+  // pedido) + o sufixo de agradecimento. O assunto original vem, por
+  // destinatário, do que foi mesmo enviado (assunto_final); senão, do template.
+  const assuntoBase = (pedido.assunto_email && pedido.assunto_email.trim()) || render(template.assunto_template, varsAssunto(pedido))
+  const sufixo = (template.agrad_assunto && template.agrad_assunto.trim())
+    ? render(template.agrad_assunto, { referencia })
+    : (pedido.idioma === 'en' ? 'Thank you for your quote' : 'Obrigado pela vossa cotação')
 
   const agora = new Date().toISOString()
   const resultados: { id: string; ok: boolean; erro?: string }[] = []
   for (let i = 0; i < destinatarios.length; i++) {
     const d = destinatarios[i]
+    const assuntoOriginal = ((d as { assunto_final?: string | null }).assunto_final?.trim()) || assuntoBase
+    const assunto = `${assuntoOriginal} — ${sufixo}`
     const corpoTexto = render(template.agrad_corpo, { saudacao: d.saudacao ?? d.nome_empresa ?? '', referencia })
     const corpoHtml = corpoHtmlComAssinatura(corpoTexto, assinatura)
     const r = await enviarGmail({ para: d.emails, assunto, corpoTexto, corpoHtml, remetente })
