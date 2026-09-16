@@ -5,9 +5,13 @@ import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import { listarTemplates, atualizarTemplate, obterSettings, atualizarSettings } from '@/lib/freight'
 import { remetenteValido, type FreightEmailTemplate, type IdiomaFreight } from '@/types/freight'
-import { obterConfigAssinatura, atualizarAssinaturaDoGmail, guardarAssinaturaManual, type EmailConfig } from '@/lib/emailAssinaturaClient'
+import {
+  obterConfigAssinatura, atualizarAssinaturaDoGmail, guardarAssinaturaManual, type EmailConfig,
+  obterAssinaturaRemetente, atualizarAssinaturaGmailRemetente, guardarAssinaturaManualRemetente, type EmailAssinatura,
+} from '@/lib/emailAssinaturaClient'
 
 const PLACEHOLDERS = ['saudacao', 'tipo', 'origem', 'destino', 'datas', 'tabela_volumes', 'extras', 'prazo_resposta']
+const PLACEHOLDERS_AGRAD = ['saudacao', 'referencia']
 
 export default function TemplatesPage() {
   const { isAdministrativo, perfilCarregado } = useAuth()
@@ -18,13 +22,26 @@ export default function TemplatesPage() {
   const [assinatura, setAssinatura] = useState<EmailConfig | null>(null)
   const [assinaturaManual, setAssinaturaManual] = useState('')
   const [sigOcupado, setSigOcupado] = useState(false)
+  // Assinaturas por remetente.
+  const [remetentesLista, setRemetentesLista] = useState<string[]>([])
+  const [assinRem, setAssinRem] = useState<Record<string, EmailAssinatura | null>>({})
+  const [assinRemManual, setAssinRemManual] = useState<Record<string, string>>({})
+  const [sigRemOcupado, setSigRemOcupado] = useState<string | null>(null)
 
   const carregar = useCallback(async () => {
     setTemplates(await listarTemplates())
     const st = await obterSettings()
-    if (st) { setDias(st.dias_uteis_alerta); setRemetentesTexto((st.remetentes ?? []).join(', ')) }
+    const lista = st?.remetentes ?? []
+    if (st) { setDias(st.dias_uteis_alerta); setRemetentesTexto(lista.join(', ')) }
+    setRemetentesLista(lista)
     const r = await obterConfigAssinatura()
     if (r.ok && r.config) { setAssinatura(r.config); setAssinaturaManual(r.config.assinatura_manual_html ?? '') }
+    // Assinatura de cada remetente.
+    const pares = await Promise.all(lista.map(async (rem) => [rem, (await obterAssinaturaRemetente(rem)).config ?? null] as const))
+    const mapa: Record<string, EmailAssinatura | null> = {}
+    const manual: Record<string, string> = {}
+    for (const [rem, cfg] of pares) { mapa[rem] = (cfg as EmailAssinatura | null); manual[rem] = (cfg as EmailAssinatura | null)?.assinatura_manual_html ?? '' }
+    setAssinRem(mapa); setAssinRemManual(manual)
   }, [])
   useEffect(() => { carregar() }, [carregar])
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 3000); return () => clearTimeout(t) }, [toast])
@@ -33,8 +50,23 @@ export default function TemplatesPage() {
     setTemplates((ts) => ts.map((t) => (t.idioma === idioma ? { ...t, ...patch } : t)))
   }
   async function guardarTemplate(t: FreightEmailTemplate) {
-    const { error } = await atualizarTemplate(t.idioma, t.assunto_template, t.corpo_template)
+    const { error } = await atualizarTemplate(t.idioma, t.assunto_template, t.corpo_template, { agrad_assunto: t.agrad_assunto, agrad_corpo: t.agrad_corpo })
     setToast(error ? 'Erro: ' + error.message : `Template ${t.idioma.toUpperCase()} guardado.`)
+  }
+
+  async function atualizarRemDoGmail(rem: string) {
+    setSigRemOcupado(rem)
+    const r = await atualizarAssinaturaGmailRemetente(rem)
+    setSigRemOcupado(null)
+    setToast(r.ok ? `Assinatura de ${rem} atualizada do Gmail.` : 'Erro: ' + (r.erro ?? ''))
+    if (r.ok) await carregar()
+  }
+  async function guardarRemManual(rem: string) {
+    setSigRemOcupado(rem)
+    const r = await guardarAssinaturaManualRemetente(rem, assinRemManual[rem] ?? '')
+    setSigRemOcupado(null)
+    setToast(r.ok ? `Assinatura manual de ${rem} guardada.` : 'Erro: ' + (r.erro ?? ''))
+    if (r.ok) await carregar()
   }
   async function guardarConfig() {
     const remetentes = remetentesTexto.split(/[,;\n]/).map((e) => e.trim()).filter(Boolean)
@@ -80,6 +112,16 @@ export default function TemplatesPage() {
           <label style={c.campo}><span style={c.rot}>Corpo</span>
             <textarea style={c.textarea} value={t.corpo_template} onChange={(e) => alterar(t.idioma, { corpo_template: e.target.value })} />
           </label>
+
+          <div style={c.sep} />
+          <p style={c.dica}>Email de <strong>agradecimento aos não escolhidos</strong> (nunca menciona o vencedor nem valores). Placeholders: {PLACEHOLDERS_AGRAD.map((p) => <code key={p} style={c.code}>{`{{${p}}}`}</code>)}</p>
+          <label style={c.campo}><span style={c.rot}>Assunto do agradecimento</span>
+            <input style={c.input} value={t.agrad_assunto ?? ''} onChange={(e) => alterar(t.idioma, { agrad_assunto: e.target.value })} />
+          </label>
+          <label style={c.campo}><span style={c.rot}>Corpo do agradecimento</span>
+            <textarea style={c.textarea} value={t.agrad_corpo ?? ''} onChange={(e) => alterar(t.idioma, { agrad_corpo: e.target.value })} />
+          </label>
+
           <div style={c.acoes}><button style={c.btnPrimario} onClick={() => guardarTemplate(t)}>Guardar template</button></div>
         </section>
       ))}
@@ -111,6 +153,29 @@ export default function TemplatesPage() {
         <div style={c.acoes}><button style={c.btnPrimario} disabled={sigOcupado} onClick={guardarManual}>Guardar assinatura manual</button></div>
       </section>
 
+      <section style={c.card}>
+        <h2 style={c.h2}>Assinatura por remetente</h2>
+        <p style={c.dica}>Cada conta pode ter a SUA assinatura. Quando um pedido é enviado por uma conta, usa-se a assinatura dessa conta; se não estiver definida, usa-se a assinatura geral acima.</p>
+        {remetentesLista.length === 0 && <p style={c.dica}>Define os remetentes na secção “Configuração” para aparecerem aqui.</p>}
+        {remetentesLista.map((rem) => {
+          const cfg = assinRem[rem]
+          return (
+            <div key={rem} style={c.remBloco}>
+              <div style={c.remTopo}>
+                <strong>{rem}</strong>
+                <span style={c.dica}>{cfg ? `fonte: ${cfg.fonte === 'gmail' ? 'Gmail' : 'manual'}${cfg.atualizada_em ? ` · ${new Date(cfg.atualizada_em).toLocaleDateString('pt-PT')}` : ''}` : 'sem assinatura própria'}</span>
+              </div>
+              <div style={c.sigPreview} dangerouslySetInnerHTML={{ __html: cfg?.assinatura_html || '<span style="color:#999">(usa a assinatura geral)</span>' }} />
+              <textarea style={c.textareaMini} placeholder="<div>...HTML da assinatura desta conta...</div>" value={assinRemManual[rem] ?? ''} onChange={(e) => setAssinRemManual((m) => ({ ...m, [rem]: e.target.value }))} />
+              <div style={c.remAcoes}>
+                <button style={c.btnSec} disabled={sigRemOcupado === rem} onClick={() => atualizarRemDoGmail(rem)}>{sigRemOcupado === rem ? 'A obter…' : '↻ Do Gmail'}</button>
+                <button style={c.btnPrimario} disabled={sigRemOcupado === rem} onClick={() => guardarRemManual(rem)}>Guardar</button>
+              </div>
+            </div>
+          )
+        })}
+      </section>
+
       {toast && <div style={c.toast}>{toast}</div>}
     </main>
   )
@@ -134,6 +199,11 @@ const c: Record<string, React.CSSProperties> = {
   btnSec: { padding: '8px 14px', border: '1px solid #d1d5db', borderRadius: 8, background: '#fff', fontWeight: 600, cursor: 'pointer', font: 'inherit' },
   sigPreviewRot: { marginTop: 4 },
   sigPreview: { border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, background: '#fafafa', minHeight: 40 },
+  sep: { height: 1, background: '#eee', margin: '4px 0' },
+  textareaMini: { padding: '10px', border: '1px solid #d1d5db', borderRadius: 8, font: 'inherit', minHeight: 90, fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 12.5 },
+  remBloco: { border: '1px solid #eee', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 8, background: '#fcfcfd' },
+  remTopo: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  remAcoes: { display: 'flex', justifyContent: 'flex-end', gap: 8 },
   muted: { color: 'var(--muted)', padding: 24, textAlign: 'center' },
   toast: { position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', background: '#111827', color: '#fff', padding: '10px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, zIndex: 60 },
 }

@@ -129,6 +129,8 @@ export type FreightRecipient = {
   gmail_message_id: string | null
   gmail_thread_id: string | null
   created_at: string
+  agradecido_em: string | null
+  agradecido_por_nome: string | null
 }
 
 export type FreightQuote = {
@@ -144,12 +146,18 @@ export type FreightQuote = {
   pdf_path: string | null
   escolhido: boolean
   created_at: string
+  created_by_nome: string | null
+  updated_at: string | null
+  updated_by_nome: string | null
+  deleted_at: string | null
 }
 
 export type FreightEmailTemplate = {
   idioma: IdiomaFreight
   assunto_template: string
   corpo_template: string
+  agrad_assunto: string | null
+  agrad_corpo: string | null
   updated_at: string
 }
 
@@ -257,21 +265,35 @@ function num(n: number): string {
   return Number.isInteger(n) ? String(n) : String(round2(n))
 }
 
-// Tabela de volumes para o EMAIL ao transitário: só nº de volume, dimensões
-// exteriores, peso e quantidade — SEM nomes de caixas nem referências a
-// equipamentos. Inclui a linha de totais. (Dentro da app os nomes mantêm-se.)
-export function tabelaVolumesEmail(
-  linhas: Pick<CargoLine, 'ext_c' | 'ext_l' | 'ext_a' | 'quantidade' | 'peso_volume'>[],
-  idioma: IdiomaFreight,
-): string {
+// Agrega linhas iguais (mesmas dimensões E mesmo peso/volume) somando as
+// quantidades — para o email mostrar "2 volumes — 108×70×136 — 85 kg" numa só
+// linha. Preserva a ordem de primeira ocorrência.
+type LinhaCarga = Pick<CargoLine, 'ext_c' | 'ext_l' | 'ext_a' | 'quantidade' | 'peso_volume'>
+export function agregarVolumes(linhas: LinhaCarga[]): LinhaCarga[] {
+  const mapa = new Map<string, LinhaCarga>()
+  for (const l of linhas) {
+    const chave = `${num(l.ext_c)}x${num(l.ext_l)}x${num(l.ext_a)}|${l.peso_volume ?? ''}`
+    const existente = mapa.get(chave)
+    if (existente) existente.quantidade += Number(l.quantidade) || 0
+    else mapa.set(chave, { ext_c: l.ext_c, ext_l: l.ext_l, ext_a: l.ext_a, peso_volume: l.peso_volume, quantidade: Number(l.quantidade) || 0 })
+  }
+  return [...mapa.values()]
+}
+
+// Tabela de volumes para o EMAIL ao transitário: volumes (qtd agregada),
+// dimensões exteriores, peso por volume e peso total da linha — SEM nomes de
+// caixas nem referências a equipamentos. Linha final com os totais. (Dentro da
+// app os nomes mantêm-se.)
+export function tabelaVolumesEmail(linhas: LinhaCarga[], idioma: IdiomaFreight): string {
+  const ag = agregarVolumes(linhas)
   const cab = idioma === 'en'
-    ? ['Vol', 'L×W×H (cm)', 'Weight (kg)', 'Qty']
-    : ['Vol', 'C×L×A (cm)', 'Peso (kg)', 'Qtd']
-  const linhasFmt = linhas.map((l, i) => [
-    String(i + 1),
-    `${num(l.ext_c)}×${num(l.ext_l)}×${num(l.ext_a)}`,
-    l.peso_volume != null ? num(l.peso_volume) : '—',
+    ? ['Packages', 'L×W×H (cm)', 'Weight/pkg', 'Total weight']
+    : ['Volumes', 'C×L×A (cm)', 'Peso/volume', 'Peso total']
+  const linhasFmt = ag.map((l) => [
     String(l.quantidade),
+    `${num(l.ext_c)}×${num(l.ext_l)}×${num(l.ext_a)}`,
+    l.peso_volume != null ? `${num(l.peso_volume)} kg` : '—',
+    l.peso_volume != null ? `${num(round2(l.quantidade * l.peso_volume))} kg` : '—',
   ])
   const larguras = cab.map((c, i) => Math.max(c.length, ...linhasFmt.map((r) => r[i].length)))
   const fmtLinha = (cols: string[]) => cols.map((c, i) => c.padEnd(larguras[i])).join('  ')
@@ -281,6 +303,42 @@ export function tabelaVolumesEmail(
     ? `Totals: ${t.volumes} packages · ${t.pesoTotal} kg · ${t.volumeM3} m³`
     : `Totais: ${t.volumes} volumes · ${t.pesoTotal} kg · ${t.volumeM3} m³`
   return [fmtLinha(cab), sep, ...linhasFmt.map(fmtLinha), '', totais].join('\n')
+}
+
+function escaparHtml(t: string): string {
+  return t
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+// Tabela de volumes em HTML para o email ao transitario. Evita o alinhamento
+// por espacos do texto simples, que fica desalinhado em fontes proporcionais.
+export function tabelaVolumesEmailHtml(linhas: LinhaCarga[], idioma: IdiomaFreight): string {
+  const ag = agregarVolumes(linhas)
+  const cab = idioma === 'en'
+    ? ['Packages', 'LxWxH (cm)', 'Weight/pkg', 'Total weight']
+    : ['Volumes', 'CxLxA (cm)', 'Peso/volume', 'Peso total']
+  const thStyle = 'padding:8px 10px;border:1px solid #d9dee7;background:#f3f5f8;text-align:left;font-weight:700;color:#111827;'
+  const tdStyle = 'padding:8px 10px;border:1px solid #d9dee7;color:#111827;'
+  const rows = ag.map((l) => {
+    const dims = `${num(l.ext_c)} x ${num(l.ext_l)} x ${num(l.ext_a)}`
+    const peso = l.peso_volume != null ? `${num(l.peso_volume)} kg` : '-'
+    const pesoTotal = l.peso_volume != null ? `${num(round2(l.quantidade * l.peso_volume))} kg` : '-'
+    return `<tr><td style="${tdStyle}">${escaparHtml(String(l.quantidade))}</td><td style="${tdStyle}">${escaparHtml(dims)}</td><td style="${tdStyle}">${escaparHtml(peso)}</td><td style="${tdStyle}">${escaparHtml(pesoTotal)}</td></tr>`
+  }).join('')
+  const t = totaisCarga(linhas)
+  const totais = idioma === 'en'
+    ? `Totals: ${t.volumes} packages · ${t.pesoTotal} kg · ${t.volumeM3} m&sup3;`
+    : `Totais: ${t.volumes} volumes · ${t.pesoTotal} kg · ${t.volumeM3} m&sup3;`
+  return [
+    '<table style="border-collapse:collapse;margin:8px 0 12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.4;">',
+    `<thead><tr>${cab.map((h) => `<th style="${thStyle}">${escaparHtml(h)}</th>`).join('')}</tr></thead>`,
+    `<tbody>${rows}</tbody>`,
+    '</table>',
+    `<div style="margin:0 0 12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111827;font-weight:700;">${totais}</div>`,
+  ].join('')
 }
 
 // ─── Render de template ──────────────────────────────────────────────────────

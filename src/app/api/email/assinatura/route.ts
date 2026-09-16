@@ -26,6 +26,12 @@ async function autenticar(req: Request) {
 export async function GET(req: Request) {
   const a = await autenticar(req)
   if ('erro' in a) return Response.json({ ok: false, erro: a.erro }, { status: a.status })
+  // ?remetente=... devolve a assinatura DESSA conta; sem parâmetro, a global.
+  const remetente = new URL(req.url).searchParams.get('remetente')
+  if (remetente && remetente.trim()) {
+    const { data } = await a.sb.from('email_assinaturas').select('*').eq('remetente', remetente.trim()).maybeSingle()
+    return Response.json({ ok: true, config: data })
+  }
   const { data } = await a.sb.from('email_config').select('*').eq('id', true).maybeSingle()
   return Response.json({ ok: true, config: data })
 }
@@ -33,28 +39,34 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const a = await autenticar(req)
   if ('erro' in a) return Response.json({ ok: false, erro: a.erro }, { status: a.status })
-  let corpo: { acao?: string; html?: string } = {}
+  let corpo: { acao?: string; html?: string; remetente?: string } = {}
   try { corpo = await req.json() } catch { /* ignore */ }
+  const remetente = (corpo.remetente ?? '').trim() || null
 
   if (corpo.acao === 'refresh_gmail') {
-    const { data: cfg } = await a.sb.from('email_config').select('remetente').eq('id', true).maybeSingle()
-    const remetente = (cfg as { remetente: string } | null)?.remetente
-    const r = await obterAssinaturaGmail(remetente)
+    // Conta a ler: a indicada (por remetente) ou a global do email_config.
+    let conta = remetente
+    if (!conta) {
+      const { data: cfg } = await a.sb.from('email_config').select('remetente').eq('id', true).maybeSingle()
+      conta = (cfg as { remetente: string } | null)?.remetente ?? null
+    }
+    const r = await obterAssinaturaGmail(conta ?? undefined)
     if (!r.ok) return Response.json({ ok: false, erro: r.erro })
     if (!r.signature || !r.signature.trim()) return Response.json({ ok: false, erro: 'A conta do Gmail não tem assinatura definida.' })
-    const { error } = await a.sb.from('email_config').update({
-      fonte: 'gmail', assinatura_html: r.signature, atualizada_em: new Date().toISOString(), atualizada_por_nome: a.nome,
-    }).eq('id', true)
+    const patch = { fonte: 'gmail', assinatura_html: r.signature, atualizada_em: new Date().toISOString(), atualizada_por_nome: a.nome }
+    const error = remetente
+      ? (await a.sb.from('email_assinaturas').upsert({ remetente, ...patch }, { onConflict: 'remetente' })).error
+      : (await a.sb.from('email_config').update(patch).eq('id', true)).error
     if (error) return Response.json({ ok: false, erro: error.message })
     return Response.json({ ok: true, assinatura_html: r.signature })
   }
 
   if (corpo.acao === 'manual') {
     const html = (corpo.html ?? '').trim()
-    const { error } = await a.sb.from('email_config').update({
-      fonte: 'manual', assinatura_manual_html: html, assinatura_html: html,
-      atualizada_em: new Date().toISOString(), atualizada_por_nome: a.nome,
-    }).eq('id', true)
+    const patch = { fonte: 'manual', assinatura_manual_html: html, assinatura_html: html, atualizada_em: new Date().toISOString(), atualizada_por_nome: a.nome }
+    const error = remetente
+      ? (await a.sb.from('email_assinaturas').upsert({ remetente, ...patch }, { onConflict: 'remetente' })).error
+      : (await a.sb.from('email_config').update(patch).eq('id', true)).error
     if (error) return Response.json({ ok: false, erro: error.message })
     return Response.json({ ok: true, assinatura_html: html })
   }

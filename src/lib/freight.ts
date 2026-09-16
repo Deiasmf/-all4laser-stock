@@ -337,18 +337,39 @@ export type QuoteInput = {
   validade: string | null
   notas: string | null
 }
+export type AutorFreight = { id: string | null; nome: string | null }
+
 export async function listarCotacoes(requestId: string): Promise<FreightQuote[]> {
-  const { data } = await supabase.from('freight_quotes').select('*').eq('request_id', requestId).order('valor', { ascending: true, nullsFirst: false })
+  const { data } = await supabase.from('freight_quotes').select('*')
+    .eq('request_id', requestId).is('deleted_at', null)
+    .order('valor', { ascending: true, nullsFirst: false })
   return (data as FreightQuote[]) ?? []
 }
-export async function criarCotacao(requestId: string, input: QuoteInput) {
-  return supabase.from('freight_quotes').insert({ ...input, request_id: requestId }).select().single()
+export async function criarCotacao(requestId: string, input: QuoteInput, autor: AutorFreight) {
+  return supabase.from('freight_quotes')
+    .insert({ ...input, request_id: requestId, created_by: autor.id, created_by_nome: autor.nome })
+    .select().single()
 }
-export async function atualizarCotacao(id: string, input: Partial<QuoteInput>) {
-  return supabase.from('freight_quotes').update(input).eq('id', id).select().single()
+export async function atualizarCotacao(id: string, input: Partial<QuoteInput>, autor: AutorFreight) {
+  return supabase.from('freight_quotes')
+    .update({ ...input, updated_at: new Date().toISOString(), updated_by: autor.id, updated_by_nome: autor.nome })
+    .eq('id', id).select().single()
 }
-export async function eliminarCotacao(id: string) {
-  return supabase.from('freight_quotes').delete().eq('id', id)
+// Soft delete (guarda quem/quando). Se era a cotação vencedora, o pedido volta
+// a "em receção de cotações" (limpa vencedor e data de fecho).
+export async function eliminarCotacao(quote: FreightQuote, autor: AutorFreight): Promise<{ ok: boolean; motivo?: string; revertido?: boolean }> {
+  const { error } = await supabase.from('freight_quotes')
+    .update({ deleted_at: new Date().toISOString(), deleted_by: autor.id, deleted_by_nome: autor.nome })
+    .eq('id', quote.id)
+  if (error) return { ok: false, motivo: error.message }
+  if (quote.escolhido) {
+    const { error: e2 } = await atualizarPedido(quote.request_id, {
+      estado: 'em_rececao', vencedor_forwarder_id: null, fechado_em: null,
+    } as Partial<FreightRequest>)
+    if (e2) return { ok: false, motivo: e2.message }
+    return { ok: true, revertido: true }
+  }
+  return { ok: true }
 }
 
 function nomeSeguro(nome: string) {
@@ -388,8 +409,13 @@ export async function listarTemplates(): Promise<FreightEmailTemplate[]> {
   const { data } = await supabase.from('freight_email_templates').select('*').order('idioma')
   return (data as FreightEmailTemplate[]) ?? []
 }
-export async function atualizarTemplate(idioma: IdiomaFreight, assunto_template: string, corpo_template: string) {
-  return supabase.from('freight_email_templates').update({ assunto_template, corpo_template, updated_at: new Date().toISOString() }).eq('idioma', idioma)
+export async function atualizarTemplate(
+  idioma: IdiomaFreight, assunto_template: string, corpo_template: string,
+  agrad?: { agrad_assunto: string | null; agrad_corpo: string | null },
+) {
+  const patch: Record<string, unknown> = { assunto_template, corpo_template, updated_at: new Date().toISOString() }
+  if (agrad) { patch.agrad_assunto = agrad.agrad_assunto; patch.agrad_corpo = agrad.agrad_corpo }
+  return supabase.from('freight_email_templates').update(patch).eq('idioma', idioma)
 }
 
 export async function obterSettings(): Promise<FreightSettings | null> {
