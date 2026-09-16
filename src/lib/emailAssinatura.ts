@@ -3,7 +3,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 // Lê a assinatura em uso (cache do Gmail ou colada à mão). '' se não houver.
-export async function obterAssinaturaHtml(sb: SupabaseClient): Promise<string> {
+// Se `remetente` for indicado, usa a assinatura DESSA conta (email_assinaturas);
+// se não existir, cai na assinatura global (email_config singleton).
+export async function obterAssinaturaHtml(sb: SupabaseClient, remetente?: string | null): Promise<string> {
+  if (remetente && remetente.trim()) {
+    const { data } = await sb.from('email_assinaturas').select('assinatura_html').eq('remetente', remetente.trim()).maybeSingle()
+    const html = (data as { assinatura_html: string | null } | null)?.assinatura_html
+    if (html && html.trim()) return html
+  }
   const { data } = await sb.from('email_config').select('assinatura_html').eq('id', true).maybeSingle()
   return ((data as { assinatura_html: string | null } | null)?.assinatura_html) ?? ''
 }

@@ -3,7 +3,7 @@ import { enviarGmail } from '@/lib/gmailSend'
 import { obterAssinaturaHtml, corpoHtmlComAssinatura } from '@/lib/emailAssinatura'
 import {
   render, varsAssunto, moradaOrigem, moradaDestino, datasTexto, extrasTexto,
-  tabelaVolumesEmail, tipoTransporteAdjetivo, remetenteValido,
+  tabelaVolumesEmail, tabelaVolumesEmailHtml, tipoTransporteAdjetivo, remetenteValido,
   type FreightRequest, type CargoLine, type FreightRecipient, type FreightEmailTemplate, type FreightSettings,
 } from '@/types/freight'
 
@@ -18,6 +18,24 @@ const THROTTLE_MS = 600      // pausa entre envios
 const TENTATIVAS_MAX = 2     // tentativas por destinatário dentro de um envio
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+function escaparHtml(t: string): string {
+  return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+function blocoTextoHtml(t: string): string {
+  if (!t) return ''
+  return `<div style="white-space:pre-wrap;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111827;line-height:1.5;">${escaparHtml(t)}</div>`
+}
+
+function corpoHtmlFreight(corpoTexto: string, tabelaTexto: string, tabelaHtml: string, assinaturaHtml: string): string {
+  const partes = tabelaTexto ? corpoTexto.split(tabelaTexto) : [corpoTexto]
+  const corpo = partes.length > 1
+    ? partes.map(blocoTextoHtml).join(tabelaHtml)
+    : corpoHtmlComAssinatura(corpoTexto, '')
+  const assin = assinaturaHtml && assinaturaHtml.trim() ? `<br><div>${assinaturaHtml}</div>` : ''
+  return corpo + assin
+}
 
 // Data-limite de resposta: hoje + N dias úteis (formato YYYY-MM-DD).
 function prazoRespostaData(diasUteis: number): string {
@@ -98,23 +116,25 @@ export async function POST(req: Request) {
   // Remetente do pedido (validado); só contas @all4laser.com podem ser
   // personificadas. Fallback seguro para comercial@ se estiver em falta/inválido.
   const remetente = remetenteValido(pedido.remetente) ? pedido.remetente!.trim() : 'comercial@all4laser.com'
+  const tabelaVolumesTexto = tabelaVolumesEmail(linhas, pedido.idioma)
+  const tabelaVolumesHtml = tabelaVolumesEmailHtml(linhas, pedido.idioma)
   const varsComuns: Record<string, string> = {
     tipo: tipoTransporteAdjetivo(pedido.tipo_transporte),
     origem: moradaOrigem(pedido),
     destino: moradaDestino(pedido) || (pedido.destino_pais ?? ''),
     datas: datasTexto(pedido, pedido.idioma),
-    tabela_volumes: tabelaVolumesEmail(linhas, pedido.idioma),
+    tabela_volumes: tabelaVolumesTexto,
     extras: extrasTexto(pedido, pedido.idioma),
     prazo_resposta: prazoRespostaData(dias),
   }
-  const assinatura = await obterAssinaturaHtml(db)   // fonte única (Gmail/manual)
+  const assinatura = await obterAssinaturaHtml(db, remetente)   // assinatura da conta remetente (fallback à global)
 
   // 6) Envio individual, com throttling e retry.
   const resultados: { id: string; ok: boolean; erro?: string }[] = []
   for (let i = 0; i < destinatarios.length; i++) {
     const d = destinatarios[i]
     const corpoEmail = render(baseCorpo, { ...varsComuns, saudacao: d.saudacao ?? d.nome_empresa ?? '' })
-    const corpoHtml = corpoHtmlComAssinatura(corpoEmail, assinatura)   // corpo em HTML + assinatura única
+    const corpoHtml = corpoHtmlFreight(corpoEmail, tabelaVolumesTexto, tabelaVolumesHtml, assinatura)   // corpo em HTML + assinatura única
 
     let ok = false, erroEnvio: string | undefined, messageId: string | undefined, threadId: string | undefined
     for (let tentativa = 1; tentativa <= TENTATIVAS_MAX && !ok; tentativa++) {
