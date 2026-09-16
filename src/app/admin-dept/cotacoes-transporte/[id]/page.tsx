@@ -38,6 +38,7 @@ function pedidoParaEditor(p: FreightRequest, linhas: CargoLine[]): EstadoEditor 
     linhas: linhas.map((l) => ({
       box_id: l.box_id, descricao: l.descricao, ext_c: l.ext_c, ext_l: l.ext_l, ext_a: l.ext_a,
       quantidade: l.quantidade, peso_volume: l.peso_volume,
+      embalagem: l.embalagem, embalagem_desc: l.embalagem_desc, sobreponivel: l.sobreponivel,
     })),
   }
 }
@@ -278,6 +279,7 @@ export default function DetalhePedidoPage() {
 
   async function guardarCotacao() {
     if (novaCotacao.valor == null && !novaCotacao.notas) { setToast('Indica pelo menos o valor.'); return }
+    if (!novaCotacao.prazo_transito || !novaCotacao.prazo_transito.trim()) { setToast('Indica o tempo de trânsito.'); return }
     // Editar uma cotação já registada.
     if (editandoCotacao) {
       const fromRec = destinatarios.find((d) => d.id === novaCotacao.recipient_id)
@@ -525,7 +527,7 @@ export default function DetalhePedidoPage() {
           </select>
           <input style={c.inputNum} type="number" placeholder="Valor" value={novaCotacao.valor ?? ''} onChange={(e) => setNovaCotacao({ ...novaCotacao, valor: e.target.value === '' ? null : Number(e.target.value) })} />
           <input style={c.inputMoeda} value={novaCotacao.moeda} onChange={(e) => setNovaCotacao({ ...novaCotacao, moeda: e.target.value })} />
-          <input style={c.inputMini} placeholder="Prazo de trânsito" value={novaCotacao.prazo_transito ?? ''} onChange={(e) => setNovaCotacao({ ...novaCotacao, prazo_transito: e.target.value || null })} />
+          <input style={c.inputMini} placeholder="Tempo de trânsito *" value={novaCotacao.prazo_transito ?? ''} onChange={(e) => setNovaCotacao({ ...novaCotacao, prazo_transito: e.target.value || null })} />
           <input style={c.inputData} type="date" title="Validade" value={novaCotacao.validade ?? ''} onChange={(e) => setNovaCotacao({ ...novaCotacao, validade: e.target.value || null })} />
           <input style={c.inputMini} placeholder="Notas" value={novaCotacao.notas ?? ''} onChange={(e) => setNovaCotacao({ ...novaCotacao, notas: e.target.value || null })} />
           <button style={c.btnSecundario} onClick={guardarCotacao}>{editandoCotacao ? 'Guardar alteração' : 'Registar'}</button>

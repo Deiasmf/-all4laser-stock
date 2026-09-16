@@ -11,7 +11,7 @@ import { TIPOS_TRANSPORTE, totaisCarga } from '@/types/freight'
 export type EstadoEditor = { pedido: PedidoInput; linhas: LinhaInput[] }
 
 export function linhaVazia(): LinhaInput {
-  return { box_id: null, descricao: null, ext_c: 0, ext_l: 0, ext_a: 0, quantidade: 1, peso_volume: null }
+  return { box_id: null, descricao: null, ext_c: 0, ext_l: 0, ext_a: 0, quantidade: 1, peso_volume: null, embalagem: null, embalagem_desc: null, sobreponivel: null }
 }
 
 export default function PedidoEditor({
@@ -106,11 +106,13 @@ export default function PedidoEditor({
               <tr>
                 <th style={s.th}>Caixa do catálogo</th>
                 <th style={s.th}>Descrição</th>
+                <th style={s.th}>Embalagem</th>
                 <th style={s.th}>C (cm)</th>
                 <th style={s.th}>L (cm)</th>
                 <th style={s.th}>A (cm)</th>
                 <th style={s.th}>Qtd</th>
                 <th style={s.th}>Peso/vol (kg)</th>
+                <th style={s.th}>Sobreponível</th>
                 <th style={s.th}></th>
               </tr>
             </thead>
@@ -124,16 +126,34 @@ export default function PedidoEditor({
                     </select>
                   </td>
                   <td style={s.td}><input style={s.inputMini} value={l.descricao ?? ''} onChange={(e) => alterarLinha(i, { descricao: e.target.value || null })} /></td>
+                  <td style={s.td}>
+                    <select style={s.inputMini} value={l.embalagem ?? ''} onChange={(e) => alterarLinha(i, { embalagem: (e.target.value || null) as LinhaInput['embalagem'] })}>
+                      <option value="">—</option>
+                      <option value="caixa">Caixa</option>
+                      <option value="palete">Palete</option>
+                      <option value="outro">Outro</option>
+                    </select>
+                    {l.embalagem === 'outro' && (
+                      <input style={{ ...s.inputMini, marginTop: 4 }} placeholder="Descrever…" value={l.embalagem_desc ?? ''} onChange={(e) => alterarLinha(i, { embalagem_desc: e.target.value || null })} />
+                    )}
+                  </td>
                   <td style={s.td}><input style={s.inputNum} type="number" value={l.ext_c || ''} onChange={(e) => alterarLinha(i, { ext_c: nBox(e.target.value), box_id: null })} /></td>
                   <td style={s.td}><input style={s.inputNum} type="number" value={l.ext_l || ''} onChange={(e) => alterarLinha(i, { ext_l: nBox(e.target.value), box_id: null })} /></td>
                   <td style={s.td}><input style={s.inputNum} type="number" value={l.ext_a || ''} onChange={(e) => alterarLinha(i, { ext_a: nBox(e.target.value), box_id: null })} /></td>
                   <td style={s.td}><input style={s.inputNum} type="number" min={1} value={l.quantidade || ''} onChange={(e) => alterarLinha(i, { quantidade: Math.max(1, Math.floor(nBox(e.target.value))) })} /></td>
                   <td style={s.td}><input style={s.inputNum} type="number" value={l.peso_volume ?? ''} onChange={(e) => alterarLinha(i, { peso_volume: e.target.value === '' ? null : Number(e.target.value) })} /></td>
+                  <td style={s.td}>
+                    <select style={s.inputMini} value={l.sobreponivel == null ? '' : (l.sobreponivel ? 'sim' : 'nao')} onChange={(e) => { const v = e.target.value; alterarLinha(i, { sobreponivel: v === '' ? null : v === 'sim' }) }}>
+                      <option value="">—</option>
+                      <option value="sim">Sobreponível</option>
+                      <option value="nao">Não sobreponível</option>
+                    </select>
+                  </td>
                   <td style={s.td}><button type="button" style={s.btnMini} title="Remover" onClick={() => setLinhas(linhas.filter((_, idx) => idx !== i))}>🗑️</button></td>
                 </tr>
               ))}
               {linhas.length === 0 && (
-                <tr><td style={s.tdVazio} colSpan={8}>Sem linhas de carga.</td></tr>
+                <tr><td style={s.tdVazio} colSpan={10}>Sem linhas de carga.</td></tr>
               )}
             </tbody>
           </table>

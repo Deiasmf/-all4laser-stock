@@ -73,6 +73,13 @@ export type StandardBox = {
   updated_at: string
 }
 
+export type Embalagem = 'caixa' | 'palete' | 'outro'
+export const EMBALAGEM_LABEL: Record<Embalagem, { pt: string; en: string }> = {
+  caixa: { pt: 'Caixa', en: 'Box' },
+  palete: { pt: 'Palete', en: 'Pallet' },
+  outro: { pt: 'Outro', en: 'Other' },
+}
+
 export type CargoLine = {
   id: string
   request_id: string
@@ -81,6 +88,9 @@ export type CargoLine = {
   ext_c: number; ext_l: number; ext_a: number
   quantidade: number
   peso_volume: number | null
+  embalagem: Embalagem | null
+  embalagem_desc: string | null
+  sobreponivel: boolean | null
   ordem: number
 }
 
@@ -265,35 +275,53 @@ function num(n: number): string {
   return Number.isInteger(n) ? String(n) : String(round2(n))
 }
 
-// Agrega linhas iguais (mesmas dimensões E mesmo peso/volume) somando as
-// quantidades — para o email mostrar "2 volumes — 108×70×136 — 85 kg" numa só
-// linha. Preserva a ordem de primeira ocorrência.
-type LinhaCarga = Pick<CargoLine, 'ext_c' | 'ext_l' | 'ext_a' | 'quantidade' | 'peso_volume'>
+// Linha de carga para o email (os campos de embalagem/sobreponível são
+// opcionais para não obrigar chamadores antigos/testes a preenchê-los).
+type LinhaCarga = Pick<CargoLine, 'ext_c' | 'ext_l' | 'ext_a' | 'quantidade' | 'peso_volume'> & {
+  embalagem?: Embalagem | null
+  embalagem_desc?: string | null
+  sobreponivel?: boolean | null
+}
+
+// Texto da embalagem para o email ("Outro" mostra a escrita livre, se houver).
+function embalagemTexto(l: LinhaCarga, idioma: IdiomaFreight): string {
+  if (!l.embalagem) return '—'
+  if (l.embalagem === 'outro' && l.embalagem_desc && l.embalagem_desc.trim()) return l.embalagem_desc.trim()
+  return EMBALAGEM_LABEL[l.embalagem][idioma]
+}
+function sobreponivelTexto(l: LinhaCarga, idioma: IdiomaFreight): string {
+  if (l.sobreponivel == null) return '—'
+  return l.sobreponivel ? (idioma === 'en' ? 'Yes' : 'Sim') : (idioma === 'en' ? 'No' : 'Não')
+}
+
+// Agrega linhas iguais (mesmas dimensões, peso/volume, embalagem E
+// sobreponível) somando as quantidades. Preserva a ordem de 1.ª ocorrência.
 export function agregarVolumes(linhas: LinhaCarga[]): LinhaCarga[] {
   const mapa = new Map<string, LinhaCarga>()
   for (const l of linhas) {
-    const chave = `${num(l.ext_c)}x${num(l.ext_l)}x${num(l.ext_a)}|${l.peso_volume ?? ''}`
+    const chave = `${num(l.ext_c)}x${num(l.ext_l)}x${num(l.ext_a)}|${l.peso_volume ?? ''}|${l.embalagem ?? ''}|${(l.embalagem_desc ?? '').trim()}|${l.sobreponivel ?? ''}`
     const existente = mapa.get(chave)
     if (existente) existente.quantidade += Number(l.quantidade) || 0
-    else mapa.set(chave, { ext_c: l.ext_c, ext_l: l.ext_l, ext_a: l.ext_a, peso_volume: l.peso_volume, quantidade: Number(l.quantidade) || 0 })
+    else mapa.set(chave, { ext_c: l.ext_c, ext_l: l.ext_l, ext_a: l.ext_a, peso_volume: l.peso_volume, quantidade: Number(l.quantidade) || 0, embalagem: l.embalagem ?? null, embalagem_desc: l.embalagem_desc ?? null, sobreponivel: l.sobreponivel ?? null })
   }
   return [...mapa.values()]
 }
 
 // Tabela de volumes para o EMAIL ao transitário: volumes (qtd agregada),
-// dimensões exteriores, peso por volume e peso total da linha — SEM nomes de
-// caixas nem referências a equipamentos. Linha final com os totais. (Dentro da
-// app os nomes mantêm-se.)
+// embalagem, dimensões, peso por volume, peso total e se é sobreponível — SEM
+// nomes de caixas nem referências a equipamentos. Linha final com os totais.
 export function tabelaVolumesEmail(linhas: LinhaCarga[], idioma: IdiomaFreight): string {
   const ag = agregarVolumes(linhas)
   const cab = idioma === 'en'
-    ? ['Packages', 'L×W×H (cm)', 'Weight/pkg', 'Total weight']
-    : ['Volumes', 'C×L×A (cm)', 'Peso/volume', 'Peso total']
+    ? ['Packages', 'Packaging', 'L×W×H (cm)', 'Weight/pkg', 'Total weight', 'Stackable']
+    : ['Volumes', 'Embalagem', 'C×L×A (cm)', 'Peso/volume', 'Peso total', 'Sobreponível']
   const linhasFmt = ag.map((l) => [
     String(l.quantidade),
+    embalagemTexto(l, idioma),
     `${num(l.ext_c)}×${num(l.ext_l)}×${num(l.ext_a)}`,
     l.peso_volume != null ? `${num(l.peso_volume)} kg` : '—',
     l.peso_volume != null ? `${num(round2(l.quantidade * l.peso_volume))} kg` : '—',
+    sobreponivelTexto(l, idioma),
   ])
   const larguras = cab.map((c, i) => Math.max(c.length, ...linhasFmt.map((r) => r[i].length)))
   const fmtLinha = (cols: string[]) => cols.map((c, i) => c.padEnd(larguras[i])).join('  ')
@@ -318,15 +346,15 @@ function escaparHtml(t: string): string {
 export function tabelaVolumesEmailHtml(linhas: LinhaCarga[], idioma: IdiomaFreight): string {
   const ag = agregarVolumes(linhas)
   const cab = idioma === 'en'
-    ? ['Packages', 'LxWxH (cm)', 'Weight/pkg', 'Total weight']
-    : ['Volumes', 'CxLxA (cm)', 'Peso/volume', 'Peso total']
+    ? ['Packages', 'Packaging', 'LxWxH (cm)', 'Weight/pkg', 'Total weight', 'Stackable']
+    : ['Volumes', 'Embalagem', 'CxLxA (cm)', 'Peso/volume', 'Peso total', 'Sobreponível']
   const thStyle = 'padding:8px 10px;border:1px solid #d9dee7;background:#f3f5f8;text-align:left;font-weight:700;color:#111827;'
   const tdStyle = 'padding:8px 10px;border:1px solid #d9dee7;color:#111827;'
   const rows = ag.map((l) => {
     const dims = `${num(l.ext_c)} x ${num(l.ext_l)} x ${num(l.ext_a)}`
     const peso = l.peso_volume != null ? `${num(l.peso_volume)} kg` : '-'
     const pesoTotal = l.peso_volume != null ? `${num(round2(l.quantidade * l.peso_volume))} kg` : '-'
-    return `<tr><td style="${tdStyle}">${escaparHtml(String(l.quantidade))}</td><td style="${tdStyle}">${escaparHtml(dims)}</td><td style="${tdStyle}">${escaparHtml(peso)}</td><td style="${tdStyle}">${escaparHtml(pesoTotal)}</td></tr>`
+    return `<tr><td style="${tdStyle}">${escaparHtml(String(l.quantidade))}</td><td style="${tdStyle}">${escaparHtml(embalagemTexto(l, idioma))}</td><td style="${tdStyle}">${escaparHtml(dims)}</td><td style="${tdStyle}">${escaparHtml(peso)}</td><td style="${tdStyle}">${escaparHtml(pesoTotal)}</td><td style="${tdStyle}">${escaparHtml(sobreponivelTexto(l, idioma))}</td></tr>`
   }).join('')
   const t = totaisCarga(linhas)
   const totais = idioma === 'en'

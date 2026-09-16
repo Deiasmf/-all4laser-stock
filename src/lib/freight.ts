@@ -2,7 +2,7 @@ import { supabase } from './supabase'
 import type {
   FreightForwarder, ForwarderGroup, StandardBox, FreightRequest, CargoLine,
   FreightRecipient, FreightQuote, FreightEmailTemplate, FreightSettings,
-  IdiomaFreight, TipoTransporte, EstadoPedido,
+  IdiomaFreight, TipoTransporte, EstadoPedido, Embalagem,
 } from '@/types/freight'
 import { saudacaoPara, REMETENTE_DEFAULT } from '@/types/freight'
 
@@ -233,6 +233,9 @@ export type LinhaInput = {
   ext_c: number; ext_l: number; ext_a: number
   quantidade: number
   peso_volume: number | null
+  embalagem: Embalagem | null
+  embalagem_desc: string | null
+  sobreponivel: boolean | null
 }
 
 // Substitui todas as linhas do pedido (apaga e reinsere) — simples e robusto.
@@ -268,6 +271,7 @@ export async function duplicarPedido(id: string, criadoPor: string | null): Prom
     await guardarLinhas(novoId, linhas.map((l) => ({
       box_id: l.box_id, descricao: l.descricao, ext_c: l.ext_c, ext_l: l.ext_l, ext_a: l.ext_a,
       quantidade: l.quantidade, peso_volume: l.peso_volume,
+      embalagem: l.embalagem, embalagem_desc: l.embalagem_desc, sobreponivel: l.sobreponivel,
     })))
   }
   return { id: novoId }
