@@ -55,7 +55,7 @@ export type Courier = { courierCode: string; courierName: string; website?: stri
 
 export type ResultadoAdaptador<T> = { ok: true; dados: T } | { ok: false; erro: string; status?: number }
 
-const BASE = 'https://api.ship24.com'
+const BASE = 'https://api.ship24.com/public/v1'
 
 function apiKey(): string | null {
   const k = process.env.SHIP24_API_KEY
