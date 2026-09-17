@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
+import { supabase } from '@/lib/supabase'
 import {
   lerIntegracaoTracking, guardarIntegracaoTracking, contarEnviosAuto,
   type IntegracaoTracking,
@@ -17,6 +18,7 @@ export default function IntegracaoTrackingPage() {
   const [integ, setInteg] = useState<IntegracaoTracking | null>(null)
   const [enviosAuto, setEnviosAuto] = useState(0)
   const [aCarregar, setACarregar] = useState(true)
+  const [aSincronizar, setASincronizar] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
 
   const carregar = useCallback(async () => {
@@ -39,6 +41,27 @@ export default function IntegracaoTrackingPage() {
     if (error) { setToast('Erro: ' + error.message); return }
     setToast('Plano atualizado.'); carregar()
   }
+  async function sincronizarAgora() {
+    setASincronizar(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+      if (!token) { setToast('Sessão expirada — volta a entrar.'); return }
+      const resp = await fetch('/api/tracking/sincronizar', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const r = await resp.json()
+      if (!resp.ok || r.ok === false) { setToast('Erro: ' + (r.erro ?? `HTTP ${resp.status}`)); return }
+      const cr = r.registo?.criados ?? 0, at = r.reconc?.atualizados ?? 0
+      setToast(`Sincronizado ✓ — ${cr} novo(s) tracker(s), ${at} atualização(ões).`)
+      carregar()
+    } catch (e) {
+      setToast('Erro: ' + (e instanceof Error ? e.message : 'falha na sincronização'))
+    } finally {
+      setASincronizar(false)
+    }
+  }
 
   if (perfilCarregado && !isAdministrativo) {
     return <main style={c.page}><p style={c.muted}>Sem acesso à Área Administrativa.</p></main>
@@ -57,9 +80,14 @@ export default function IntegracaoTrackingPage() {
           <h1 style={c.titulo}>⚡ Integração de tracking automático</h1>
           <p style={c.sub}>Fornecedor: Ship24 · atualizações por webhook + reconciliação diária.</p>
         </div>
-        <button style={integ.ativo ? c.btnOn : c.btnOff} onClick={alternarAtivo} disabled={!isAdministrativo}>
-          {integ.ativo ? 'Integração LIGADA' : 'Integração desligada'}
-        </button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button style={c.btnSync} onClick={sincronizarAgora} disabled={aSincronizar || !integ.ativo} title={!integ.ativo ? 'Liga a integração primeiro' : 'Regista os envios com ⚡ e atualiza os estados agora'}>
+            {aSincronizar ? 'A sincronizar…' : '↻ Sincronizar agora'}
+          </button>
+          <button style={integ.ativo ? c.btnOn : c.btnOff} onClick={alternarAtivo} disabled={!isAdministrativo}>
+            {integ.ativo ? 'Integração LIGADA' : 'Integração desligada'}
+          </button>
+        </div>
       </div>
 
       {(alertaFalhas || quotaEsgotada) && (
@@ -122,6 +150,7 @@ const c: Record<string, React.CSSProperties> = {
   muted: { color: 'var(--muted)', padding: 24, textAlign: 'center' },
   btnOn: { padding: '9px 16px', border: 'none', borderRadius: 8, background: '#065F46', color: '#fff', fontWeight: 700, cursor: 'pointer', font: 'inherit' },
   btnOff: { padding: '9px 16px', border: '1px solid #d1d5db', borderRadius: 8, background: '#fff', color: '#374151', fontWeight: 700, cursor: 'pointer', font: 'inherit' },
+  btnSync: { padding: '9px 16px', border: '1px solid #2563EB', borderRadius: 8, background: '#EFF6FF', color: '#1D4ED8', fontWeight: 700, cursor: 'pointer', font: 'inherit' },
   alerta: { background: '#FEF2F2', border: '1px solid #FCA5A5', color: '#B91C1C', borderRadius: 10, padding: '10px 14px', fontSize: 13, marginBottom: 14, display: 'flex', flexDirection: 'column', gap: 4 },
   grelha: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 12, marginBottom: 16 },
   cartao: { border: '1px solid #eee', borderRadius: 12, padding: 14, background: '#fff' },
