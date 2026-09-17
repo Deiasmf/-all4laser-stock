@@ -167,7 +167,10 @@ export type FiltroPedidos = { estado?: EstadoPedido; tipo?: TipoTransporte; proc
 
 export async function listarPedidos(f: FiltroPedidos = {}): Promise<FreightRequest[]> {
   let q = supabase.from('freight_quote_requests').select('*').order('created_at', { ascending: false })
+  // Por defeito escondem-se os cancelados (para não criar confusão); só aparecem
+  // se o utilizador filtrar explicitamente pelo estado "Cancelado".
   if (f.estado) q = q.eq('estado', f.estado)
+  else q = q.neq('estado', 'cancelado')
   if (f.tipo) q = q.eq('tipo_transporte', f.tipo)
   if (f.procura && f.procura.trim()) {
     const t = f.procura.trim()
