@@ -87,6 +87,20 @@ export default function DisponibilidadePage() {
           </div>
           <div style={c.detalhe}>
             <span><strong>{resultado.modelo.nome}</strong>: {resultado.laserDisponiveis} de {resultado.frotaLaser} livres no período</span>
+            <span style={c.origem}>
+              Ocupados: {resultado.reservasOcupadas} por reserva · {resultado.agendaOcupadas} por marcação nas agendas
+            </span>
+            {resultado.agendaMarcacoes.length > 0 && (
+              <ul style={c.marcacoes}>
+                {resultado.agendaMarcacoes.map((m, i) => (
+                  <li key={`${m.calendario}-${m.inicio}-${i}`}>
+                    📅 {m.calendario}: <strong>{m.titulo}</strong>{' '}
+                    ({m.inicio}{m.fim !== m.inicio ? ` → ${m.fim}` : ''})
+                  </li>
+                ))}
+              </ul>
+            )}
+            {resultado.agendaAviso && <span style={c.aviso}>⚠ {resultado.agendaAviso}</span>}
             {resultado.requerZimmer && (
               <span>{ZIMMER_PACK}: {resultado.zimmerDisponiveis} de {resultado.frotaZimmer} livres</span>
             )}
@@ -98,7 +112,9 @@ export default function DisponibilidadePage() {
       )}
 
       <p style={c.rodape}>
-        A disponibilidade é calculada com base na frota registada e nas reservas existentes (pendentes e confirmadas) que se sobrepõem ao período.
+        A disponibilidade é calculada com base na frota registada, nas reservas existentes (pendentes e confirmadas) e nas
+        marcações das agendas Google mapeadas em <Link href="/alugueres/agenda" style={c.link}>Agenda</Link>, que se
+        sobrepõem ao período. Calendários sem modelo associado não contam.
       </p>
     </main>
   )
@@ -119,5 +135,9 @@ const c: Record<string, React.CSSProperties> = {
   btn: { marginTop: 16, background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '11px 22px', fontWeight: 700, cursor: 'pointer' },
   resultado: { marginTop: 16, background: 'var(--surface)', border: '2px solid', borderRadius: 12, padding: 18 },
   detalhe: { display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10, fontSize: 14 },
+  origem: { color: 'var(--muted)', fontSize: 13 },
+  marcacoes: { margin: '2px 0 0 0', padding: '0 0 0 18px', display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: 'var(--muted)' },
+  aviso: { color: '#D4820A', fontSize: 13, fontWeight: 600 },
+  link: { color: 'var(--primary)', fontWeight: 600 },
   rodape: { marginTop: 16, fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 },
 }

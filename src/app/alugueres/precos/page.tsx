@@ -5,18 +5,8 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
 import AlugueresNav from '@/components/AlugueresNav'
-import { formatarEuro, parseNumeroPt } from '@/lib/alugueres'
+import { formatarEuro, parseNumeroPt, GRUPOS_PRECO as MODELOS } from '@/lib/alugueres'
 import { TIPOS_ALUGUER, TIPOS_INTERNACIONAL } from '@/types/aluguer'
-
-// Modelos com preço. As chaves de grupo têm de coincidir com as que a função
-// grupoPreco() devolve em /alugueres (senão a sugestão automática não encontra o preço).
-const MODELOS: { grupo: string; label: string }[] = [
-  { grupo: 'gentlepro', label: 'GentlePro' },
-  { grupo: 'gentlemaxpro', label: 'GentleMax Pro' },
-  { grupo: 'gentlemaxproplus', label: 'GentleMax Pro Plus' },
-  { grupo: 'sopranoice', label: 'Soprano ICE' },
-  { grupo: 'sopranoplatinum', label: 'Soprano Platinum' },
-]
 
 // Mercados e os tipos de aluguer de cada um
 const MERCADOS: { chave: string; label: string; tipos: readonly string[] }[] = [

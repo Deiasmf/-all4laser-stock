@@ -171,12 +171,22 @@ function FormReserva({
     const disp = await verificarDisponibilidade(modelo, inicio, fim)
     if (!disp.disponivel) {
       setAGravar(false)
-      return setMsg(
-        disp.requerZimmer && disp.laserDisponiveis > 0 && disp.zimmerDisponiveis <= 0
-          ? 'Sem Zimmer Cryo 6 disponível para o pack nesse período.'
-          : 'Sem disponibilidade deste modelo nesse período.'
-      )
+      if (disp.requerZimmer && disp.laserDisponiveis > 0 && disp.zimmerDisponiveis <= 0) {
+        return setMsg('Sem Zimmer Cryo 6 disponível para o pack nesse período.')
+      }
+      // Dizer de onde vem a ocupação — se for das agendas, o motivo não está nas reservas.
+      const porAgenda = disp.agendaOcupadas > 0
+        ? ` (${disp.reservasOcupadas} por reserva, ${disp.agendaOcupadas} por marcação nas agendas)`
+        : ''
+      return setMsg(`Sem disponibilidade deste modelo nesse período${porAgenda}.`)
     }
+    // Se as agendas não foram lidas, a disponibilidade pode estar otimista —
+    // quem grava decide, mas com o aviso à frente e não escondido na consola.
+    if (disp.agendaFalhou && !confirm(`${disp.agendaAviso}\n\nCriar a reserva mesmo assim?`)) {
+      setAGravar(false)
+      return
+    }
+    if (disp.agendaAviso) console.warn('[disponibilidade] ' + disp.agendaAviso)
     const cliente = clientes.find((cl) => cl.nome.toLowerCase() === clienteNome.trim().toLowerCase())
     const { error } = await criarReserva({
       modelo_id: modelo.id,

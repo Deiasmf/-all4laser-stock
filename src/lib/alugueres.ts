@@ -45,3 +45,35 @@ export function parseNumeroPt(texto: string): number | null {
   const n = Number(s)
   return isNaN(n) ? null : n
 }
+
+// ── Grupos de preço ────────────────────────────────────────────────────────────
+// Os modelos estão escritos de várias formas (stock, calendários, catálogo de
+// aluguer), mas os preços (`precos_aluguer`) e o mapeamento dos calendários
+// (`calendarios_aluguer`) vivem em torno destas chaves. Um único sítio para a
+// lista e para a normalização — senão a Agenda, a Previsão e os Preços deixam de
+// falar a mesma língua.
+export const GRUPOS_PRECO: { grupo: string; label: string }[] = [
+  { grupo: 'gentlepro', label: 'GentlePro' },
+  { grupo: 'gentlemaxpro', label: 'GentleMax Pro' },
+  { grupo: 'gentlemaxproplus', label: 'GentleMax Pro Plus' },
+  { grupo: 'sopranoice', label: 'Soprano ICE' },
+  { grupo: 'sopranoplatinum', label: 'Soprano Platinum' },
+]
+
+export function labelGrupo(grupo: string): string {
+  return GRUPOS_PRECO.find((g) => g.grupo === grupo)?.label ?? grupo
+}
+
+// Associa o nome do modelo (escrito de várias formas no stock) a um grupo de preço.
+// Ignora maiúsculas, espaços e símbolos.
+export function grupoPreco(modelo: string): string | null {
+  const n = modelo.toLowerCase().replace(/[^a-z]/g, '')
+  if (!n) return null
+  if (n.includes('maxpro')) return n.includes('plus') ? 'gentlemaxproplus' : 'gentlemaxpro'
+  if (n.includes('gentlepro') && !n.includes('prou')) return 'gentlepro' // exclui Pro-U
+  if (n.includes('soprano')) {
+    if (n.includes('platinum')) return 'sopranoplatinum'
+    if (n.includes('ice')) return 'sopranoice'
+  }
+  return null
+}

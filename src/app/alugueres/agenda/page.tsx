@@ -4,17 +4,11 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import AlugueresNav from '@/components/AlugueresNav'
+// Os grupos são os mesmos dos preços e da disponibilidade — lista única na lib.
+import { GRUPOS_PRECO as MODELOS } from '@/lib/alugueres'
 
 type Calendario = { id: string; nome: string }
 type Mapa = { modelo_grupo: string; modelo_label: string; regiao: string | null }
-
-// Modelos disponíveis para preço (grupos da tabela precos_aluguer).
-const MODELOS: { grupo: string; label: string }[] = [
-  { grupo: 'gentlepro', label: 'GentlePro U' },
-  { grupo: 'gentlemaxpro', label: 'GentleMax Pro / Pro Plus' },
-  { grupo: 'sopranoice', label: 'Soprano ICE' },
-  { grupo: 'sopranoplatinum', label: 'Soprano Platinum' },
-]
 
 const ZONAS = ['Lisboa', 'Norte', 'Algarve']
 
@@ -167,7 +161,9 @@ export default function AgendaCalendariosPage() {
           </div>
 
           <p style={c.sub}>
-            A seguir (Fase 3): ler as marcações destes calendários e calcular a previsão de receita por mês (e por zona).
+            Os calendários mapeados alimentam a <Link href="/alugueres/previsao" style={c.link}>Previsão</Link> de
+            receita (por mês e por zona) e a <Link href="/alugueres/disponibilidade" style={c.link}>Disponibilidade</Link>{' '}
+            — uma marcação aqui ocupa frota, como uma reserva.
           </p>
         </>
       )}
@@ -193,5 +189,6 @@ const c: Record<string, React.CSSProperties> = {
   select: { padding: '7px 8px', border: '1px solid #ccc', borderRadius: 8, fontSize: 14, background: '#fff', cursor: 'pointer', maxWidth: '100%' },
   selectVerde: { padding: '7px 8px', border: '1px solid #1b873f', borderRadius: 8, fontSize: 14, background: '#fff', color: '#1b873f', fontWeight: 700, cursor: 'pointer', maxWidth: '100%' },
   selectDesativado: { padding: '7px 8px', border: '1px solid #eee', borderRadius: 8, fontSize: 14, background: '#f7f7f7', color: '#bbb', maxWidth: '100%' },
+  link: { color: 'var(--primary)', fontWeight: 600 },
   erro: { background: 'var(--danger-bg, #ffebee)', color: 'var(--danger, #c62828)', border: '1px solid #ef9a9a', borderRadius: 8, padding: 12, fontSize: 14 },
 }

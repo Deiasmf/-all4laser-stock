@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth'
 import AlugueresNav from '@/components/AlugueresNav'
 import AvisoDuplicadosCliente from '@/components/AvisoDuplicadosCliente'
 import { mensagemErro } from '@/lib/erros'
-import { parseNumeroPt } from '@/lib/alugueres'
+import { grupoPreco, parseNumeroPt } from '@/lib/alugueres'
 import {
   TIPOS_ALUGUER,
   TIPOS_INTERNACIONAL,
@@ -32,20 +32,6 @@ function adicionarMeses(iso: string, k: number): string {
 
 function ehNacional(pais: string) {
   return pais.trim().toLowerCase() === 'portugal'
-}
-
-// Associa o nome do modelo (escrito de várias formas no stock) a um grupo de preço.
-// Ignora maiúsculas, espaços e símbolos.
-function grupoPreco(modelo: string): string | null {
-  const n = modelo.toLowerCase().replace(/[^a-z]/g, '')
-  if (!n) return null
-  if (n.includes('maxpro')) return n.includes('plus') ? 'gentlemaxproplus' : 'gentlemaxpro'
-  if (n.includes('gentlepro') && !n.includes('prou')) return 'gentlepro' // exclui Pro-U
-  if (n.includes('soprano')) {
-    if (n.includes('platinum')) return 'sopranoplatinum'
-    if (n.includes('ice')) return 'sopranoice'
-  }
-  return null
 }
 
 type EquipResumo = {
