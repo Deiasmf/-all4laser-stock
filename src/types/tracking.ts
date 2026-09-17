@@ -52,6 +52,7 @@ export type Carrier = {
   url_template: string | null
   deteta_regex: string | null
   carrier_code_api: string | null
+  suporta_ship24: boolean
   ativo: boolean
 }
 
@@ -84,7 +85,18 @@ export type ShipmentTracking = {
   aeroporto_destino: string | null
   num_volumes: number | null
   peso_kg: number | null
+  // Tracking automático (Ship24)
   auto_tracking_enabled: boolean
+  estado_manual: boolean
+  carrier_code_api: string | null
+  ship24_tracker_id: string | null
+  ship24_registado_em: string | null
+  last_status_raw: string | null
+  last_status_at: string | null
+  last_status_milestone: string | null
+  last_event_descricao: string | null
+  last_event_local: string | null
+  last_event_em: string | null
   created_at: string
   updated_at: string
   // Soft delete: quando eliminado, deixa de aparecer na lista/dashboard.

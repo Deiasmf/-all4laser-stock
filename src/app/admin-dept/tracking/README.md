@@ -36,21 +36,39 @@ outros módulos.
   senão abre o `track-trace.com/aircargo` e copia a AWB para o clipboard (o site
   é uma SPA e não expõe deep-link estável por query string).
 
-## Tracking automático (POR ATIVAR)
+## Tracking automático (Ship24)
 
-Estrutura pronta, **desligada** por omissão:
-- Campos em `shipments_tracking`: `last_status_raw`, `last_status_at`,
-  `carrier_code_api`, `auto_tracking_enabled` (default false).
-- Adaptador: `src/lib/trackingProvider.ts` (stub `getTrackingStatus`).
+Integração com o **Ship24** (docs.ship24.com). O Ship24 é conhecido **apenas**
+pelo adaptador `src/lib/trackingProvider.ts` e pela rota de webhook — trocar de
+fornecedor = escrever outro adaptador com a mesma interface, sem mudar mais nada.
 
-Para ativar:
-1. Criar conta no serviço agregador — **17track** ou **Ship24** (ambos cobrem
-   expresso e carga aérea por AWB).
-2. Obter a API key e defini-la no Vercel como `TRACKING_API_KEY`.
-3. Implementar o adaptador em `trackingProvider.ts` (fetch à API do serviço) e
-   mapear os `carrier_code_api` já semeados (`ups`, `fedex`, `dhl`, `nacex`,
-   `ctt`, …).
-4. Criar a rota de cron `POST /api/tracking/atualizar` (protegida por
-   `CRON_SECRET`) que percorre os envios com `auto_tracking_enabled=true`,
-   chama `getTrackingStatus`, e grava `last_status_raw`/`last_status_at`/`estado`.
-5. Agendar o cron no `vercel.json` (ex.: `0 */6 * * *`).
+**Peças:**
+- `shipments_tracking`: `auto_tracking_enabled`, `estado_manual`,
+  `carrier_code_api`, `ship24_tracker_id`, `last_status_*`, `last_event_*`.
+- `tracking_updates`: linha temporal de eventos por envio (idempotência por
+  `event_id`).
+- `tracking_integracao`: estado/config (ativo, plano, quota, cron, webhook, erros).
+- Adaptador: `src/lib/trackingProvider.ts` (criar/consultar/parar tracker,
+  `GET /couriers`, mapeamento de estados, parse de webhook).
+- Automação: `src/lib/trackingAuto.ts` (registar, aplicar eventos, reconciliar) —
+  service_role.
+- Webhook: `POST /api/webhooks/ship24` (valida `Authorization: Bearer` contra
+  `SHIP24_WEBHOOK_SECRET`; idempotente).
+- Cron: `GET /api/tracking/atualizar` (Vercel Cron diário, `CRON_SECRET`) —
+  regista pendentes + reconcilia, respeitando o rate limit.
+- Painel: `/admin-dept/tracking/integracao`.
+
+**Variáveis de ambiente (Vercel):** `SHIP24_API_KEY`, `SHIP24_WEBHOOK_SECRET`,
+`CRON_SECRET` (já existente).
+
+**Ativar:**
+1. Criar conta Ship24, obter API key, definir `SHIP24_API_KEY` no Vercel.
+2. No dashboard Ship24, configurar o Webhook URL
+   `https://app.all4laser.com/api/webhooks/ship24` e copiar o Webhook Secret para
+   `SHIP24_WEBHOOK_SECRET`.
+3. Correr `GET /couriers` (via adaptador) para confirmar/mapear os
+   `carrier_code_api` e marcar `carriers.suporta_ship24`.
+4. Ligar a integração no painel e ligar `auto_tracking_enabled` nos envios (⚡).
+
+Envios de transportadoras sem cobertura Ship24 ficam em modo manual, sem erros.
+Estado terminal (entregue/devolvido) → o tracker é desativado (liberta quota).

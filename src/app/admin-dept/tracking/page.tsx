@@ -8,7 +8,8 @@ import {
   listarCarriers, listarEnvios, criarEnvioManual, atualizarEnvio,
   eliminarEnvio, restaurarEnvio, numeroDaOrigem,
   carregarCartaPorte, urlCartaPorte, diasEmTransito,
-  type FiltroEnvios, type EnvioInput,
+  alternarAutoTracking, listarUpdates, resumoUltimoEvento,
+  type FiltroEnvios, type EnvioInput, type TrackingUpdate,
 } from '@/lib/tracking'
 import {
   ESTADOS_ENVIO, estadoEnvioInfo, TIPOS_TRANSPORTE, tipoTransporteLabel, origemLabel,
@@ -70,6 +71,8 @@ function TrackingConteudo() {
   const [editId, setEditId] = useState<string | null>(null)
   const [form, setForm] = useState<EnvioInput>(VAZIO)
   const [aGravar, setAGravar] = useState(false)
+  const [updates, setUpdates] = useState<TrackingUpdate[]>([])
+  const [envioSel, setEnvioSel] = useState<ShipmentTracking | null>(null)
 
   const draftKey = editId ? `tracking:${editId}` : 'tracking:novo'
   const { rascunhoRecuperado, descartar, limpar } = useFormDraft<EnvioInput>(
@@ -120,10 +123,13 @@ function TrackingConteudo() {
   const awbInfo = useMemo(() => analisarAwb(form.awb), [form.awb])
 
   function abrirNovo() {
-    setEditId(null); setForm(VAZIO); setFormAberto(true)
+    setEditId(null); setEnvioSel(null); setUpdates([]); setForm(VAZIO); setFormAberto(true)
   }
   function abrirEdicao(e: ShipmentTracking) {
     setEditId(e.id)
+    setEnvioSel(e)
+    setUpdates([])
+    listarUpdates(e.id).then(setUpdates)
     setForm({
       tracking_number: e.tracking_number, awb: e.awb, awb_check_valido: e.awb_check_valido,
       tipo_transporte: e.tipo_transporte, carrier_id: e.carrier_id, carrier_nome: e.carrier_nome,
@@ -135,7 +141,14 @@ function TrackingConteudo() {
     })
     setFormAberto(true)
   }
-  function fechar() { setFormAberto(false); setEditId(null); setForm(VAZIO) }
+  function fechar() { setFormAberto(false); setEditId(null); setForm(VAZIO); setEnvioSel(null); setUpdates([]) }
+
+  async function alternarAuto(e: ShipmentTracking) {
+    const { error } = await alternarAutoTracking(e.id, !e.auto_tracking_enabled)
+    if (error) { setToast('Erro: ' + error.message); return }
+    setToast(e.auto_tracking_enabled ? 'Seguimento automático desligado.' : 'Seguimento automático ligado.')
+    carregar()
+  }
 
   async function guardar() {
     setAGravar(true)
@@ -227,7 +240,12 @@ function TrackingConteudo() {
     ) : (
       <>
         <button style={c.btnMini} title="Ver tracking" onClick={() => verTracking(e)}>🔎</button>
-        <button style={c.btnMini} title="Editar" onClick={() => abrirEdicao(e)}>✏️</button>
+        <button
+          style={e.auto_tracking_enabled ? c.btnMiniOn : c.btnMini}
+          title={e.auto_tracking_enabled ? 'Seguimento automático ligado — clicar para desligar' : 'Ligar seguimento automático'}
+          onClick={() => alternarAuto(e)}
+        >⚡</button>
+        <button style={c.btnMini} title="Editar / linha temporal" onClick={() => abrirEdicao(e)}>✏️</button>
         <button style={c.btnMini} title="Abrir carta de porte" onClick={() => abrirCarta(e)}>📄</button>
         <label style={c.btnMini} title="Anexar carta de porte">📎
           <input type="file" accept="application/pdf,image/*" style={{ display: 'none' }}
@@ -241,7 +259,7 @@ function TrackingConteudo() {
   return (
     <main style={c.page}>
       <div style={c.topo}>
-        <p style={c.subtitulo}>Todos os envios com tracking / AWB / carta de porte. Sincroniza automaticamente a partir dos Envios de Encomendas e dos Equipamentos. <Link href="/admin-dept/tracking/extracoes" style={c.link}>Log de extrações ↗</Link></p>
+        <p style={c.subtitulo}>Todos os envios com tracking / AWB / carta de porte. Sincroniza automaticamente a partir dos Envios de Encomendas e dos Equipamentos. <Link href="/admin-dept/tracking/extracoes" style={c.link}>Log de extrações ↗</Link> · <Link href="/admin-dept/tracking/integracao" style={c.link}>Estado da integração ↗</Link></p>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <UploadCartaPorte
             carriers={carriers}
@@ -305,8 +323,9 @@ function TrackingConteudo() {
               <div key={e.id} style={{ ...c.card, ...(destaque(e) ? c.cardDestaque : {}), ...(e.origem_anulada ? c.trAnulada : {}) }}>
                 <div style={c.cardTitulo}>
                   <span>{e.entidade_nome ?? '—'}</span>
-                  <span style={{ ...c.badge, color: est.cor, background: est.bg }}>{est.label}</span>
+                  <span style={{ ...c.badge, color: est.cor, background: est.bg }}>{est.label}{e.auto_tracking_enabled ? ' ⚡' : ''}</span>
                 </div>
+                {resumoUltimoEvento(e) && <div style={c.cardMeta} title={e.last_event_descricao ?? ''}>📍 {resumoUltimoEvento(e)}</div>}
                 <div style={c.cardLinha}><span style={c.cardRot}>Transportadora</span><span>{e.carrier_nome ?? '—'}</span></div>
                 <div style={c.cardLinha}><span style={c.cardRot}>AWB / Tracking</span><span style={c.mono}>{e.tracking_number || e.awb || '—'}</span></div>
                 {e.awb && e.awb_check_valido === false && <div style={c.avisoMini}>⚠ AWB inválida</div>}
@@ -362,8 +381,11 @@ function TrackingConteudo() {
                       {org ? <Link href={org} style={c.link}>{origemLabel(e.origem)} ↗</Link> : origemLabel(e.origem)}
                       {e.origem_anulada && <div style={c.avisoMini}>origem anulada</div>}
                     </td>
-                    <td style={c.td}><span style={{ ...c.badge, color: est.cor, background: est.bg }}>{est.label}</span>
-                      {dias !== null && ['registado', 'em_transito'].includes(e.estado) && <div style={c.diasMini}>{dias}d</div>}
+                    <td style={c.td}>
+                      <span style={{ ...c.badge, color: est.cor, background: est.bg }}>{est.label}</span>
+                      {e.auto_tracking_enabled && <span style={c.autoIcon} title="Seguimento automático ativo">⚡</span>}
+                      {resumoUltimoEvento(e) && <div style={c.eventoMini} title={e.last_event_descricao ?? ''}>{resumoUltimoEvento(e)}</div>}
+                      {dias !== null && ['registado', 'em_transito'].includes(e.estado) && <div style={c.diasMini}>{dias}d em trânsito</div>}
                     </td>
                     <td style={c.td}>{e.data_expedicao ?? '—'}</td>
                     <td style={c.tdAcoes}>{acoes(e)}</td>
@@ -482,6 +504,34 @@ function TrackingConteudo() {
               </label>
             </div>
 
+            {editId && envioSel && (
+              <div style={c.seccaoAuto}>
+                <label style={c.autoLinha}>
+                  <input type="checkbox" checked={envioSel.auto_tracking_enabled}
+                    onChange={async () => { await alternarAuto(envioSel); const at = { ...envioSel, auto_tracking_enabled: !envioSel.auto_tracking_enabled }; setEnvioSel(at) }} />
+                  <span><strong>Seguir automaticamente</strong> — atualiza o estado a partir da transportadora (Ship24).</span>
+                </label>
+                {envioSel.estado_manual && <p style={c.avisoManual}>⚠ Estado em modo manual: as atualizações automáticas não o alteram enquanto estiver a editar o estado à mão.</p>}
+                <div style={c.timelineTitulo}>Linha temporal</div>
+                {updates.length === 0 ? (
+                  <p style={c.timelineVazio}>Sem eventos registados{envioSel.auto_tracking_enabled ? ' ainda.' : ' (seguimento automático desligado).'}</p>
+                ) : (
+                  <ul style={c.timeline}>
+                    {updates.map((u) => (
+                      <li key={u.id} style={c.timelineItem}>
+                        <span style={c.timelineData}>{u.ocorrido_em ? new Date(u.ocorrido_em).toLocaleString('pt-PT') : '—'}</span>
+                        <span style={c.timelineTexto}>
+                          {u.descricao ?? u.status_milestone ?? '—'}
+                          {u.local ? ` · ${u.local}` : ''}
+                          {u.recebido_por ? <span style={c.timelineFonte}> ({u.recebido_por})</span> : null}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
             <div style={c.modalAcoes}>
               <button style={c.btnSecundario} onClick={fechar} disabled={aGravar}>Cancelar</button>
               <button style={c.btnPrimario} onClick={guardar} disabled={aGravar}>{aGravar ? 'A guardar…' : 'Guardar'}</button>
@@ -532,6 +582,19 @@ const c: Record<string, React.CSSProperties> = {
   okMini: { fontSize: 11, color: '#065F46', marginTop: 2 },
   link: { color: '#2563EB', textDecoration: 'none' },
   btnMini: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', cursor: 'pointer', marginRight: 4, fontSize: 14 },
+  btnMiniOn: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, border: '1px solid #F59E0B', borderRadius: 8, background: '#FEF3C7', cursor: 'pointer', marginRight: 4, fontSize: 14 },
+  autoIcon: { marginLeft: 6, fontSize: 12, color: '#B45309' },
+  eventoMini: { fontSize: 11, color: '#374151', marginTop: 3 },
+  seccaoAuto: { borderTop: '1px solid #eee', marginTop: 14, paddingTop: 12 },
+  autoLinha: { display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, cursor: 'pointer' },
+  avisoManual: { fontSize: 12, color: '#92400E', background: '#FEF3C7', borderRadius: 8, padding: '6px 10px', marginTop: 8 },
+  timelineTitulo: { fontWeight: 700, fontSize: 13, marginTop: 12, marginBottom: 6 },
+  timelineVazio: { fontSize: 12, color: 'var(--muted)' },
+  timeline: { listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 220, overflowY: 'auto' },
+  timelineItem: { display: 'flex', gap: 10, fontSize: 12, borderLeft: '2px solid #e5e7eb', paddingLeft: 10 },
+  timelineData: { color: 'var(--muted)', whiteSpace: 'nowrap', minWidth: 120 },
+  timelineTexto: { color: '#111827' },
+  timelineFonte: { color: 'var(--muted)' },
   btnPrimario: { padding: '9px 16px', border: 'none', borderRadius: 8, background: '#111827', color: '#fff', fontWeight: 700, cursor: 'pointer', font: 'inherit' },
   btnSecundario: { padding: '9px 16px', border: '1px solid #d1d5db', borderRadius: 8, background: '#fff', cursor: 'pointer', font: 'inherit' },
   overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 16, overflowY: 'auto', zIndex: 50 },

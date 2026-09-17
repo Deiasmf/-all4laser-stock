@@ -43,7 +43,10 @@ export async function listarEnvios(f: FiltroEnvios = {}): Promise<ShipmentTracki
     q = q.or(`tracking_number.ilike.%${t}%,awb.ilike.%${t}%,entidade_nome.ilike.%${t}%,descricao_conteudo.ilike.%${t}%`)
   }
   const { data } = await q
-  return (data as ShipmentTracking[]) ?? []
+  const lista = (data as ShipmentTracking[]) ?? []
+  // Os envios em "problema" (exceção reportada) sobem ao topo, mantendo a
+  // ordenação por data dentro de cada grupo.
+  return lista.sort((a, b) => Number(b.estado === 'problema') - Number(a.estado === 'problema'))
 }
 
 export async function obterEnvio(id: string) {
@@ -249,4 +252,93 @@ export async function resumoTracking(): Promise<ResumoTracking> {
 export function diasEmTransito(dataExpedicao: string | null): number | null {
   if (!dataExpedicao) return null
   return Math.floor((Date.now() - new Date(dataExpedicao).getTime()) / 86400000)
+}
+
+// ─── Tracking automático (Ship24) ────────────────────────────────────────────
+
+// Resumo do último evento para a coluna de estado: "Frankfurt Hub · 12/09 14:30".
+export function resumoUltimoEvento(e: Pick<ShipmentTracking, 'last_event_descricao' | 'last_event_local' | 'last_event_em'>): string | null {
+  const partes: string[] = []
+  if (e.last_event_local) partes.push(e.last_event_local)
+  else if (e.last_event_descricao) partes.push(e.last_event_descricao)
+  if (e.last_event_em) {
+    const d = new Date(e.last_event_em)
+    const dd = String(d.getDate()).padStart(2, '0')
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const hh = String(d.getHours()).padStart(2, '0')
+    const mi = String(d.getMinutes()).padStart(2, '0')
+    partes.push(`${dd}/${mm} ${hh}:${mi}`)
+  }
+  return partes.length ? partes.join(' · ') : null
+}
+
+// Linha temporal de eventos de um envio (detalhe).
+export type TrackingUpdate = {
+  id: string
+  tracking_id: string
+  event_id: string | null
+  status_milestone: string | null
+  status_category: string | null
+  estado_mapeado: string | null
+  descricao: string | null
+  local: string | null
+  courier_code: string | null
+  ocorrido_em: string | null
+  recebido_por: 'webhook' | 'cron' | null
+  created_at: string
+}
+
+export async function listarUpdates(trackingId: string): Promise<TrackingUpdate[]> {
+  const { data } = await supabase.from('tracking_updates')
+    .select('*').eq('tracking_id', trackingId).order('ocorrido_em', { ascending: false })
+  return (data as TrackingUpdate[]) ?? []
+}
+
+// Ligar/desligar o seguimento automático de um envio.
+export async function alternarAutoTracking(id: string, ativo: boolean) {
+  return supabase.from('shipments_tracking').update({ auto_tracking_enabled: ativo }).eq('id', id)
+}
+
+// Override manual do estado: fixa o estado e marca-o como manual (o automático
+// deixa de o sobrepor).
+export async function definirEstadoManual(id: string, estado: EstadoEnvio) {
+  return supabase.from('shipments_tracking').update({ estado, estado_manual: true }).eq('id', id)
+}
+
+// Voltar a deixar o estado ser gerido automaticamente.
+export async function limparEstadoManual(id: string) {
+  return supabase.from('shipments_tracking').update({ estado_manual: false }).eq('id', id)
+}
+
+// ─── Estado/config da integração (painel) ────────────────────────────────────
+export type IntegracaoTracking = {
+  id: number
+  ativo: boolean
+  plano: string
+  quota_limite: number
+  quota_consumida: number
+  quota_periodo_inicio: string | null
+  ultimo_cron_em: string | null
+  ultimo_cron_ok: boolean | null
+  ultimo_cron_erro: string | null
+  ultimo_webhook_em: string | null
+  falhas_consecutivas: number
+  updated_at: string
+}
+
+export async function lerIntegracaoTracking(): Promise<IntegracaoTracking | null> {
+  const { data } = await supabase.from('tracking_integracao').select('*').eq('id', 1).maybeSingle()
+  return (data as IntegracaoTracking) ?? null
+}
+
+export async function guardarIntegracaoTracking(patch: Partial<Pick<IntegracaoTracking, 'ativo' | 'plano' | 'quota_limite'>>) {
+  return supabase.from('tracking_integracao').update(patch).eq('id', 1)
+}
+
+// Nº de envios com seguimento automático ativo (para o painel).
+export async function contarEnviosAuto(): Promise<number> {
+  const { count } = await supabase.from('shipments_tracking')
+    .select('id', { count: 'exact', head: true })
+    .eq('auto_tracking_enabled', true).is('deleted_at', null).eq('origem_anulada', false)
+  return count ?? 0
 }
