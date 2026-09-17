@@ -21,6 +21,13 @@ const ESTADOS_TERMINAIS: EstadoNormalizado[] = ['entregue', 'devolvido']
 const RATE_MS = 150 // ~6-7 req/s, abaixo do limite de 10 req/s do Ship24
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+// Número para enviar ao Ship24: tira espaços (os tracking numbers são guardados
+// por vezes com espaços — ex.: "8755 1851 7586" — e o Ship24 não os reconhece
+// nesse formato). Não mexe noutros separadores (ex.: "/" do NACEX).
+function numeroLimpo(tracking: string | null, awb: string | null): string {
+  return (tracking || awb || '').replace(/\s+/g, '').trim()
+}
+
 export function dbService(): SupabaseClient | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -176,7 +183,7 @@ export async function registarEnviosPendentes(sb: SupabaseClient): Promise<{ cri
 
   let criados = 0, semQuota = 0, erros = 0
   for (const e of pendentes) {
-    const numero = (e.tracking_number || e.awb || '').trim()
+    const numero = numeroLimpo(e.tracking_number, e.awb)
     if (!numero) continue
     if (integ.quota_consumida + criados >= integ.quota_limite) { semQuota++; continue }
 
