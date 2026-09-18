@@ -102,9 +102,28 @@ function hashEvento(e: EventoDetalhado): string {
   return crypto.createHash('sha1').update([e.summary, e.description, e.location, e.inicio, e.fim, e.cancelado].join('|')).digest('hex')
 }
 function soData(iso: string): string { return iso.slice(0, 10) }
-function menosUmDia(dataYmd: string): string {
-  const [y, m, d] = dataYmd.slice(0, 10).split('-').map(Number)
-  return new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10)
+function somarDias(ymd: string, n: number): string {
+  const [y, m, d] = ymd.slice(0, 10).split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10)
+}
+function diaSemana(ymd: string): number {
+  const [y, m, d] = ymd.slice(0, 10).split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay() // 0=Dom … 6=Sáb
+}
+// Não há transportes ao fim de semana:
+//  - entrega (tem de ser ANTES): FDS recua para a sexta-feira.
+//  - recolha (pode ser DEPOIS): FDS avança para a segunda-feira.
+function ajustarEntrega(ymd: string): string {
+  const wd = diaSemana(ymd)
+  if (wd === 6) return somarDias(ymd, -1) // Sáb → Sex
+  if (wd === 0) return somarDias(ymd, -2) // Dom → Sex
+  return ymd
+}
+function ajustarRecolha(ymd: string): string {
+  const wd = diaSemana(ymd)
+  if (wd === 6) return somarDias(ymd, 2) // Sáb → Seg
+  if (wd === 0) return somarDias(ymd, 1) // Dom → Seg
+  return ymd
 }
 
 async function cruzarCliente(sb: SupabaseClient, nome: string | null): Promise<string | null> {
@@ -135,8 +154,11 @@ export async function sincronizarParagens(sb: SupabaseClient): Promise<{ ok: boo
       // Papéis (paragens) que este evento gera.
       const papeis: { tipo: 'entrega' | 'recolha' | 'indefinido'; data: string }[] = []
       if (ev.diaInteiro) {
-        papeis.push({ tipo: 'entrega', data: soData(ev.inicio) })
-        papeis.push({ tipo: 'recolha', data: menosUmDia(ev.fim) })
+        // Entrega = dia ANTERIOR ao início; recolha = fim (dia-inteiro do Google
+        // já é exclusivo = dia seguinte ao último dia). Ajustados para não caírem
+        // ao fim de semana.
+        papeis.push({ tipo: 'entrega', data: ajustarEntrega(somarDias(soData(ev.inicio), -1)) })
+        papeis.push({ tipo: 'recolha', data: ajustarRecolha(soData(ev.fim)) })
       } else {
         // Evento com hora (raro): uma paragem, tipo indefinido (o Dinis classifica).
         papeis.push({ tipo: 'indefinido', data: soData(ev.inicio) })
