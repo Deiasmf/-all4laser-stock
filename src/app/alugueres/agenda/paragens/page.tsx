@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import {
   listarParagens, sincronizarAgora, estadoParagemInfo, zonaLabel,
-  diaSemanaPt, dataCurta, textoAgenda, ZONAS_TRANSPORTE, ESTADOS_PARAGEM,
+  diaSemanaPt, dataCurta, textoAgenda, equipamentoParagem, ZONAS_TRANSPORTE, ESTADOS_PARAGEM,
   type TransportStop, type FiltroParagens, type ZonaTransporte, type EstadoParagem,
 } from '@/lib/transportes'
 
@@ -120,7 +120,7 @@ export default function ParagensPage() {
                     <td style={c.td}>{p.tipo === 'entrega' ? '📦 Entrega' : p.tipo === 'recolha' ? '↩ Recolha' : '❓'}{p.notas && <div style={c.avisoMini} title={p.notas}>⏰ até 13h00</div>}</td>
                     <td style={c.td}>{p.cliente_nome ?? <span style={c.faltaMini}>—</span>}</td>
                     <td style={c.td}>{p.morada ?? '—'}{p.aviso_morada && <div style={c.avisoMini} title="Morada pode não corresponder à zona do calendário">⚠ morada/zona?</div>}</td>
-                    <td style={c.td}>{p.calendario?.nome ?? '—'}</td>
+                    <td style={c.td}>{equipamentoParagem(p) || '—'}</td>
                     <td style={c.td}><span style={{ ...c.badge, color: est.cor, background: est.bg }}>{est.label}</span>{p.confianca && p.estado === 'por_classificar' && <div style={c.conf}>conf. {p.confianca}</div>}</td>
                     <td style={c.td}>{p.link_evento && <a href={p.link_evento} target="_blank" rel="noopener" style={c.link}>Google ↗</a>}</td>
                   </tr>

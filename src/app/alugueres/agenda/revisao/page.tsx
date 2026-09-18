@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
-import { diaSemanaPt, dataCurta, type TransportStop } from '@/lib/transportes'
+import { diaSemanaPt, dataCurta, equipamentoParagem, type TransportStop } from '@/lib/transportes'
 import { listarMotoristas, type Motorista } from '@/lib/transportesRecursos'
 import {
   listarParagensDia, listarCanceladasDia, listarDriverDays, atribuirMotorista, confirmarDia,
@@ -102,7 +102,7 @@ export default function RevisaoPage() {
               <ul style={c.lista}>
                 {alteradas.map((s) => (
                   <li key={s.id} style={{ ...c.item, ...c.itemAlt }}>
-                    <span style={c.dot}>●</span> <strong>{s.tipo === 'entrega' ? 'Entrega' : s.tipo === 'recolha' ? 'Recolha' : '—'}</strong> · {s.cliente_nome ?? '(sem cliente)'} {s.morada ? `· ${s.morada}` : ''} <span style={c.muted2}>({s.calendario?.nome ?? ''})</span>
+                    <span style={c.dot}>●</span> <strong>{s.tipo === 'entrega' ? 'Entrega' : s.tipo === 'recolha' ? 'Recolha' : '—'}</strong> · {s.cliente_nome ?? '(sem cliente)'} {s.morada ? `· ${s.morada}` : ''} <span style={c.muted2}>({equipamentoParagem(s)})</span>
                   </li>
                 ))}
                 {canceladas.map((s) => (
@@ -141,7 +141,7 @@ export default function RevisaoPage() {
                 <ul style={c.lista}>
                   {g.lista.map((s) => (
                     <li key={s.id} style={{ ...c.item, ...(s.alterado ? c.itemAlt : {}) }}>
-                      {s.alterado && <span style={c.dot}>●</span>} <strong>{s.tipo === 'entrega' ? '📦' : s.tipo === 'recolha' ? '↩' : '❓'}</strong> {s.cliente_nome ?? '(sem cliente)'} {s.morada ? `· ${s.morada}` : ''} {s.notas ? <span style={c.nota}>⏰13h</span> : ''} <span style={c.muted2}>({s.calendario?.nome ?? ''})</span>
+                      {s.alterado && <span style={c.dot}>●</span>} <strong>{s.tipo === 'entrega' ? '📦' : s.tipo === 'recolha' ? '↩' : '❓'}</strong> {s.cliente_nome ?? '(sem cliente)'} {s.morada ? `· ${s.morada}` : ''} {s.notas ? <span style={c.nota}>⏰13h</span> : ''} <span style={c.muted2}>({equipamentoParagem(s)})</span>
                     </li>
                   ))}
                 </ul>
