@@ -31,7 +31,7 @@ export async function otimizarRotaDia(data: string, driverId: string): Promise<{
 export async function listarParagensDia(data: string): Promise<TransportStop[]> {
   const { data: rows } = await supabase
     .from('transport_stops')
-    .select('*, calendario:transport_calendars(nome)')
+    .select('*, calendario:transport_calendars(nome, equipamento:equipamentos(serial_number))')
     .eq('data', data)
     .neq('estado', 'cancelada')
     .order('zona')

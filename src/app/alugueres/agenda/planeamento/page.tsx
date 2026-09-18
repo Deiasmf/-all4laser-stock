@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
-import { diaSemanaPt, dataCurta, type TransportStop } from '@/lib/transportes'
+import { diaSemanaPt, dataCurta, equipamentoParagem, type TransportStop } from '@/lib/transportes'
 import { listarMotoristas, listarCarrinhas, type Motorista, type Carrinha } from '@/lib/transportesRecursos'
 import {
   listarParagensDia, atribuirMotorista, listarDriverDays, definirCarrinha,
@@ -159,7 +159,7 @@ export default function PlaneamentoPage() {
                       </div>
                       <div style={c.cardCliente}>{s.cliente_nome ?? '(sem cliente)'}</div>
                       {s.morada && <div style={c.cardMorada}>{s.morada}{s.aviso_morada && <span style={c.avisoM} title="Morada pode não bater com a zona"> ⚠</span>}</div>}
-                      <div style={c.cardEquip}>{s.calendario?.nome ?? ''}</div>
+                      <div style={c.cardEquip}>{equipamentoParagem(s)}</div>
                       {col.tipo !== 'algarve' && (
                         <select style={c.selMover} value={col.tipo === 'motorista' ? col.id : 'pool'} onChange={(e) => mover(s, e.target.value)}>
                           <option value="pool">Por atribuir</option>

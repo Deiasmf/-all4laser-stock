@@ -134,7 +134,15 @@ export type TransportStop = {
   ordem: number | null
   lat: number | null
   lng: number | null
-  calendario?: { nome: string | null } | null
+  calendario?: { nome: string | null; equipamento?: { serial_number: string | null } | null } | null
+}
+
+// Etiqueta do equipamento de uma paragem: nome do calendário + S/N (se ligado).
+export function equipamentoParagem(s: Pick<TransportStop, 'calendario'>): string {
+  const nome = s.calendario?.nome ?? ''
+  const sn = s.calendario?.equipamento?.serial_number
+  if (nome && sn) return `${nome} · S/N ${sn}`
+  return sn ? `S/N ${sn}` : nome
 }
 
 export type FiltroParagens = { zona?: ZonaTransporte; estado?: EstadoParagem; de?: string; ate?: string }
@@ -142,7 +150,7 @@ export type FiltroParagens = { zona?: ZonaTransporte; estado?: EstadoParagem; de
 export async function listarParagens(f: FiltroParagens = {}): Promise<TransportStop[]> {
   let q = supabase
     .from('transport_stops')
-    .select('*, calendario:transport_calendars(nome)')
+    .select('*, calendario:transport_calendars(nome, equipamento:equipamentos(serial_number))')
     .neq('estado', 'cancelada')
     .order('data', { ascending: true })
     .order('janela_inicio', { ascending: true, nullsFirst: true })
@@ -162,7 +170,8 @@ function linhaParagem(p: TransportStop): string {
   const partes = [tipoLabel(p.tipo), p.cliente_nome ?? '(sem cliente)']
   if (p.morada) partes.push(p.morada)
   const base = partes.join(' · ')
-  const equip = p.calendario?.nome ? ` (${p.calendario.nome})` : ''
+  const eq = equipamentoParagem(p)
+  const equip = eq ? ` (${eq})` : ''
   const nota = p.notas ? ` — ${p.notas.replace(/\s*\(.*?\)\s*$/, '').trim()}` : ''
   return `- ${base}${equip}${nota}`
 }
