@@ -114,6 +114,7 @@ export type TransportStop = {
   calendar_id: string | null
   zona: string | null
   equipamento_id: string | null
+  motorista_id: string | null
   data: string | null
   janela_inicio: string | null
   janela_fim: string | null
