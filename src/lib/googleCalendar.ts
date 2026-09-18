@@ -95,6 +95,68 @@ export async function listarEventos(
   }
 }
 
+// Evento com os detalhes necessários para criar uma paragem.
+export type EventoDetalhado = {
+  id: string
+  summary: string
+  description: string
+  location: string
+  inicio: string        // ISO (dateTime) ou 'YYYY-MM-DD' (dia inteiro)
+  fim: string
+  diaInteiro: boolean
+  cancelado: boolean
+  htmlLink: string | null
+  updated: string | null
+}
+
+// Lê os eventos DETALHADOS de um calendário (para a Agenda de Transportes).
+// Inclui cancelados (showDeleted) para refletir cancelamentos nas paragens.
+export async function listarEventosDetalhados(
+  calendarId: string, timeMin: string, timeMax: string,
+): Promise<{ ok: boolean; erro?: string; eventos?: EventoDetalhado[] }> {
+  const { sa, erro } = carregarSA()
+  if (!sa) return { ok: false, erro }
+  try {
+    const token = await obterAccessToken(sa)
+    const eventos: EventoDetalhado[] = []
+    let pageToken: string | undefined
+    do {
+      const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`)
+      url.searchParams.set('timeMin', timeMin)
+      url.searchParams.set('timeMax', timeMax)
+      url.searchParams.set('singleEvents', 'true')
+      url.searchParams.set('orderBy', 'startTime')
+      url.searchParams.set('showDeleted', 'true')
+      url.searchParams.set('maxResults', '2500')
+      if (pageToken) url.searchParams.set('pageToken', pageToken)
+      const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      const j = await r.json()
+      if (!r.ok) return { ok: false, erro: `Calendar ${r.status}: ${j?.error?.message ?? JSON.stringify(j)}` }
+      for (const it of (j.items ?? [])) {
+        const inicio = it.start?.dateTime ?? it.start?.date
+        const fim = it.end?.dateTime ?? it.end?.date
+        if (!inicio) continue
+        eventos.push({
+          id: it.id,
+          summary: (it.summary ?? '').trim(),
+          description: (it.description ?? '').trim(),
+          location: (it.location ?? '').trim(),
+          inicio,
+          fim: fim ?? inicio,
+          diaInteiro: !!it.start?.date,
+          cancelado: it.status === 'cancelled',
+          htmlLink: it.htmlLink ?? null,
+          updated: it.updated ?? null,
+        })
+      }
+      pageToken = j.nextPageToken
+    } while (pageToken)
+    return { ok: true, eventos }
+  } catch (e) {
+    return { ok: false, erro: e instanceof Error ? e.message : 'Falha ao ler eventos do Google Calendar.' }
+  }
+}
+
 function carregarSA(): { sa?: ServiceAccount; erro?: string } {
   const jsonSA = process.env.GOOGLE_SERVICE_ACCOUNT_JSON
   if (!jsonSA) return { erro: 'Google não configurado (falta GOOGLE_SERVICE_ACCOUNT_JSON).' }
