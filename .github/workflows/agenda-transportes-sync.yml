@@ -1,0 +1,21 @@
+name: Agenda de Transportes — sincronizar calendários
+
+# Lê os eventos dos calendários da frota (próximos ~10 dias) e cria/atualiza as
+# paragens. Corre a cada 30 min. Fica aqui e não em vercel.json porque o plano
+# Hobby da Vercel limita a frequência dos crons (mesma solução dos pedidos de
+# pagamento e do leads-ingest). A sincronização é idempotente (google_event_id).
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  sincronizar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar endpoint de sincronização da agenda
+        run: |
+          curl -sS --fail-with-body --max-time 290 \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://all4laser-stock.vercel.app/api/alugueres/agenda/sincronizar"

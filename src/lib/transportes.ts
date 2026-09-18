@@ -81,3 +81,69 @@ export async function criarCalendarioMapa(input: {
 export async function eliminarCalendarioMapa(id: string) {
   return supabase.from('transport_calendars').delete().eq('id', id)
 }
+
+// ─── Paragens (transport_stops) ──────────────────────────────────────────────
+export type EstadoParagem = 'por_classificar' | 'planeada' | 'confirmada' | 'concluida' | 'cancelada'
+export const ESTADOS_PARAGEM: { valor: EstadoParagem; label: string; cor: string; bg: string }[] = [
+  { valor: 'por_classificar', label: 'Por classificar', cor: '#92400E', bg: '#FEF3C7' },
+  { valor: 'planeada', label: 'Planeada', cor: '#1D4ED8', bg: '#DBEAFE' },
+  { valor: 'confirmada', label: 'Confirmada', cor: '#065F46', bg: '#D1FAE5' },
+  { valor: 'concluida', label: 'Concluída', cor: '#374151', bg: '#E5E7EB' },
+  { valor: 'cancelada', label: 'Cancelada', cor: '#B91C1C', bg: '#FEE2E2' },
+]
+export function estadoParagemInfo(v: string) {
+  return ESTADOS_PARAGEM.find((e) => e.valor === v) ?? ESTADOS_PARAGEM[0]
+}
+
+export type TransportStop = {
+  id: string
+  google_event_id: string | null
+  calendar_id: string | null
+  zona: string | null
+  equipamento_id: string | null
+  data: string | null
+  janela_inicio: string | null
+  janela_fim: string | null
+  tipo: 'entrega' | 'recolha' | 'indefinido'
+  cliente_nome: string | null
+  cliente_id: string | null
+  morada: string | null
+  notas: string | null
+  titulo_raw: string | null
+  descricao_raw: string | null
+  estado: EstadoParagem
+  confianca: string | null
+  aviso_morada: boolean
+  alterado: boolean
+  link_evento: string | null
+  sincronizado_em: string | null
+  calendario?: { nome: string | null } | null
+}
+
+export type FiltroParagens = { zona?: ZonaTransporte; estado?: EstadoParagem; de?: string; ate?: string }
+
+export async function listarParagens(f: FiltroParagens = {}): Promise<TransportStop[]> {
+  let q = supabase
+    .from('transport_stops')
+    .select('*, calendario:transport_calendars(nome)')
+    .neq('estado', 'cancelada')
+    .order('data', { ascending: true })
+    .order('janela_inicio', { ascending: true, nullsFirst: true })
+  if (f.zona) q = q.eq('zona', f.zona)
+  if (f.estado) q = q.eq('estado', f.estado)
+  if (f.de) q = q.gte('data', f.de)
+  if (f.ate) q = q.lte('data', f.ate)
+  const { data } = await q
+  return (data as TransportStop[]) ?? []
+}
+
+// Dispara a sincronização manual (usa a sessão do utilizador; staff).
+export async function sincronizarAgora(): Promise<{ ok: boolean; erro?: string; novos?: number; alterados?: number; cancelados?: number; calendarios?: number; erros?: string[] }> {
+  const { data: { session } } = await supabase.auth.getSession()
+  const token = session?.access_token
+  if (!token) return { ok: false, erro: 'Sessão expirada — volta a entrar.' }
+  const r = await fetch('/api/alugueres/agenda/sincronizar', { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
+  const j = await r.json()
+  if (!r.ok) return { ok: false, erro: j.erro ?? `HTTP ${r.status}` }
+  return j
+}
