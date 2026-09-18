@@ -14,7 +14,7 @@ export type DriverDay = {
 }
 
 // Otimiza a rota de um motorista no dia (via endpoint ORS, sessão de staff).
-export async function otimizarRotaDia(data: string, driverId: string): Promise<{ ok: boolean; erro?: string; km?: number; semCoords?: number }> {
+export async function otimizarRotaDia(data: string, driverId: string): Promise<{ ok: boolean; erro?: string; km?: number; semCoords?: number; metodo?: 'ors' | 'aproximado'; erroORS?: string }> {
   const { data: { session } } = await supabase.auth.getSession()
   const token = session?.access_token
   if (!token) return { ok: false, erro: 'Sessão expirada.' }

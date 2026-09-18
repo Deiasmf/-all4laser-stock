@@ -62,11 +62,11 @@ export async function POST(req: Request) {
   if (pontos.length === 0) return Response.json({ ok: false, erro: 'Nenhuma morada foi geocodificada — verifica as moradas.', geocodificados, semCoords })
 
   const res = await otimizarRota(partida, pontos)
-  if (!res) return Response.json({ ok: false, erro: 'A ORS não devolveu rota.', geocodificados, semCoords }, { status: 502 })
+  if (!res) return Response.json({ ok: false, erro: 'Sem paragens com morada para otimizar.', geocodificados, semCoords }, { status: 400 })
 
   // Gravar ordem nas paragens + km no dia.
   for (const o of res.ordem) await sb.from('transport_stops').update({ ordem: o.ordem }).eq('id', o.id)
   await sb.from('transport_driver_days').upsert({ data, driver_id: driverId, km_total: res.km }, { onConflict: 'data,driver_id' })
 
-  return Response.json({ ok: true, km: res.km, paragens: pontos.length, geocodificados, semCoords })
+  return Response.json({ ok: true, km: res.km, paragens: pontos.length, geocodificados, semCoords, metodo: res.metodo, erroORS: res.erroORS })
 }
