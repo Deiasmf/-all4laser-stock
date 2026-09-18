@@ -97,6 +97,17 @@ export default function AgendaCalendariosPage() {
       </div>
       <AlugueresNav />
 
+      <div style={c.transportes}>
+        <span style={c.transportesTit}>🚚 Transportes (entregas / recolhas)</span>
+        <div style={c.transportesLinks}>
+          <Link href="/alugueres/agenda/planeamento" style={c.tLink}>Planeamento do dia</Link>
+          <Link href="/alugueres/agenda/revisao" style={c.tLink}>Revisão de véspera</Link>
+          <Link href="/alugueres/agenda/paragens" style={c.tLink}>Paragens (lista / PDF)</Link>
+          <Link href="/alugueres/agenda/recursos" style={c.tLink}>Motoristas & carrinhas</Link>
+          <Link href="/alugueres/agenda/mapeamento" style={c.tLink}>Mapeamento calendários</Link>
+        </div>
+      </div>
+
       <p style={c.sub}>
         Associa cada calendário de aluguer a um <strong>modelo</strong> e à <strong>zona</strong> (Lisboa/Norte/Algarve).
         Os calendários que não interessam deixa em <strong>“— ignorar —”</strong>.
@@ -194,4 +205,8 @@ const c: Record<string, React.CSSProperties> = {
   selectVerde: { padding: '7px 8px', border: '1px solid #1b873f', borderRadius: 8, fontSize: 14, background: '#fff', color: '#1b873f', fontWeight: 700, cursor: 'pointer', maxWidth: '100%' },
   selectDesativado: { padding: '7px 8px', border: '1px solid #eee', borderRadius: 8, fontSize: 14, background: '#f7f7f7', color: '#bbb', maxWidth: '100%' },
   erro: { background: 'var(--danger-bg, #ffebee)', color: 'var(--danger, #c62828)', border: '1px solid #ef9a9a', borderRadius: 8, padding: 12, fontSize: 14 },
+  transportes: { border: '1px solid #e5e7eb', borderRadius: 12, padding: '12px 14px', margin: '12px 0', background: '#F9FAFB' },
+  transportesTit: { fontWeight: 700, fontSize: 14, color: 'var(--primary)' },
+  transportesLinks: { display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 },
+  tLink: { padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: 8, background: '#fff', color: '#111827', textDecoration: 'none', fontSize: 13, fontWeight: 600 },
 }
