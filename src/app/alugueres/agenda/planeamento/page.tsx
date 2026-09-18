@@ -63,7 +63,9 @@ export default function PlaneamentoPage() {
     const r = await otimizarRotaDia(data, driverId)
     setAOtimizar(null)
     if (!r.ok) { setToast('Erro: ' + (r.erro ?? '')); return }
-    setToast(`Rota otimizada — ${r.km ?? 0} km${r.semCoords ? ` · ${r.semCoords} sem morada` : ''}.`)
+    const metodo = r.metodo === 'ors' ? '' : ' (aprox., por proximidade)'
+    const sem = r.semCoords ? ` · ${r.semCoords} sem morada` : ''
+    setToast(`Rota — ${r.km ?? 0} km${metodo}${sem}.`)
     carregarDia()
   }
 
