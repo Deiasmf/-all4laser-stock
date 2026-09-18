@@ -125,10 +125,15 @@ function ajustarRecolha(ymd: string): string {
   return ymd
 }
 
-async function cruzarCliente(sb: SupabaseClient, nome: string | null): Promise<string | null> {
+// Liga a paragem ao cliente (por nome) e devolve também a morada da ficha, para
+// preencher a morada quando o evento do Google não a traz.
+async function resolverCliente(sb: SupabaseClient, nome: string | null): Promise<{ id: string; morada: string | null } | null> {
   if (!nome || nome.trim().length < 3) return null
-  const { data } = await sb.from('clientes').select('id').ilike('nome', `%${nome.trim()}%`).limit(1)
-  return (data as { id: string }[] | null)?.[0]?.id ?? null
+  const { data } = await sb.from('clientes').select('id, morada, codigo_postal, cidade').ilike('nome', `%${nome.trim()}%`).limit(1)
+  const c = (data as { id: string; morada: string | null; codigo_postal: string | null; cidade: string | null }[] | null)?.[0]
+  if (!c) return null
+  const morada = [c.morada, c.codigo_postal, c.cidade].map((x) => (x ?? '').trim()).filter(Boolean).join(', ') || null
+  return { id: c.id, morada }
 }
 
 type CalRow = { id: string; google_calendar_id: string; nome: string; zona: string; equipamento_id: string | null }
@@ -210,7 +215,10 @@ export async function sincronizarParagens(sb: SupabaseClient): Promise<{ ok: boo
         if (!exist && papel.data < hoje) continue
 
         const d = await getDados()
-        const clienteId = await cruzarCliente(sb, d.cliente)
+        const cli = await resolverCliente(sb, d.cliente)
+        const clienteId = cli?.id ?? null
+        // Morada: a do evento tem prioridade; senão vai à ficha do cliente na app.
+        const moradaFinal = d.morada ?? cli?.morada ?? null
         const estado = d.cliente ? (papel.tipo === 'indefinido' ? 'por_classificar' : 'planeada') : 'por_classificar'
         const campos = {
           calendar_id: cal.id,
@@ -223,11 +231,11 @@ export async function sincronizarParagens(sb: SupabaseClient): Promise<{ ok: boo
           notas: papel.nota,
           cliente_nome: d.cliente,
           cliente_id: clienteId,
-          morada: d.morada,
+          morada: moradaFinal,
           titulo_raw: ev.summary,
           descricao_raw: ev.description,
           confianca: d.confianca,
-          aviso_morada: avisoMorada(cal.zona, d.morada),
+          aviso_morada: avisoMorada(cal.zona, moradaFinal),
           hash_evento: hash,
           link_evento: ev.htmlLink,
           sincronizado_em: new Date().toISOString(),
