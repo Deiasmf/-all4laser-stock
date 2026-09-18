@@ -89,7 +89,9 @@ export async function otimizarRota(partida: Coord | null, pontos: PontoRota[]): 
     const r = await fetch(`${BASE}/optimization`, {
       method: 'POST',
       headers: { Authorization: key, 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ jobs, vehicles: [vehicle] }),
+      // options.g = true → a ORS calcula a geometria e devolve a DISTÂNCIA
+      // (sem isto, route.distance vem 0).
+      body: JSON.stringify({ jobs, vehicles: [vehicle], options: { g: true } }),
     })
     if (r.ok) {
       const j = await r.json()
