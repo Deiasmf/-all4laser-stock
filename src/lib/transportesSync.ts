@@ -20,7 +20,12 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { listarEventosDetalhados, type EventoDetalhado } from './googleCalendar'
 
 const MODELO_AI = 'claude-haiku-4-5'
-const DIAS = 12
+// Janela de leitura larga: alugueres podem ser de 3 semanas ou mensais, por isso
+// é preciso ler bastante para trás (apanhar recolhas de alugueres já a decorrer)
+// e para a frente (entregas/recolhas planeadas). O filtro data<hoje garante que
+// só se criam paragens de hoje em diante.
+const DIAS_TRAS = 45
+const DIAS_FRENTE = 21
 
 export function dbService(): SupabaseClient | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -141,8 +146,13 @@ export async function sincronizarParagens(sb: SupabaseClient): Promise<{ ok: boo
   const { data: cals } = await sb.from('transport_calendars').select('*').eq('ativo', true)
   const calendarios = (cals as CalRow[]) ?? []
   const hoje = new Date().toISOString().slice(0, 10)
-  const timeMin = new Date().toISOString()
-  const timeMax = new Date(Date.now() + DIAS * 86400_000).toISOString()
+  // Lê a partir de alguns dias ATRÁS: um evento de dia inteiro que termina hoje
+  // tem, no Google, fim às 00:00 de hoje (antes de "agora") e seria ignorado —
+  // ficaríamos sem a recolha de hoje. As paragens passadas continuam a não ser
+  // criadas (filtro data < hoje mais abaixo).
+  const agora = new Date()
+  const timeMin = new Date(Date.UTC(agora.getUTCFullYear(), agora.getUTCMonth(), agora.getUTCDate() - DIAS_TRAS)).toISOString()
+  const timeMax = new Date(Date.now() + DIAS_FRENTE * 86400_000).toISOString()
 
   let novos = 0, alterados = 0, cancelados = 0
   for (const cal of calendarios) {
