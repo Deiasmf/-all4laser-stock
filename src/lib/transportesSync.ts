@@ -141,7 +141,12 @@ export async function sincronizarParagens(sb: SupabaseClient): Promise<{ ok: boo
   const { data: cals } = await sb.from('transport_calendars').select('*').eq('ativo', true)
   const calendarios = (cals as CalRow[]) ?? []
   const hoje = new Date().toISOString().slice(0, 10)
-  const timeMin = new Date().toISOString()
+  // Lê a partir de alguns dias ATRÁS: um evento de dia inteiro que termina hoje
+  // tem, no Google, fim às 00:00 de hoje (antes de "agora") e seria ignorado —
+  // ficaríamos sem a recolha de hoje. As paragens passadas continuam a não ser
+  // criadas (filtro data < hoje mais abaixo).
+  const agora = new Date()
+  const timeMin = new Date(Date.UTC(agora.getUTCFullYear(), agora.getUTCMonth(), agora.getUTCDate() - 5)).toISOString()
   const timeMax = new Date(Date.now() + DIAS * 86400_000).toISOString()
 
   let novos = 0, alterados = 0, cancelados = 0
