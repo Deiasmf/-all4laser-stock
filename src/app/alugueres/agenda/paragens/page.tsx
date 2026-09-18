@@ -68,7 +68,7 @@ export default function ParagensPage() {
       <div style={c.topo}>
         <div>
           <h1 style={c.titulo}>Paragens (próximos dias)</h1>
-          <p style={c.sub}>Entregas e recolhas lidas dos calendários. <Link href="/alugueres/agenda/mapeamento" style={c.link}>Mapeamento ↗</Link></p>
+          <p style={c.sub}>Entregas e recolhas lidas dos calendários. <Link href="/alugueres/agenda/mapeamento" style={c.link}>Mapeamento ↗</Link> · <Link href="/alugueres/agenda/recursos" style={c.link}>Motoristas & carrinhas ↗</Link></p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button style={c.btnSec} onClick={copiar} disabled={lista.length === 0} title="Copiar a agenda (respeita os filtros) para enviar aos colaboradores">📋 Copiar texto</button>
