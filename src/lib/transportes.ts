@@ -150,6 +150,39 @@ export async function listarParagens(f: FiltroParagens = {}): Promise<TransportS
   return (data as TransportStop[]) ?? []
 }
 
+// ─── Exportar a agenda (texto para enviar / imprimir) ────────────────────────
+function tipoLabel(t: string): string {
+  return t === 'entrega' ? 'Entrega' : t === 'recolha' ? 'Recolha' : 'A classificar'
+}
+function linhaParagem(p: TransportStop): string {
+  const partes = [tipoLabel(p.tipo), p.cliente_nome ?? '(sem cliente)']
+  if (p.morada) partes.push(p.morada)
+  const base = partes.join(' · ')
+  const equip = p.calendario?.nome ? ` (${p.calendario.nome})` : ''
+  const nota = p.notas ? ` — ${p.notas.replace(/\s*\(.*?\)\s*$/, '').trim()}` : ''
+  return `- ${base}${equip}${nota}`
+}
+
+// Agenda em texto simples, agrupada por dia e zona (para colar em WhatsApp/email).
+export function textoAgenda(stops: TransportStop[], titulo = 'Agenda de transportes'): string {
+  const ativos = stops.filter((s) => s.estado !== 'cancelada')
+  if (ativos.length === 0) return `${titulo}\n\n(Sem paragens.)`
+  const dias = Array.from(new Set(ativos.map((s) => s.data).filter(Boolean))).sort() as string[]
+  const linhas: string[] = [titulo, '']
+  for (const dia of dias) {
+    linhas.push(`${diaSemanaPt(dia)} ${dataCurta(dia)}`.trim())
+    const doDia = ativos.filter((s) => s.data === dia)
+    for (const z of ZONAS_TRANSPORTE) {
+      const daZona = doDia.filter((s) => s.zona === z.valor)
+      if (daZona.length === 0) continue
+      linhas.push(`  ${z.label.toUpperCase()}`)
+      for (const p of daZona) linhas.push(`  ${linhaParagem(p)}`)
+    }
+    linhas.push('')
+  }
+  return linhas.join('\n').trim()
+}
+
 // Dispara a sincronização manual (usa a sessão do utilizador; staff).
 export async function sincronizarAgora(): Promise<{ ok: boolean; erro?: string; novos?: number; alterados?: number; cancelados?: number; calendarios?: number; erros?: string[] }> {
   const { data: { session } } = await supabase.auth.getSession()

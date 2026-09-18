@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import {
   listarParagens, sincronizarAgora, estadoParagemInfo, zonaLabel,
-  diaSemanaPt, dataCurta, ZONAS_TRANSPORTE, ESTADOS_PARAGEM,
+  diaSemanaPt, dataCurta, textoAgenda, ZONAS_TRANSPORTE, ESTADOS_PARAGEM,
   type TransportStop, type FiltroParagens, type ZonaTransporte, type EstadoParagem,
 } from '@/lib/transportes'
 
@@ -38,6 +38,25 @@ export default function ParagensPage() {
     carregar()
   }
 
+  function tituloAgenda(): string {
+    const z = filtro.zona ? ` — ${zonaLabel(filtro.zona)}` : ''
+    return `Agenda de transportes${z}`
+  }
+  async function copiar() {
+    try {
+      await navigator.clipboard.writeText(textoAgenda(lista, tituloAgenda()))
+      setToast('Agenda copiada — cola no WhatsApp/email.')
+    } catch { setToast('Não consegui copiar automaticamente.') }
+  }
+  function imprimir() {
+    const w = window.open('', '_blank')
+    if (!w) { setToast('Permite pop-ups para gerar o PDF.'); return }
+    const texto = textoAgenda(lista, tituloAgenda())
+    const esc = texto.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${tituloAgenda()}</title><style>body{font-family:Arial,Helvetica,sans-serif;padding:24px;color:#111}pre{white-space:pre-wrap;font-family:inherit;font-size:14px;line-height:1.6;margin:0}</style></head><body><pre>${esc}</pre></body></html>`)
+    w.document.close(); w.focus(); setTimeout(() => w.print(), 200)
+  }
+
   if (perfilCarregado && !isAdministrativo) return <main style={c.page}><p style={c.muted}>Sem acesso.</p></main>
 
   const porClassificar = lista.filter((p) => p.estado === 'por_classificar').length
@@ -51,7 +70,11 @@ export default function ParagensPage() {
           <h1 style={c.titulo}>Paragens (próximos dias)</h1>
           <p style={c.sub}>Entregas e recolhas lidas dos calendários. <Link href="/alugueres/agenda/mapeamento" style={c.link}>Mapeamento ↗</Link></p>
         </div>
-        <button style={c.btnPrim} onClick={sincronizar} disabled={aSync}>{aSync ? 'A sincronizar…' : '↻ Sincronizar agora'}</button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button style={c.btnSec} onClick={copiar} disabled={lista.length === 0} title="Copiar a agenda (respeita os filtros) para enviar aos colaboradores">📋 Copiar texto</button>
+          <button style={c.btnSec} onClick={imprimir} disabled={lista.length === 0} title="Abrir versão limpa para imprimir ou gravar como PDF">🖨️ PDF</button>
+          <button style={c.btnPrim} onClick={sincronizar} disabled={aSync}>{aSync ? 'A sincronizar…' : '↻ Sincronizar agora'}</button>
+        </div>
       </div>
 
       {(porClassificar > 0 || alterados > 0) && (
@@ -121,6 +144,7 @@ const c: Record<string, React.CSSProperties> = {
   sub: { color: 'var(--muted)', fontSize: 13, marginTop: 4 },
   link: { color: '#2563EB', textDecoration: 'none' },
   btnPrim: { padding: '9px 16px', border: 'none', borderRadius: 8, background: '#111827', color: '#fff', fontWeight: 700, cursor: 'pointer', font: 'inherit' },
+  btnSec: { padding: '9px 14px', border: '1px solid #d1d5db', borderRadius: 8, background: '#fff', color: '#111827', fontWeight: 700, cursor: 'pointer', font: 'inherit' },
   avisos: { display: 'flex', gap: 8, flexWrap: 'wrap', margin: '0 0 12px' },
   pillAviso: { background: '#FEF3C7', color: '#92400E', borderRadius: 999, padding: '4px 10px', fontSize: 12, fontWeight: 700 },
   pillAlt: { background: '#EDE9FE', color: '#5B21B6', borderRadius: 999, padding: '4px 10px', fontSize: 12, fontWeight: 700 },
