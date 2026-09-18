@@ -91,7 +91,7 @@ export default function ParagensPage() {
                   <tr key={p.id} style={{ ...c.tr, ...(p.estado === 'por_classificar' ? c.trAviso : {}) }}>
                     <td style={c.td}>{p.data ?? '—'}{p.alterado && <span style={c.alt} title="Alterado desde a última revisão"> ●</span>}</td>
                     <td style={c.td}>{p.zona ? zonaLabel(p.zona) : '—'}</td>
-                    <td style={c.td}>{p.tipo === 'entrega' ? '📦 Entrega' : p.tipo === 'recolha' ? '↩ Recolha' : '❓'}</td>
+                    <td style={c.td}>{p.tipo === 'entrega' ? '📦 Entrega' : p.tipo === 'recolha' ? '↩ Recolha' : '❓'}{p.notas && <div style={c.avisoMini} title={p.notas}>⏰ até 13h00</div>}</td>
                     <td style={c.td}>{p.cliente_nome ?? <span style={c.faltaMini}>—</span>}</td>
                     <td style={c.td}>{p.morada ?? '—'}{p.aviso_morada && <div style={c.avisoMini} title="Morada pode não corresponder à zona do calendário">⚠ morada/zona?</div>}</td>
                     <td style={c.td}>{p.calendario?.nome ?? '—'}</td>

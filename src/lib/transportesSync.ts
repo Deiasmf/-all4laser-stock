@@ -115,15 +115,9 @@ function diaSemana(ymd: string): number {
   const [y, m, d] = ymd.slice(0, 10).split('-').map(Number)
   return new Date(Date.UTC(y, m - 1, d)).getUTCDay() // 0=Dom … 6=Sáb
 }
-// Não há transportes ao fim de semana:
-//  - entrega (tem de ser ANTES): FDS recua para a sexta-feira.
-//  - recolha (pode ser DEPOIS): FDS avança para a segunda-feira.
-function ajustarEntrega(ymd: string): string {
-  const wd = diaSemana(ymd)
-  if (wd === 6) return somarDias(ymd, -1) // Sáb → Sex
-  if (wd === 0) return somarDias(ymd, -2) // Dom → Sex
-  return ymd
-}
+// Não há transportes ao fim de semana. A recolha (pode ser DEPOIS) avança para
+// segunda. A entrega é tratada no fluxo principal: se a véspera cair em FDS
+// (aluguer começa à segunda), entrega-se no PRÓPRIO dia até às 13h00.
 function ajustarRecolha(ymd: string): string {
   const wd = diaSemana(ymd)
   if (wd === 6) return somarDias(ymd, 2) // Sáb → Seg
@@ -162,16 +156,24 @@ export async function sincronizarParagens(sb: SupabaseClient): Promise<{ ok: boo
     for (const ev of r.eventos) {
       const hash = hashEvento(ev)
       // Papéis (paragens) que este evento gera.
-      const papeis: { tipo: 'entrega' | 'recolha' | 'indefinido'; data: string }[] = []
+      const papeis: { tipo: 'entrega' | 'recolha' | 'indefinido'; data: string; nota: string | null }[] = []
       if (ev.diaInteiro) {
-        // Entrega = dia ANTERIOR ao início; recolha = fim (dia-inteiro do Google
-        // já é exclusivo = dia seguinte ao último dia). Ajustados para não caírem
-        // ao fim de semana.
-        papeis.push({ tipo: 'entrega', data: ajustarEntrega(somarDias(soData(ev.inicio), -1)) })
-        papeis.push({ tipo: 'recolha', data: ajustarRecolha(soData(ev.fim)) })
+        // Entrega = dia ANTERIOR ao início. Se essa véspera cair ao fim de semana
+        // (aluguer começa à segunda), entrega-se no PRÓPRIO dia de início, até às
+        // 13h00. Recolha = fim (dia-inteiro do Google já é exclusivo = dia
+        // seguinte ao último dia), a avançar para segunda se cair em FDS.
+        const inicio = soData(ev.inicio)
+        const vespera = somarDias(inicio, -1)
+        const wdVespera = diaSemana(vespera)
+        if (wdVespera === 0 || wdVespera === 6) {
+          papeis.push({ tipo: 'entrega', data: inicio, nota: 'Entrega no próprio dia até às 13h00 (aluguer começa à segunda; não há transporte ao FDS)' })
+        } else {
+          papeis.push({ tipo: 'entrega', data: vespera, nota: null })
+        }
+        papeis.push({ tipo: 'recolha', data: ajustarRecolha(soData(ev.fim)), nota: null })
       } else {
         // Evento com hora (raro): uma paragem, tipo indefinido (o Dinis classifica).
-        papeis.push({ tipo: 'indefinido', data: soData(ev.inicio) })
+        papeis.push({ tipo: 'indefinido', data: soData(ev.inicio), nota: null })
       }
 
       // Extração AI só se for preciso (novo/alterado nalgum papel).
@@ -210,6 +212,7 @@ export async function sincronizarParagens(sb: SupabaseClient): Promise<{ ok: boo
           janela_inicio: null,
           janela_fim: null,
           tipo: papel.tipo,
+          notas: papel.nota,
           cliente_nome: d.cliente,
           cliente_id: clienteId,
           morada: d.morada,
