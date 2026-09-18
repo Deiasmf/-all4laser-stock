@@ -95,6 +95,19 @@ export function estadoParagemInfo(v: string) {
   return ESTADOS_PARAGEM.find((e) => e.valor === v) ?? ESTADOS_PARAGEM[0]
 }
 
+// Nome do dia da semana em PT a partir de 'YYYY-MM-DD' (sem problemas de fuso).
+const DIAS_SEMANA_PT = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
+export function diaSemanaPt(ymd: string | null): string {
+  if (!ymd) return ''
+  const [y, m, d] = ymd.slice(0, 10).split('-').map(Number)
+  return DIAS_SEMANA_PT[new Date(Date.UTC(y, m - 1, d)).getUTCDay()] ?? ''
+}
+// Data curta 'DD/MM' a partir de 'YYYY-MM-DD'.
+export function dataCurta(ymd: string | null): string {
+  if (!ymd) return '—'
+  return `${ymd.slice(8, 10)}/${ymd.slice(5, 7)}`
+}
+
 export type TransportStop = {
   id: string
   google_event_id: string | null

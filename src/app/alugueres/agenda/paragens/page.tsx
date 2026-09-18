@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import {
   listarParagens, sincronizarAgora, estadoParagemInfo, zonaLabel,
-  ZONAS_TRANSPORTE, ESTADOS_PARAGEM,
+  diaSemanaPt, dataCurta, ZONAS_TRANSPORTE, ESTADOS_PARAGEM,
   type TransportStop, type FiltroParagens, type ZonaTransporte, type EstadoParagem,
 } from '@/lib/transportes'
 
@@ -89,7 +89,10 @@ export default function ParagensPage() {
                 const est = estadoParagemInfo(p.estado)
                 return (
                   <tr key={p.id} style={{ ...c.tr, ...(p.estado === 'por_classificar' ? c.trAviso : {}) }}>
-                    <td style={c.td}>{p.data ?? '—'}{p.alterado && <span style={c.alt} title="Alterado desde a última revisão"> ●</span>}</td>
+                    <td style={c.td}>
+                      <div style={c.diaSemana}>{diaSemanaPt(p.data)}</div>
+                      <div>{dataCurta(p.data)}{p.alterado && <span style={c.alt} title="Alterado desde a última revisão"> ●</span>}</div>
+                    </td>
                     <td style={c.td}>{p.zona ? zonaLabel(p.zona) : '—'}</td>
                     <td style={c.td}>{p.tipo === 'entrega' ? '📦 Entrega' : p.tipo === 'recolha' ? '↩ Recolha' : '❓'}{p.notas && <div style={c.avisoMini} title={p.notas}>⏰ até 13h00</div>}</td>
                     <td style={c.td}>{p.cliente_nome ?? <span style={c.faltaMini}>—</span>}</td>
@@ -133,6 +136,7 @@ const c: Record<string, React.CSSProperties> = {
   trAviso: { background: '#FFFBEB' },
   td: { padding: '8px', verticalAlign: 'top' },
   badge: { display: 'inline-block', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 700 },
+  diaSemana: { fontWeight: 700, color: '#111827' },
   alt: { color: '#7C3AED', fontWeight: 900 },
   conf: { fontSize: 11, color: 'var(--muted)', marginTop: 2 },
   faltaMini: { color: '#B45309' },
