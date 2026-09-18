@@ -81,17 +81,15 @@ export default function ParagensPage() {
         <div style={c.wrap}>
           <table style={c.tabela}>
             <thead><tr>
-              <th style={c.th}>Data</th><th style={c.th}>Hora</th><th style={c.th}>Zona</th><th style={c.th}>Tipo</th>
+              <th style={c.th}>Data</th><th style={c.th}>Zona</th><th style={c.th}>Tipo</th>
               <th style={c.th}>Cliente</th><th style={c.th}>Morada</th><th style={c.th}>Equipamento</th><th style={c.th}>Estado</th><th style={c.th}></th>
             </tr></thead>
             <tbody>
               {lista.map((p) => {
                 const est = estadoParagemInfo(p.estado)
-                const hora = p.janela_inicio ? new Date(p.janela_inicio).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }) : '—'
                 return (
                   <tr key={p.id} style={{ ...c.tr, ...(p.estado === 'por_classificar' ? c.trAviso : {}) }}>
                     <td style={c.td}>{p.data ?? '—'}{p.alterado && <span style={c.alt} title="Alterado desde a última revisão"> ●</span>}</td>
-                    <td style={c.td}>{hora}</td>
                     <td style={c.td}>{p.zona ? zonaLabel(p.zona) : '—'}</td>
                     <td style={c.td}>{p.tipo === 'entrega' ? '📦 Entrega' : p.tipo === 'recolha' ? '↩ Recolha' : '❓'}</td>
                     <td style={c.td}>{p.cliente_nome ?? <span style={c.faltaMini}>—</span>}</td>
