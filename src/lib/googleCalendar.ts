@@ -133,6 +133,44 @@ export async function listarCalendarios(): Promise<{ ok: boolean; erro?: string;
   }
 }
 
+// Valida o acesso a uma lista de calendários (só-leitura): para cada id tenta
+// ler os eventos dos próximos `dias` e devolve se conseguiu + nº de eventos, ou
+// o erro (ex.: 404 = não partilhado / não existe). Diagnóstico da Fase A.
+export type ResultadoValidacao = { id: string; nome: string; zona: string; ok: boolean; nEventos?: number; erro?: string }
+
+export async function validarCalendarios(
+  entradas: { id: string; nome: string; zona: string }[],
+  dias = 10,
+): Promise<{ ok: boolean; erro?: string; resultados?: ResultadoValidacao[] }> {
+  const { sa, erro } = carregarSA()
+  if (!sa) return { ok: false, erro }
+  let token: string
+  try { token = await obterAccessToken(sa) } catch (e) { return { ok: false, erro: e instanceof Error ? e.message : 'Falha de autenticação Google.' } }
+
+  const timeMin = new Date().toISOString()
+  const timeMax = new Date(Date.now() + dias * 86400_000).toISOString()
+  const resultados: ResultadoValidacao[] = []
+  for (const c of entradas) {
+    try {
+      const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(c.id)}/events`)
+      url.searchParams.set('timeMin', timeMin)
+      url.searchParams.set('timeMax', timeMax)
+      url.searchParams.set('singleEvents', 'true')
+      url.searchParams.set('maxResults', '2500')
+      const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      const j = await r.json()
+      if (!r.ok) {
+        resultados.push({ id: c.id, nome: c.nome, zona: c.zona, ok: false, erro: `${r.status}: ${j?.error?.message ?? 'erro'}` })
+      } else {
+        resultados.push({ id: c.id, nome: c.nome, zona: c.zona, ok: true, nEventos: (j.items ?? []).length })
+      }
+    } catch (e) {
+      resultados.push({ id: c.id, nome: c.nome, zona: c.zona, ok: false, erro: e instanceof Error ? e.message : 'erro de rede' })
+    }
+  }
+  return { ok: true, resultados }
+}
+
 // Soma 1 dia a uma data 'YYYY-MM-DD' (eventos de dia inteiro no Google têm fim exclusivo).
 function diaSeguinte(data: string): string {
   const [y, m, d] = data.split('-').map(Number)
