@@ -139,6 +139,14 @@ export async function sincronizarParagens(sb: SupabaseClient): Promise<{ ok: boo
   const erros: string[] = []
   const { data: cals } = await sb.from('transport_calendars').select('*').eq('ativo', true)
   const calendarios = (cals as CalRow[]) ?? []
+
+  // Pré-atribuição por zona: motorista principal de cada zona (para as paragens
+  // novas já entrarem na coluna certa do planeamento). Só no insert.
+  const { data: drv } = await sb.from('transport_drivers').select('id, zona_principal').eq('ativo', true).eq('tipo', 'principal')
+  const principalPorZona = new Map<string, string>()
+  for (const d of (drv as { id: string; zona_principal: string | null }[]) ?? []) {
+    if (d.zona_principal) principalPorZona.set(d.zona_principal, d.id)
+  }
   const hoje = new Date().toISOString().slice(0, 10)
   // Lê a partir de alguns dias ATRÁS: um evento de dia inteiro que termina hoje
   // tem, no Google, fim às 00:00 de hoje (antes de "agora") e seria ignorado —
@@ -229,7 +237,9 @@ export async function sincronizarParagens(sb: SupabaseClient): Promise<{ ok: boo
           await sb.from('transport_stops').update({ ...campos, alterado: true, ...(manter ? {} : { estado }) }).eq('id', exist.id)
           alterados++
         } else {
-          await sb.from('transport_stops').insert({ ...campos, google_event_id: ev.id, estado })
+          // Pré-atribui ao motorista principal da zona (exceto Algarve = externo).
+          const motoristaId = cal.zona !== 'algarve' ? (principalPorZona.get(cal.zona) ?? null) : null
+          await sb.from('transport_stops').insert({ ...campos, google_event_id: ev.id, estado, motorista_id: motoristaId })
           novos++
         }
       }
