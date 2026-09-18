@@ -93,7 +93,7 @@ export default function PlaneamentoPage() {
       <div style={c.topo}>
         <div>
           <h1 style={c.titulo}>Planeamento do dia</h1>
-          <p style={c.sub}>Atribui paragens a motoristas e carrinhas. <Link href="/alugueres/agenda/recursos" style={c.link}>Motoristas & carrinhas ↗</Link></p>
+          <p style={c.sub}>Atribui paragens a motoristas e carrinhas. <Link href="/alugueres/agenda/revisao" style={c.link}>Revisão de véspera ↗</Link> · <Link href="/alugueres/agenda/recursos" style={c.link}>Motoristas & carrinhas ↗</Link></p>
         </div>
         <div style={c.navDia}>
           <button style={c.btnNav} onClick={() => setData((d) => somarDias(d, -1))}>←</button>

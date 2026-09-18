@@ -3,7 +3,7 @@ import type { TransportStop } from './transportes'
 
 // Camada de dados do planeamento diário (Fase C). RLS: is_staff().
 
-export type EstadoDriverDay = 'provisorio' | 'publicado'
+export type EstadoDriverDay = 'provisorio' | 'publicado' | 'confirmado'
 export type DriverDay = {
   id: string
   data: string
@@ -62,4 +62,26 @@ export async function publicarDia(data: string, driverIds: string[]): Promise<{ 
 // Repor o dia como provisório.
 export async function despublicarDia(data: string) {
   return supabase.from('transport_driver_days').update({ estado: 'provisorio' }).eq('data', data)
+}
+
+// ─── Revisão de véspera (Fase D) ─────────────────────────────────────────────
+// Paragens canceladas do dia (para mostrar o que caiu desde a última revisão).
+export async function listarCanceladasDia(data: string): Promise<TransportStop[]> {
+  const { data: rows } = await supabase
+    .from('transport_stops')
+    .select('*, calendario:transport_calendars(nome)')
+    .eq('data', data).eq('estado', 'cancelada')
+  return (rows as TransportStop[]) ?? []
+}
+
+// Confirmar a agenda do dia: marca os motoristas indicados como "confirmado"
+// e limpa a marca "alterado" das paragens (foram revistas).
+export async function confirmarDia(data: string, driverIds: string[]): Promise<{ ok: boolean; erro?: string }> {
+  if (driverIds.length > 0) {
+    const linhas = driverIds.map((driver_id) => ({ data, driver_id, estado: 'confirmado' as const }))
+    const { error } = await supabase.from('transport_driver_days').upsert(linhas, { onConflict: 'data,driver_id' })
+    if (error) return { ok: false, erro: error.message }
+  }
+  const { error: e2 } = await supabase.from('transport_stops').update({ alterado: false }).eq('data', data).eq('alterado', true)
+  return { ok: !e2, erro: e2?.message }
 }
