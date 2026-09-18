@@ -131,6 +131,9 @@ export type TransportStop = {
   alterado: boolean
   link_evento: string | null
   sincronizado_em: string | null
+  ordem: number | null
+  lat: number | null
+  lng: number | null
   calendario?: { nome: string | null } | null
 }
 

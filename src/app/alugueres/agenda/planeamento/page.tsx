@@ -7,7 +7,7 @@ import { diaSemanaPt, dataCurta, type TransportStop } from '@/lib/transportes'
 import { listarMotoristas, listarCarrinhas, type Motorista, type Carrinha } from '@/lib/transportesRecursos'
 import {
   listarParagensDia, atribuirMotorista, listarDriverDays, definirCarrinha,
-  carrinhaEmConflito, publicarDia, despublicarDia, type DriverDay,
+  carrinhaEmConflito, publicarDia, despublicarDia, otimizarRotaDia, type DriverDay,
 } from '@/lib/transportesPlaneamento'
 
 function hojeISO(): string { return new Date().toISOString().slice(0, 10) }
@@ -52,7 +52,19 @@ export default function PlaneamentoPage() {
   function stopsDaColuna(col: { tipo: string; id: string }): TransportStop[] {
     if (col.tipo === 'algarve') return stops.filter((s) => s.zona === 'algarve')
     if (col.tipo === 'pool') return stops.filter((s) => s.zona !== 'algarve' && !s.motorista_id)
+    // Motorista: ordenar pela rota (ordem) quando existir.
     return stops.filter((s) => s.motorista_id === col.id)
+      .sort((a, b) => (a.ordem ?? 9999) - (b.ordem ?? 9999))
+  }
+
+  const [aOtimizar, setAOtimizar] = useState<string | null>(null)
+  async function otimizar(driverId: string) {
+    setAOtimizar(driverId)
+    const r = await otimizarRotaDia(data, driverId)
+    setAOtimizar(null)
+    if (!r.ok) { setToast('Erro: ' + (r.erro ?? '')); return }
+    setToast(`Rota otimizada — ${r.km ?? 0} km${r.semCoords ? ` · ${r.semCoords} sem morada` : ''}.`)
+    carregarDia()
   }
 
   async function mover(stop: TransportStop, destino: string) {
@@ -122,17 +134,25 @@ export default function PlaneamentoPage() {
                   <div style={c.colNome}>{col.nome} {publicado && <span style={c.pubMini} title="Publicado">●</span>}</div>
                   <div style={c.colSub}>{col.sub}{col.sub ? ' · ' : ''}{lista.length} paragem(ns)</div>
                   {col.tipo === 'motorista' && (
-                    <select style={c.selCarrinha} value={dd?.vehicle_id ?? ''} onChange={(e) => mudarCarrinha(col.id, e.target.value)} title="Carrinha do dia">
-                      <option value="">🚐 Carrinha —</option>
-                      {carrinhas.map((v) => <option key={v.id} value={v.id}>{v.nome}{v.matricula ? ` (${v.matricula})` : ''}</option>)}
-                    </select>
+                    <>
+                      <select style={c.selCarrinha} value={dd?.vehicle_id ?? ''} onChange={(e) => mudarCarrinha(col.id, e.target.value)} title="Carrinha do dia">
+                        <option value="">🚐 Carrinha —</option>
+                        {carrinhas.map((v) => <option key={v.id} value={v.id}>{v.nome}{v.matricula ? ` (${v.matricula})` : ''}</option>)}
+                      </select>
+                      <div style={c.rotaLinha}>
+                        <button style={c.btnRota} onClick={() => otimizar(col.id)} disabled={aOtimizar === col.id || lista.length === 0} title="Otimizar a ordem das paragens (OpenRouteService)">
+                          {aOtimizar === col.id ? '…' : '🧭 Otimizar'}
+                        </button>
+                        {dd?.km_total != null && <span style={c.km}>{dd.km_total} km</span>}
+                      </div>
+                    </>
                   )}
                 </div>
                 <div style={c.cards}>
                   {lista.length === 0 ? <p style={c.vazioCol}>—</p> : lista.map((s) => (
                     <div key={s.id} style={{ ...c.card, ...(s.tipo === 'entrega' ? c.cardEntrega : c.cardRecolha) }}>
                       <div style={c.cardTopo}>
-                        <span style={c.cardTipo}>{s.tipo === 'entrega' ? '📦 Entrega' : s.tipo === 'recolha' ? '↩ Recolha' : '❓'}</span>
+                        <span style={c.cardTipo}>{col.tipo === 'motorista' && s.ordem != null && <span style={c.ordemBadge}>{s.ordem}</span>}{s.tipo === 'entrega' ? '📦 Entrega' : s.tipo === 'recolha' ? '↩ Recolha' : '❓'}</span>
                         {s.notas && <span style={c.cardNota} title={s.notas}>⏰ 13h</span>}
                       </div>
                       <div style={c.cardCliente}>{s.cliente_nome ?? '(sem cliente)'}</div>
@@ -184,6 +204,10 @@ const c: Record<string, React.CSSProperties> = {
   colSub: { color: 'var(--muted)', fontSize: 12, margin: '2px 0 6px', textTransform: 'capitalize' },
   pubMini: { color: '#065F46' },
   selCarrinha: { width: '100%', padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: 8, font: 'inherit', background: '#fff', fontSize: 12 },
+  rotaLinha: { display: 'flex', gap: 6, alignItems: 'center', marginTop: 6 },
+  btnRota: { padding: '5px 8px', border: '1px solid #2563EB', borderRadius: 8, background: '#EFF6FF', color: '#1D4ED8', cursor: 'pointer', fontSize: 12, fontWeight: 700 },
+  km: { fontSize: 12, fontWeight: 700, color: '#065F46' },
+  ordemBadge: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 16, height: 16, borderRadius: 999, background: '#111827', color: '#fff', fontSize: 10, fontWeight: 700, marginRight: 4, padding: '0 4px' },
   cards: { padding: 8, display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' },
   vazioCol: { color: 'var(--muted)', textAlign: 'center', fontSize: 12, padding: 8 },
   card: { border: '1px solid #e5e7eb', borderRadius: 8, padding: 8, background: '#fff' },

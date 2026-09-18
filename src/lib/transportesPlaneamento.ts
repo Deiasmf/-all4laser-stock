@@ -10,6 +10,21 @@ export type DriverDay = {
   driver_id: string
   vehicle_id: string | null
   estado: EstadoDriverDay
+  km_total: number | null
+}
+
+// Otimiza a rota de um motorista no dia (via endpoint ORS, sessão de staff).
+export async function otimizarRotaDia(data: string, driverId: string): Promise<{ ok: boolean; erro?: string; km?: number; semCoords?: number }> {
+  const { data: { session } } = await supabase.auth.getSession()
+  const token = session?.access_token
+  if (!token) return { ok: false, erro: 'Sessão expirada.' }
+  const r = await fetch('/api/alugueres/agenda/otimizar', {
+    method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ data, driverId }),
+  })
+  const j = await r.json()
+  if (!r.ok) return { ok: false, erro: j.erro ?? `HTTP ${r.status}` }
+  return j
 }
 
 // Paragens de um dia (não canceladas), com nome do calendário/equipamento.
