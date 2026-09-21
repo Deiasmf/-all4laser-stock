@@ -105,6 +105,7 @@ export default function AgendaCalendariosPage() {
           <Link href="/alugueres/agenda/paragens" style={c.tLink}>Paragens (lista / PDF)</Link>
           <Link href="/alugueres/agenda/recursos" style={c.tLink}>Motoristas & carrinhas</Link>
           <Link href="/alugueres/agenda/mapeamento" style={c.tLink}>Mapeamento calendários</Link>
+          <Link href="/alugueres/agenda/motorista" style={c.tLink}>📱 Vista do motorista</Link>
         </div>
       </div>
 
