@@ -80,8 +80,11 @@ export default function LeadsPage() {
   const [fEstado, setFEstado] = useState('')
   const [aberta, setAberta] = useState<Lead | null>(null)
   const [nova, setNova] = useState(false)
+  const [sel, setSel] = useState<Set<string>>(new Set())
+  const [responsaveis, setResponsaveis] = useState<ResponsavelLead[]>([])
+  const [bulkModal, setBulkModal] = useState<EstadoLead | null>(null)
 
-  useEffect(() => {
+  const recarregar = () =>
     supabase
       .from('leads')
       .select('*')
@@ -91,12 +94,50 @@ export default function LeadsPage() {
         else setLeads((data as Lead[]) ?? [])
         setCarregando(false)
       })
-  }, [])
+
+  useEffect(() => { recarregar() }, [])
+  useEffect(() => { listarResponsaveisLeads().then(setResponsaveis) }, [])
 
   const filtradas = useMemo(
     () => leads.filter((l) => (!fCanal || l.canal === fCanal) && (!fEstado || l.estado === fEstado)),
     [leads, fCanal, fEstado]
   )
+
+  // Seleção múltipla (respeita os filtros ativos: só age sobre as visíveis).
+  const idsVisiveis = useMemo(() => filtradas.map((l) => l.id), [filtradas])
+  const selecionadas = useMemo(() => filtradas.filter((l) => sel.has(l.id)), [filtradas, sel])
+  const todasVisiveisSel = idsVisiveis.length > 0 && idsVisiveis.every((id) => sel.has(id))
+
+  function toggle(id: string) {
+    setSel((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  }
+  function toggleTodasVisiveis() {
+    setSel((prev) => {
+      const n = new Set(prev)
+      if (todasVisiveisSel) idsVisiveis.forEach((id) => n.delete(id))
+      else idsVisiveis.forEach((id) => n.add(id))
+      return n
+    })
+  }
+  const limparSel = () => setSel(new Set())
+
+  // Atribuir responsável em massa (também recola a tarefa de follow-up ao dono).
+  async function atribuirEmMassa(respId: string) {
+    if (!respId) return
+    const nome = responsaveis.find((r) => r.id === respId)?.nome ?? 'este responsável'
+    if (!confirm(`Atribuir ${selecionadas.length} lead(s) a ${nome}?`)) return
+    for (const l of selecionadas) await definirResponsavelLead(l.id, respId)
+    await recarregar()
+    limparSel()
+  }
+
+  // Eliminar em massa (só admin), espelha a eliminação individual.
+  async function eliminarEmMassa() {
+    if (!confirm(`Eliminar ${selecionadas.length} lead(s)? Esta ação não pode ser anulada.`)) return
+    for (const l of selecionadas) await eliminarLead(l.id)
+    await recarregar()
+    limparSel()
+  }
 
   const contagens = useMemo(() => {
     const m: Record<string, number> = {}
@@ -149,6 +190,30 @@ export default function LeadsPage() {
         </span>
       </div>
 
+      {sel.size > 0 && (
+        <div style={c.bulkBar}>
+          <strong style={{ fontSize: 14 }}>{selecionadas.length} selecionada(s)</strong>
+          <select
+            defaultValue=""
+            onChange={(e) => { const v = e.target.value as EstadoLead; e.currentTarget.value = ''; if (v) setBulkModal(v) }}
+            style={c.select}
+          >
+            <option value="">Mudar estado para…</option>
+            {ESTADO_OPCOES.map((v) => <option key={v} value={v}>{ESTADO_CONFIG[v].label}</option>)}
+          </select>
+          <select
+            defaultValue=""
+            onChange={(e) => { const v = e.target.value; e.currentTarget.value = ''; if (v) atribuirEmMassa(v) }}
+            style={c.select}
+          >
+            <option value="">Atribuir responsável…</option>
+            {responsaveis.map((r) => <option key={r.id} value={r.id}>{r.nome}</option>)}
+          </select>
+          {isAdmin && <button onClick={eliminarEmMassa} style={c.btnEliminar}>Eliminar</button>}
+          <button onClick={limparSel} style={{ ...c.limpar, marginLeft: 'auto' }}>Limpar seleção</button>
+        </div>
+      )}
+
       {erro ? (
         <p style={{ ...c.estado, color: 'var(--danger)' }}>
           Não foi possível carregar as leads. {erro.includes('does not exist') || erro.includes('relation') ? 'A tabela ainda não foi criada na base de dados.' : erro}
@@ -159,27 +224,51 @@ export default function LeadsPage() {
         <p style={c.estado}>Sem leads.</p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <label style={c.selTodas}>
+            <input type="checkbox" checked={todasVisiveisSel} onChange={toggleTodasVisiveis} />
+            Selecionar todas as visíveis ({filtradas.length})
+          </label>
           {filtradas.map((l) => (
-            <button key={l.id} onClick={() => setAberta(l)} style={c.card}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-                <span style={{ fontWeight: 700, fontSize: 15 }}>{l.nome}</span>
-                <EstadoTag estado={l.estado} />
-              </div>
-              <div style={{ display: 'flex', gap: 12, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                <CanalTag canal={l.canal} />
-                {l.modelo_interesse && <span style={c.meta}>🔧 {l.modelo_interesse}</span>}
-                {(l.data_inicio || l.data_fim) && (
-                  <span style={c.meta}>📅 {formatarData(l.data_inicio)} – {formatarData(l.data_fim)}</span>
-                )}
-                {l.cidade && <span style={c.meta}>📍 {l.cidade}</span>}
-                {(l.estado === 'contactada' || l.estado === 'proposta_enviada') && (
-                  <span style={c.meta}>⏱ {textoNoEstado(l.estado_desde)}</span>
-                )}
-                <span style={{ ...c.meta, marginLeft: 'auto' }}>{formatarData(l.created_at)}</span>
-              </div>
-            </button>
+            <div key={l.id} style={{ ...c.card, display: 'flex', gap: 12, alignItems: 'flex-start', ...(sel.has(l.id) ? c.cardSel : null) }}>
+              <input
+                type="checkbox"
+                checked={sel.has(l.id)}
+                onChange={() => toggle(l.id)}
+                onClick={(e) => e.stopPropagation()}
+                style={{ marginTop: 3, flexShrink: 0 }}
+                aria-label={`Selecionar ${l.nome}`}
+              />
+              <button onClick={() => setAberta(l)} style={c.cardBtn}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                  <span style={{ fontWeight: 700, fontSize: 15 }}>{l.nome}</span>
+                  <EstadoTag estado={l.estado} />
+                </div>
+                <div style={{ display: 'flex', gap: 12, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <CanalTag canal={l.canal} />
+                  {l.modelo_interesse && <span style={c.meta}>🔧 {l.modelo_interesse}</span>}
+                  {(l.data_inicio || l.data_fim) && (
+                    <span style={c.meta}>📅 {formatarData(l.data_inicio)} – {formatarData(l.data_fim)}</span>
+                  )}
+                  {l.cidade && <span style={c.meta}>📍 {l.cidade}</span>}
+                  {(l.estado === 'contactada' || l.estado === 'proposta_enviada') && (
+                    <span style={c.meta}>⏱ {textoNoEstado(l.estado_desde)}</span>
+                  )}
+                  <span style={{ ...c.meta, marginLeft: 'auto' }}>{formatarData(l.created_at)}</span>
+                </div>
+              </button>
+            </div>
           ))}
         </div>
+      )}
+
+      {bulkModal && (
+        <BulkEstadoModal
+          estado={bulkModal}
+          leads={selecionadas}
+          responsaveis={responsaveis}
+          onClose={() => setBulkModal(null)}
+          onDone={async () => { setBulkModal(null); await recarregar(); limparSel() }}
+        />
       )}
 
       {nova && (
@@ -501,6 +590,88 @@ function LeadDrawer({
   )
 }
 
+// Modal de confirmação da mudança de estado em massa. Espelha as regras da BD:
+// Perdida exige motivo (aplicado a todas); Contactada/Proposta exigem responsável
+// em todas — se algumas não o têm, pede um responsável para as preencher antes.
+function BulkEstadoModal({
+  estado, leads, responsaveis, onClose, onDone,
+}: {
+  estado: EstadoLead
+  leads: Lead[]
+  responsaveis: ResponsavelLead[]
+  onClose: () => void
+  onDone: () => void
+}) {
+  const [motivo, setMotivo] = useState('')
+  const [respFalta, setRespFalta] = useState('')
+  const [aGravar, setAGravar] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+
+  const exigeMotivo = estado === 'perdida'
+  const exigeResponsavel = ESTADOS_COM_FOLLOWUP.includes(estado)
+  const semResponsavel = leads.filter((l) => !l.responsavel_id)
+
+  async function aplicar() {
+    if (exigeMotivo && !motivo.trim()) { setMsg('Indica o motivo (aplicado a todas as leads).'); return }
+    if (exigeResponsavel && semResponsavel.length > 0 && !respFalta) {
+      setMsg(`${semResponsavel.length} lead(s) não têm responsável. Escolhe um para lhes atribuir antes de continuar.`)
+      return
+    }
+    setAGravar(true); setMsg(null)
+    // 1) Preencher responsável nas que faltam (o follow-up precisa dele).
+    if (exigeResponsavel && respFalta) {
+      for (const l of semResponsavel) {
+        const { error } = await definirResponsavelLead(l.id, respFalta)
+        if (error) { setAGravar(false); setMsg('Erro ao atribuir responsável: ' + error.message); return }
+      }
+    }
+    // 2) Mudar o estado de todas (regista histórico + trata do follow-up).
+    const { error } = await mudarEstadoLeads(leads.map((l) => l.id), estado, exigeMotivo ? motivo.trim() : null)
+    setAGravar(false)
+    if (error) { setMsg('Erro ao aplicar: ' + error.message); return }
+    onDone()
+  }
+
+  return (
+    <div style={c.backdrop} onClick={onClose}>
+      <div style={{ ...c.drawer, width: 460 }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+          <h2 style={{ fontSize: 19, fontWeight: 800 }}>Mudar {leads.length} lead(s) para “{ESTADO_CONFIG[estado].label}”?</h2>
+          <button onClick={onClose} style={c.fechar}>✕</button>
+        </div>
+
+        {exigeResponsavel && (
+          <p style={{ ...c.meta, marginTop: 8 }}>Será criada/atualizada a tarefa de follow-up de cada lead para o respetivo responsável.</p>
+        )}
+
+        {exigeResponsavel && semResponsavel.length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <label style={c.rotulo}>Responsável para as {semResponsavel.length} sem responsável <span style={{ color: 'var(--danger)' }}>*</span></label>
+            <select value={respFalta} onChange={(e) => setRespFalta(e.target.value)} style={{ ...c.select, width: '100%', marginTop: 6 }}>
+              <option value="">— escolher —</option>
+              {responsaveis.map((r) => <option key={r.id} value={r.id}>{r.nome}</option>)}
+            </select>
+          </div>
+        )}
+
+        {exigeMotivo && (
+          <div style={{ marginTop: 14 }}>
+            <label style={c.rotulo}>Motivo da perda (aplicado a todas) <span style={{ color: 'var(--danger)' }}>*</span></label>
+            <textarea value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Porque foram perdidas?" style={c.textarea} />
+          </div>
+        )}
+
+        {msg && <div style={{ marginTop: 10, fontSize: 13, color: 'var(--danger)', fontWeight: 600 }}>{msg}</div>}
+
+        <div style={{ display: 'flex', gap: 10, marginTop: 16, alignItems: 'center' }}>
+          <button onClick={aplicar} disabled={aGravar} style={c.btnPrimario}>{aGravar ? 'A aplicar...' : `Aplicar a ${leads.length}`}</button>
+          <button onClick={onClose} style={c.btnSecundario}>Cancelar</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Constrói o link do WhatsApp a partir de um telefone, tratando do indicativo de Portugal.
 // Devolve null se não houver dígitos suficientes para um número válido.
 function linkWhatsapp(telefone: string | null | undefined): string | null {
@@ -536,7 +707,11 @@ const c: Record<string, React.CSSProperties> = {
   select: { padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface)', color: 'var(--foreground)' },
   limpar: { background: 'transparent', color: 'var(--primary)', border: '1px solid var(--primary)', borderRadius: 8, padding: '0 14px', fontWeight: 600, cursor: 'pointer' },
   estado: { color: 'var(--muted)', padding: 24, textAlign: 'center' },
-  card: { textAlign: 'left', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, cursor: 'pointer', width: '100%', font: 'inherit', color: 'inherit' },
+  card: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, width: '100%' },
+  cardBtn: { flex: 1, textAlign: 'left', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', width: '100%', font: 'inherit', color: 'inherit' },
+  cardSel: { borderColor: 'var(--primary)', boxShadow: '0 0 0 1px var(--primary)' },
+  selTodas: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--muted)', padding: '2px 2px 4px' },
+  bulkBar: { display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', background: 'var(--accent-bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', marginBottom: 12, position: 'sticky', top: 0, zIndex: 5 },
   meta: { fontSize: 12, color: 'var(--muted)' },
   backdrop: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 100, display: 'flex', justifyContent: 'flex-end' },
   drawer: { width: 440, maxWidth: '92vw', height: '100%', background: 'var(--surface)', padding: 22, overflowY: 'auto', boxShadow: '-4px 0 24px rgba(0,0,0,0.15)' },
