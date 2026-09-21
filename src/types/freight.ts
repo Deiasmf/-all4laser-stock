@@ -185,6 +185,18 @@ export function remetenteValido(email: string | null | undefined): boolean {
   return !!email && /^[^\s@]+@all4laser\.com$/i.test(email.trim())
 }
 
+// CC cruzado entre a Andreia e a Vanessa: quando uma envia a cotação, a outra
+// fica automaticamente em CC (e vice-versa). Outros remetentes (ex.: comercial@)
+// não geram CC.
+export const EMAIL_ANDREIA = 'andreia.fernandes@all4laser.com'
+export const EMAIL_VANESSA = 'vanessa.tavares@all4laser.com'
+export function ccCruzadoRemetente(remetente: string | null | undefined): string[] {
+  const r = (remetente ?? '').trim().toLowerCase()
+  if (r === EMAIL_VANESSA) return [EMAIL_ANDREIA]
+  if (r === EMAIL_ANDREIA) return [EMAIL_VANESSA]
+  return []
+}
+
 // ─── Cálculos de carga ───────────────────────────────────────────────────────
 export type TotaisCarga = {
   volumes: number       // nº total de volumes (soma das quantidades)

@@ -3,14 +3,15 @@ import { enviarGmail } from '@/lib/gmailSend'
 import { obterAssinaturaHtml, corpoHtmlComAssinatura } from '@/lib/emailAssinatura'
 import {
   render, varsAssunto, moradaOrigem, moradaDestino, datasTexto, extrasTexto,
-  tabelaVolumesEmail, tabelaVolumesEmailHtml, tipoTransporteAdjetivo, remetenteValido,
+  tabelaVolumesEmail, tabelaVolumesEmailHtml, tipoTransporteAdjetivo, remetenteValido, ccCruzadoRemetente,
   type FreightRequest, type CargoLine, type FreightRecipient, type FreightEmailTemplate, type FreightSettings,
 } from '@/types/freight'
 
 // Envio dos pedidos de cotação por Gmail — UM email individual por transitário
-// (sem CC/BCC cruzado). Corre no servidor: valida o utilizador (admin/
-// administrativo) e usa a service role para ler/gravar. Throttling entre envios
-// para não disparar limites do Gmail; retry por destinatário.
+// (os transitários não se veem entre si). Quando o remetente é a Andreia ou a
+// Vanessa, a outra fica em CC (ccCruzadoRemetente). Corre no servidor: valida o
+// utilizador (admin/administrativo) e usa a service role para ler/gravar.
+// Throttling entre envios para não disparar limites do Gmail; retry por destinatário.
 
 export const runtime = 'nodejs'
 
@@ -116,6 +117,8 @@ export async function POST(req: Request) {
   // Remetente do pedido (validado); só contas @all4laser.com podem ser
   // personificadas. Fallback seguro para comercial@ se estiver em falta/inválido.
   const remetente = remetenteValido(pedido.remetente) ? pedido.remetente!.trim() : 'comercial@all4laser.com'
+  // CC cruzado Andreia↔Vanessa: quando uma envia, a outra fica em CC.
+  const cc = ccCruzadoRemetente(remetente)
   const tabelaVolumesTexto = tabelaVolumesEmail(linhas, pedido.idioma)
   const tabelaVolumesHtml = tabelaVolumesEmailHtml(linhas, pedido.idioma)
   const varsComuns: Record<string, string> = {
@@ -138,7 +141,7 @@ export async function POST(req: Request) {
 
     let ok = false, erroEnvio: string | undefined, messageId: string | undefined, threadId: string | undefined
     for (let tentativa = 1; tentativa <= TENTATIVAS_MAX && !ok; tentativa++) {
-      const r = await enviarGmail({ para: d.emails, assunto, corpoTexto: corpoEmail, corpoHtml, remetente })
+      const r = await enviarGmail({ para: d.emails, cc, assunto, corpoTexto: corpoEmail, corpoHtml, remetente })
       if (r.ok) { ok = true; messageId = r.messageId; threadId = r.threadId }
       else { erroEnvio = r.erro; if (tentativa < TENTATIVAS_MAX) await sleep(400) }
     }

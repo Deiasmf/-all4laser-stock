@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { enviarGmail } from '@/lib/gmailSend'
-import { remetenteValido } from '@/types/freight'
+import { remetenteValido, ccCruzadoRemetente } from '@/types/freight'
 
 // Envia a última versão do PDF da packing list por email (Gmail, com anexo).
 // Autenticado (admin/administrativo). Corre no servidor.
@@ -46,12 +46,14 @@ export async function POST(req: Request) {
   const contentBase64 = Buffer.from(await blob.arrayBuffer()).toString('base64')
 
   const remetente = remetenteValido(corpo.remetente) ? corpo.remetente!.trim() : undefined
+  // CC cruzado Andreia↔Vanessa: quando uma envia, a outra fica em CC.
+  const cc = ccCruzadoRemetente(remetente)
   const assunto = (corpo.assunto && corpo.assunto.trim()) || `All4laser — Packing List ${numero}`
   const corpoTexto = (corpo.corpo && corpo.corpo.trim())
     || `Boa tarde,\n\nSegue em anexo a packing list ${numero}.\n\nCom os melhores cumprimentos,\nAll4laser`
 
   const r = await enviarGmail({
-    para, assunto, corpoTexto, remetente,
+    para, cc, assunto, corpoTexto, remetente,
     anexos: [{ filename: `${numero}.pdf`, contentBase64, mimeType: 'application/pdf' }],
   })
   if (!r.ok) return Response.json({ ok: false, erro: r.erro ?? 'Falha no envio.' }, { status: 500 })
