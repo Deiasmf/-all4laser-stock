@@ -76,6 +76,15 @@ export type PedidoFatura = {
   updated_at: string
 }
 
+// Dados extraídos por IA do PDF da fatura (com confiança por campo).
+export type CampoFatura = 'num_fatura' | 'data_fatura' | 'valor_total'
+export type FaturaExtraida = {
+  num_fatura: string | null
+  data_fatura: string | null
+  valor_total: number | null
+  confianca: Partial<Record<CampoFatura, 'alta' | 'media' | 'baixa'>>
+}
+
 // Config única (admin): template do email + lembretes + substituto.
 export type PedidoFaturaConfig = {
   assunto_template: string

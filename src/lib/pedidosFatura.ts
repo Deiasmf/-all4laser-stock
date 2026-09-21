@@ -94,6 +94,53 @@ const CONFIG_PADRAO: PedidoFaturaConfig = {
   substituto_nome: null,
 }
 
+// Guardar os dados da fatura emitida (nº, data, valor total).
+export async function guardarDadosFatura(
+  id: string,
+  campos: { num_fatura: string | null; data_fatura: string | null; valor_total: number | null }
+) {
+  return supabase.from('pedidos_fatura').update(campos).eq('id', id).select().single()
+}
+
+// Pré-extração dos dados da fatura anexada (via rota autenticada).
+export async function extrairDadosFatura(id: string): Promise<{ ok: boolean; extraido?: import('@/types/pedidoFatura').FaturaExtraida; erro?: string }> {
+  const { data: { session } } = await supabase.auth.getSession()
+  const token = session?.access_token
+  if (!token) return { ok: false, erro: 'Sessão expirada.' }
+  const r = await fetch('/api/pedidos-fatura/extrair', {
+    method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id }),
+  })
+  return r.json()
+}
+
+// Enviar ao cliente (email da Vanessa + CC Andreia), com assunto/corpo editados.
+export async function enviarPedidoAoCliente(id: string, assunto: string, corpo: string): Promise<{ ok: boolean; erro?: string }> {
+  const { data: { session } } = await supabase.auth.getSession()
+  const token = session?.access_token
+  if (!token) return { ok: false, erro: 'Sessão expirada.' }
+  const r = await fetch('/api/pedidos-fatura/enviar-documento', {
+    method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, assunto, corpo }),
+  })
+  return r.json()
+}
+
+// Registar que o envio foi feito por WhatsApp (canal usado).
+export async function registarEnvioWhatsapp(id: string, canaisAtuais: string[]) {
+  const canais = Array.from(new Set([...(canaisAtuais ?? []), 'whatsapp']))
+  return supabase.from('pedidos_fatura')
+    .update({ canais_usados: canais, enviado_whatsapp_em: new Date().toISOString() })
+    .eq('id', id)
+}
+
+// Telefone + contacto do cliente (para o WhatsApp e a saudação).
+export async function contactoCliente(clienteId: string): Promise<{ telefone: string | null; contacto_nome: string | null }> {
+  const { data } = await supabase.from('clientes').select('telefone, contacto_nome').eq('id', clienteId).maybeSingle()
+  const c = data as { telefone: string | null; contacto_nome: string | null } | null
+  return { telefone: c?.telefone ?? null, contacto_nome: c?.contacto_nome ?? null }
+}
+
 export async function carregarConfigPedidos(): Promise<PedidoFaturaConfig> {
   const { data } = await supabase.from('pedidos_fatura_config').select('*').maybeSingle()
   return { ...CONFIG_PADRAO, ...((data as Partial<PedidoFaturaConfig>) ?? {}) }
