@@ -4,20 +4,44 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
-import { criarLead, atualizarLead, eliminarLead } from '@/lib/leads'
+import {
+  criarLead, atualizarLead, eliminarLead, mudarEstadoLeads, definirResponsavelLead,
+  listarResponsaveisLeads, listarHistoricoLead, type ResponsavelLead,
+} from '@/lib/leads'
 import BotaoExportar from '@/components/BotaoExportar'
 import EnviarFichaLead from '@/components/EnviarFichaLead'
 import HistoricoEnviosLead from '@/components/HistoricoEnviosLead'
 import type { ColunaExport } from '@/lib/exportar'
 import {
-  CANAL_CONFIG, ESTADO_CONFIG, CANAL_OPCOES, ESTADO_OPCOES,
-  type Lead, type EstadoLead,
+  CANAL_CONFIG, ESTADO_CONFIG, CANAL_OPCOES, ESTADO_OPCOES, ESTADOS_COM_FOLLOWUP,
+  type Lead, type EstadoLead, type LeadStatusHistory,
 } from '@/types/lead'
 
 function formatarData(d: string | null) {
   if (!d) return '—'
   const dt = new Date(d)
   return isNaN(dt.getTime()) ? d : dt.toLocaleDateString('pt-PT')
+}
+
+function formatarDataHora(d: string | null) {
+  if (!d) return '—'
+  const dt = new Date(d)
+  return isNaN(dt.getTime()) ? d : dt.toLocaleString('pt-PT', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
+// Nº de dias inteiros desde uma data (para "no estado há X dias").
+function diasDesde(d: string | null): number | null {
+  if (!d) return null
+  const dt = new Date(d)
+  if (isNaN(dt.getTime())) return null
+  return Math.max(0, Math.floor((Date.now() - dt.getTime()) / 86400000))
+}
+
+function textoNoEstado(estadoDesde: string | null): string {
+  const dias = diasDesde(estadoDesde)
+  if (dias == null) return ''
+  if (dias === 0) return 'no estado desde hoje'
+  return `no estado há ${dias} ${dias === 1 ? 'dia' : 'dias'}`
 }
 
 const colunasExport: ColunaExport<Lead>[] = [
@@ -148,6 +172,9 @@ export default function LeadsPage() {
                   <span style={c.meta}>📅 {formatarData(l.data_inicio)} – {formatarData(l.data_fim)}</span>
                 )}
                 {l.cidade && <span style={c.meta}>📍 {l.cidade}</span>}
+                {(l.estado === 'contactada' || l.estado === 'proposta_enviada') && (
+                  <span style={c.meta}>⏱ {textoNoEstado(l.estado_desde)}</span>
+                )}
                 <span style={{ ...c.meta, marginLeft: 'auto' }}>{formatarData(l.created_at)}</span>
               </div>
             </button>
@@ -302,9 +329,21 @@ function LeadDrawer({
 }) {
   const [estado, setEstado] = useState<EstadoLead>(lead.estado)
   const [nota, setNota] = useState(lead.nota_interna ?? '')
+  const [responsavel, setResponsavel] = useState<string>(lead.responsavel_id ?? '')
+  const [motivo, setMotivo] = useState(lead.motivo_perdida ?? '')
   const [aGravar, setAGravar] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [rkEnv, setRkEnv] = useState(0)
+  const [responsaveis, setResponsaveis] = useState<ResponsavelLead[]>([])
+  const [historico, setHistorico] = useState<LeadStatusHistory[]>([])
+
+  useEffect(() => {
+    listarResponsaveisLeads().then(setResponsaveis)
+    listarHistoricoLead(lead.id).then(setHistorico)
+  }, [lead.id])
+
+  const exigeResponsavel = ESTADOS_COM_FOLLOWUP.includes(estado)
+  const exigeMotivo = estado === 'perdida'
 
   async function eliminar() {
     if (!confirm('Eliminar esta lead? Esta ação não pode ser anulada.')) return
@@ -316,12 +355,39 @@ function LeadDrawer({
   }
 
   async function guardar() {
+    // Validações que espelham as regras da base de dados (mensagem amigável antes do erro SQL).
+    if (exigeResponsavel && !responsavel) {
+      setMsg('Escolhe o responsável antes de marcar como Contactada / Proposta enviada.')
+      return
+    }
+    if (exigeMotivo && !motivo.trim()) {
+      setMsg('Indica o motivo da perda.')
+      return
+    }
     setAGravar(true)
     setMsg(null)
-    const { error } = await atualizarLead(lead.id, { estado, nota_interna: nota.trim() || null })
+
+    // 1) Responsável primeiro (a mudança de estado precisa dele para o follow-up).
+    if ((responsavel || null) !== (lead.responsavel_id ?? null)) {
+      const { error } = await definirResponsavelLead(lead.id, responsavel || null)
+      if (error) { setAGravar(false); setMsg('Erro ao atribuir responsável: ' + error.message); return }
+    }
+    // 2) Estado (regista histórico + trata da tarefa de follow-up).
+    if (estado !== lead.estado) {
+      const { error } = await mudarEstadoLeads([lead.id], estado, exigeMotivo ? motivo.trim() : null)
+      if (error) { setAGravar(false); setMsg('Erro ao mudar estado: ' + error.message); return }
+    }
+    // 3) Nota interna (campo livre).
+    if ((nota.trim() || null) !== (lead.nota_interna ?? null)) {
+      const { error } = await atualizarLead(lead.id, { nota_interna: nota.trim() || null })
+      if (error) { setAGravar(false); setMsg('Erro ao guardar nota: ' + error.message); return }
+    }
+
+    // Recarregar a lead (estado_desde, responsável, motivo) e o histórico.
+    const { data } = await supabase.from('leads').select('*').eq('id', lead.id).single()
     setAGravar(false)
-    if (error) { setMsg('Erro ao guardar: ' + error.message); return }
-    onGuardado({ ...lead, estado, nota_interna: nota.trim() || null })
+    if (data) onGuardado(data as Lead)
+    listarHistoricoLead(lead.id).then(setHistorico)
     setMsg('Guardado ✓')
   }
 
@@ -332,7 +398,12 @@ function LeadDrawer({
           <h2 style={{ fontSize: 20, fontWeight: 800 }}>{lead.nome}</h2>
           <button onClick={onClose} style={c.fechar}>✕</button>
         </div>
-        <div style={{ marginTop: 4 }}><CanalTag canal={lead.canal} /></div>
+        <div style={{ marginTop: 4, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <CanalTag canal={lead.canal} />
+          {(lead.estado === 'contactada' || lead.estado === 'proposta_enviada') && (
+            <span style={c.meta}>⏱ {textoNoEstado(lead.estado_desde)}</span>
+          )}
+        </div>
 
         <div style={c.dados}>
           {lead.email && <Linha rotulo="Email" valor={<a href={`mailto:${lead.email}`} style={c.link}>{lead.email}</a>} />}
@@ -369,16 +440,52 @@ function LeadDrawer({
         </div>
 
         <div style={{ marginTop: 18 }}>
+          <label style={c.rotulo}>Responsável {exigeResponsavel && <span style={{ color: 'var(--danger)' }}>*</span>}</label>
+          <select value={responsavel} onChange={(e) => setResponsavel(e.target.value)} style={{ ...c.select, width: '100%', marginTop: 6 }}>
+            <option value="">— sem responsável —</option>
+            {responsaveis.map((r) => <option key={r.id} value={r.id}>{r.nome}</option>)}
+          </select>
+        </div>
+
+        <div style={{ marginTop: 14 }}>
           <label style={c.rotulo}>Estado</label>
           <select value={estado} onChange={(e) => setEstado(e.target.value as EstadoLead)} style={{ ...c.select, width: '100%', marginTop: 6 }}>
             {ESTADO_OPCOES.map((e) => <option key={e} value={e}>{ESTADO_CONFIG[e].label}</option>)}
           </select>
+          {exigeResponsavel && (
+            <p style={{ ...c.meta, marginTop: 6 }}>Ao guardar, é criada/atualizada a tarefa de follow-up para o responsável.</p>
+          )}
         </div>
+
+        {exigeMotivo && (
+          <div style={{ marginTop: 14 }}>
+            <label style={c.rotulo}>Motivo da perda <span style={{ color: 'var(--danger)' }}>*</span></label>
+            <textarea value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Porque é que esta lead foi perdida?" style={c.textarea} />
+          </div>
+        )}
 
         <div style={{ marginTop: 14 }}>
           <label style={c.rotulo}>Nota interna</label>
           <textarea value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Notas da equipa..." style={c.textarea} />
         </div>
+
+        {historico.length > 0 && (
+          <div style={{ marginTop: 18 }}>
+            <div style={c.rotulo}>Histórico de estados</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+              {historico.map((h) => (
+                <div key={h.id} style={{ display: 'flex', gap: 8, fontSize: 13, alignItems: 'center' }}>
+                  <span style={{ color: 'var(--muted)', minWidth: 96 }}>{formatarDataHora(h.created_at)}</span>
+                  <span>
+                    {h.estado_anterior ? `${ESTADO_CONFIG[h.estado_anterior].label} → ` : ''}
+                    <strong style={{ color: ESTADO_CONFIG[h.estado_novo].color }}>{ESTADO_CONFIG[h.estado_novo].label}</strong>
+                  </span>
+                  {h.ator_nome && <span style={{ color: 'var(--muted)' }}>· {h.ator_nome}</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {msg && <div style={{ marginTop: 10, fontSize: 13, color: msg.startsWith('Erro') ? 'var(--danger)' : 'var(--primary)', fontWeight: 600 }}>{msg}</div>}
 
