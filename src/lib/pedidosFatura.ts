@@ -126,6 +126,19 @@ export async function enviarPedidoAoCliente(id: string, assunto: string, corpo: 
   return r.json()
 }
 
+// Avisar a faturação de um pedido acabado de criar (best-effort).
+export async function notificarNovoPedidoCliente(id: string) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const token = session?.access_token
+  if (!token) return
+  try {
+    await fetch('/api/pedidos-fatura/notificar-novo', {
+      method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+  } catch { /* ignora */ }
+}
+
 // Registar que o envio foi feito por WhatsApp (canal usado).
 export async function registarEnvioWhatsapp(id: string, canaisAtuais: string[]) {
   const canais = Array.from(new Set([...(canaisAtuais ?? []), 'whatsapp']))

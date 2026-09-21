@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { enviarGmail } from '@/lib/gmailSend'
 import { obterAssinaturaHtml, corpoHtmlComAssinatura } from '@/lib/emailAssinatura'
+import { notificarFaturaEnviada } from '@/lib/pedidosFaturaServer'
 import { EMAIL_VANESSA, EMAIL_ANDREIA } from '@/types/freight'
 
 // Envia ao cliente a fatura de um pedido: email a partir da conta da VANESSA
@@ -113,6 +114,9 @@ export async function POST(req: Request) {
     estado: 'enviado_cliente', enviado_em: agora, respondido_em: agora,
     canais_usados: canais, financeiro_movimento_id: movimentoId ?? p.financeiro_movimento_id,
   }).eq('id', id)
+
+  // Avisa o colega que pediu (recado + email); best-effort, não falha o envio.
+  try { await notificarFaturaEnviada(db, id) } catch { /* ignora */ }
 
   return Response.json({ ok: true, conta_corrente: !!movimentoId })
 }
