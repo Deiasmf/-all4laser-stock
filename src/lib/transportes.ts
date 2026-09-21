@@ -134,6 +134,8 @@ export type TransportStop = {
   ordem: number | null
   lat: number | null
   lng: number | null
+  concluida_em: string | null
+  nota_motorista: string | null
   calendario?: { nome: string | null; equipamento?: { serial_number: string | null } | null } | null
 }
 
