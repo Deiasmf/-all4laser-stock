@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import type { PedidoFatura, PedidoFaturaInput, PedidoFaturaEstado } from '@/types/pedidoFatura'
+import type { PedidoFatura, PedidoFaturaInput, PedidoFaturaEstado, PedidoFaturaConfig } from '@/types/pedidoFatura'
 
 export const BUCKET_PEDIDOS_FATURA = 'pedidos-fatura-docs'
 
@@ -42,6 +42,70 @@ export async function atualizarPedidoFatura(id: string, patch: Partial<PedidoFat
 
 export async function eliminarPedidoFatura(id: string) {
   return supabase.from('pedidos_fatura').delete().eq('id', id)
+}
+
+// Recusar o pedido (devolve ao colega com motivo). Regista respondido_em.
+export async function recusarPedidoFatura(id: string, motivo: string) {
+  return supabase
+    .from('pedidos_fatura')
+    .update({ estado: 'recusado', motivo_recusa: motivo, respondido_em: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single()
+}
+
+// ─── Comprovativo de pagamento (anexo opcional de quem pede) ──────────────────
+
+export async function anexarComprovativo(
+  pedidoId: string,
+  ficheiro: File
+): Promise<{ ok: boolean; motivo?: string }> {
+  const caminho = `${pedidoId}/comprovativo-${Date.now()}-${nomeSeguro(ficheiro.name)}`
+  const { error } = await supabase.storage.from(BUCKET_PEDIDOS_FATURA).upload(caminho, ficheiro)
+  if (error) return { ok: false, motivo: error.message }
+  const { data: pub } = supabase.storage.from(BUCKET_PEDIDOS_FATURA).getPublicUrl(caminho)
+  const { error: erroBd } = await supabase
+    .from('pedidos_fatura')
+    .update({ comprovativo_url: pub.publicUrl, comprovativo_caminho: caminho })
+    .eq('id', pedidoId)
+  return erroBd ? { ok: false, motivo: erroBd.message } : { ok: true }
+}
+
+// ─── Criar cliente na hora (quando não existe) ────────────────────────────────
+// País é NOT NULL na BD (default 'Portugal'); só pedimos nome + email.
+export async function criarClienteRapido(nome: string, email: string | null): Promise<ClientePedidoOpc | null> {
+  const { data } = await supabase
+    .from('clientes')
+    .insert({ nome: nome.trim(), email: email?.trim() || null, pais: 'Portugal' })
+    .select('id, nome, email')
+    .single()
+  return (data as ClientePedidoOpc | null) ?? null
+}
+
+// ─── Config (template + lembretes + substituto) ───────────────────────────────
+
+const CONFIG_PADRAO: PedidoFaturaConfig = {
+  assunto_template: 'All4laser – Fatura {n_fatura} – {nome_cliente}',
+  corpo_template: '',
+  lembrete_horas: 48,
+  lembrete_horas_uteis: true,
+  escalona_cc_andreia: true,
+  substituto_id: null,
+  substituto_nome: null,
+}
+
+export async function carregarConfigPedidos(): Promise<PedidoFaturaConfig> {
+  const { data } = await supabase.from('pedidos_fatura_config').select('*').maybeSingle()
+  return { ...CONFIG_PADRAO, ...((data as Partial<PedidoFaturaConfig>) ?? {}) }
+}
+
+export async function guardarConfigPedidos(cfg: PedidoFaturaConfig, porNome: string | null) {
+  return supabase.from('pedidos_fatura_config').upsert({
+    id: true,
+    ...cfg,
+    atualizado_em: new Date().toISOString(),
+    atualizado_por_nome: porNome,
+  })
 }
 
 // ─── Fluxo (financeiro) ───────────────────────────────────────────────────────
