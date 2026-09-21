@@ -63,7 +63,8 @@ async function limparBackupsAntigos() {
     do {
       const r = await drive.files.list({
         q: `'${pastaId}' in parents and trashed = false`,
-        fields: 'nextPageToken, files(id, name, createdTime, mimeType)',
+        fields:
+          'nextPageToken, files(id, name, createdTime, mimeType, ownedByMe, capabilities(canDelete, canTrash))',
         orderBy: 'createdTime', // mais antigos primeiro
         pageSize: 1000,
         pageToken,
@@ -92,19 +93,47 @@ async function limparBackupsAntigos() {
 
     console.log(`Limpeza: ${antigos.length} backup(s) com mais de ${RETENCAO_DIAS} dias a apagar...`)
     let apagados = 0
+    let semPermissao = 0
     for (const f of antigos) {
+      // Tenta primeiro a eliminacao permanente; se falhar, tenta mover para o
+      // lixo (mais permissivo). Nos Shared Drives ambos exigem que a service
+      // account seja "Gestor de conteudos"/"Gestor" — se for so "Colaborador"
+      // consegue enviar backups mas nao apaga-los, e o Google devolve 404.
       try {
         await drive.files.delete({ fileId: f.id, supportsAllDrives: true })
         console.log(`  - apagado: ${f.name} (criado em ${f.createdTime})`)
         apagados++
-      } catch (e) {
-        console.warn(`  ! falha a apagar ${f.name}: ${e?.message ?? e}`)
+        continue
+      } catch (eDelete) {
+        try {
+          await drive.files.update({
+            fileId: f.id,
+            requestBody: { trashed: true },
+            supportsAllDrives: true,
+          })
+          console.log(`  - movido para o lixo: ${f.name} (criado em ${f.createdTime})`)
+          apagados++
+          continue
+        } catch (eTrash) {
+          const cap = f.capabilities ?? {}
+          if (cap.canDelete === false && cap.canTrash === false) semPermissao++
+          console.warn(
+            `  ! nao consegui remover ${f.name} ` +
+              `(canDelete=${cap.canDelete}, canTrash=${cap.canTrash}): ${eTrash?.message ?? eTrash}`
+          )
+        }
       }
     }
     // 4) Resumo.
     console.log(
-      `Limpeza concluida: ${apagados} de ${antigos.length} ficheiro(s) apagado(s); ${backups.length - apagados} mantido(s).`
+      `Limpeza concluida: ${apagados} de ${antigos.length} ficheiro(s) removido(s); ${backups.length - apagados} mantido(s).`
     )
+    if (semPermissao > 0) {
+      console.warn(
+        `Aviso: ${semPermissao} ficheiro(s) sem permissao de remocao. A service account precisa de ser ` +
+          `"Gestor de conteudos" (Content manager) no Shared Drive para poder apagar backups antigos.`
+      )
+    }
   } catch (e) {
     // Nunca rebenta o backup por causa da limpeza.
     console.warn(`Aviso: a limpeza de backups antigos falhou (o backup do dia esta seguro): ${e?.message ?? e}`)
