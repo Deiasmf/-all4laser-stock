@@ -28,7 +28,20 @@ jobs:
           node-version: '20'
 
       - name: Instalar googleapis
-        run: npm install googleapis --no-save
+        # Tenta ate 3 vezes: o npm install falha por vezes com erros de rede
+        # transitorios (ECONNRESET) no runner do GitHub, e nao vale a pena
+        # deitar o backup inteiro a perder por causa disso.
+        run: |
+          for tentativa in 1 2 3; do
+            echo "==> Instalar googleapis (tentativa $tentativa/3)..."
+            if npm install googleapis --no-save --fetch-retries=5 --fetch-retry-mintimeout=20000; then
+              exit 0
+            fi
+            echo "Tentativa $tentativa falhou; a aguardar 15s antes de repetir..."
+            sleep 15
+          done
+          echo "Erro: nao foi possivel instalar googleapis apos 3 tentativas."
+          exit 1
 
       - name: Executar backup (dump + gzip + upload)
         env:
