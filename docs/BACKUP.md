@@ -6,6 +6,8 @@ Google Drive, através de uma GitHub Action. Cada cópia é um ficheiro comprimi
 `pg_restore`, não com `psql`).
 
 - **O que faz:** `pg_dump --format=custom` → `gzip` → upload para o Google Drive (via Service Account).
+- **Retenção automática:** depois do upload, os backups com mais de **30 dias** são
+  removidos da pasta (ver secção *Manutenção*). Ficam sempre ~30 cópias.
 - **Se falhar:** envia um email de aviso para o endereço configurado.
 - **Onde está definido:** `.github/workflows/backup.yml`, `scripts/backup.sh`,
   `scripts/drive-upload.mjs`, `scripts/notify-failure.sh`.
@@ -134,9 +136,18 @@ workflow**. Em 1-2 minutos deve aparecer o ficheiro na pasta do Drive.
 
 ## Manutenção
 
-- **Retenção:** os ficheiros vão-se acumulando na pasta do Drive. De tempos a tempos,
-  apaga os mais antigos à mão (ou cria uma subpasta "arquivo"). Não há apagamento
-  automático, de propósito, para não haver risco de perder cópias.
+- **Retenção (automática, 30 dias):** depois de cada upload com sucesso, o
+  `scripts/drive-upload.mjs` remove da pasta os backups `backup-*.dump.gz`/`.sql.gz`
+  com mais de **30 dias** — ficam sempre ~30 cópias. A limpeza nunca faz falhar o
+  backup do dia (corre só depois de o ficheiro do dia estar seguro) e só mexe em
+  ficheiros com nome de backup. Para mudar o período, edita a constante
+  `RETENCAO_DIAS` em `scripts/drive-upload.mjs`.
+  > **Como remove:** tenta apagar permanentemente (`files.delete`) e, se a Service
+  > Account não tiver essa permissão (típico num **Shared Drive**, onde a SA é só
+  > "Colaborador" e o Google devolve `404 File not found`), faz **fallback para mover
+  > para o lixo** (`trashed: true`). O lixo do Shared Drive é esvaziado
+  > automaticamente pelo Google ~30 dias depois. Se quiseres eliminação permanente
+  > imediata, promove a Service Account a **Gestor de conteúdos** no Shared Drive.
 - **Mudar a hora:** edita o `cron` em `.github/workflows/backup.yml` (`'0 3 * * *'` =
   03:00 UTC; em Portugal no verão são 04:00).
 
@@ -157,6 +168,17 @@ normal e o erro persistir, as alternativas são:
   e partilhá-la com a Service Account; ou
 - Trocar a autenticação por **OAuth com a tua conta** (refresh token) em vez da Service
   Account. (Implica mudar `scripts/drive-upload.mjs`.)
+
+**A Action falha no passo "Instalar googleapis" com `ECONNRESET`/erro de rede.**
+É um soluço de rede transitório do runner do GitHub. O passo já tenta **até 3 vezes**
+automaticamente; se falhar mesmo assim, corre o workflow outra vez à mão (**Actions →
+Run workflow**) — não é preciso alterar nada.
+
+**A limpeza dos backups antigos não apaga nada (`0 removidos` ou `404 File not found`).**
+A Service Account não tem permissão para eliminar na pasta. O script já contorna isto
+movendo os antigos para o **lixo**; se nem isso funcionar, dá à Service Account o papel
+**Gestor de conteúdos** (Content manager) no Shared Drive. O log da limpeza mostra as
+permissões de cada ficheiro (`canDelete`/`canTrash`) para diagnóstico.
 
 **Não recebo o email de falha.**
 Confirma `SENDGRID_API_KEY`, `EMAIL_FROM` (tem de ser remetente verificado no SendGrid) e
