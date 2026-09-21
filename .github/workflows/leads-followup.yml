@@ -1,0 +1,24 @@
+name: Follow-up de leads (reabrir tarefas)
+
+# Corre nos dias úteis de manhã (06:30 UTC). Reabre as tarefas de follow-up que
+# foram concluídas/arquivadas à mão enquanto a lead continua em Contactada /
+# Proposta enviada — a regra é que a tarefa só sai quando a lead é ganha ou
+# perdida (ou quando é "adiada", que é respeitado). Fica aqui e não em
+# vercel.json porque o plano Hobby da Vercel limita os crons.
+#
+# Para testar sem alterar nada: acrescentar ?dryrun=1 ao URL.
+
+on:
+  schedule:
+    - cron: '30 6 * * 1-5'
+  workflow_dispatch: {}
+
+jobs:
+  followup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar endpoint de sincronização de follow-up
+        run: |
+          curl -sS --fail-with-body --max-time 115 \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://all4laser-stock.vercel.app/api/leads/followup-sync"
