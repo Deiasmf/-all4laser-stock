@@ -226,9 +226,24 @@ async function persistir(
   const { data: regrasData } = await sb.from('financeiro_regras_categoria').select('*').order('ordem').order('created_at')
   const regras = (regrasData as RegraCat[]) ?? []
 
+  // Faturas lançadas à mão pelos Pedidos de Fatura (origem 'manual', ainda sem
+  // keyinvoice_doc_id): quando o sync trouxer a mesma fatura, reconcilia-se pelo
+  // (cliente, nº do documento) em vez de duplicar.
+  const refs = [...new Set(docs.map((d) => d.numero).filter((n): n is string => !!n))]
+  const manualPorChave = new Map<string, string>()
+  for (let i = 0; i < refs.length; i += 500) {
+    const { data } = await sb.from('financeiro_movimentos')
+      .select('id, cliente_id, documento_ref, tipo_documento')
+      .eq('origem', 'manual').is('keyinvoice_doc_id', null).in('documento_ref', refs.slice(i, i + 500))
+    for (const m of (data as { id: string; cliente_id: string | null; documento_ref: string | null; tipo_documento: string }[]) ?? []) {
+      manualPorChave.set(`${m.cliente_id}|${m.documento_ref}|${m.tipo_documento}`, m.id)
+    }
+  }
+
   let semEntidade = 0
   const insertRows: Record<string, unknown>[] = []
   const updates: { id: string; upd: Record<string, unknown> }[] = []
+  const updatesManual: { id: string; upd: Record<string, unknown> }[] = []
   const vistos = new Set<string>()
 
   for (const d of docs) {
@@ -254,7 +269,18 @@ async function persistir(
     }
     const liquidado = d.tipo_documento === 'fatura' && typeof d.valor_liquidado === 'number' ? d.valor_liquidado : null
     const liquido = typeof d.valor_liquido === 'number' ? d.valor_liquido : (ex?.valor_liquido ?? null)
-    if (!ex) {
+    const manualId = !ex ? manualPorChave.get(`${entId}|${d.numero}|${d.tipo_documento}`) : undefined
+    if (!ex && manualId) {
+      // Reconciliar a fatura lançada à mão: passa a keyinvoice, sem mexer na
+      // categoria (foi definida à mão) nem duplicar a linha.
+      updatesManual.push({
+        id: manualId,
+        upd: {
+          ...base, origem: 'keyinvoice', keyinvoice_doc_id: d.keyinvoice_doc_id,
+          valor_liquidado: liquidado ?? 0, valor_liquido: liquido,
+        },
+      })
+    } else if (!ex) {
       insertRows.push({
         ...base,
         categoria: cat.categoria_chave, subcategoria_id: cat.subcategoria_id, categoria_auto: auto,
@@ -285,6 +311,17 @@ async function persistir(
     const lote = updates.slice(i, i + CONC)
     const res = await Promise.all(
       lote.map((u) => sb.from('financeiro_movimentos').update(u.upd).eq('keyinvoice_doc_id', u.id))
+    )
+    for (const { error } of res) {
+      if (error) { erro = error.message; break }
+      atualizados++
+    }
+  }
+  // Reconciliação das faturas manuais (update por id primário).
+  for (let i = 0; i < updatesManual.length && !erro; i += CONC) {
+    const lote = updatesManual.slice(i, i + CONC)
+    const res = await Promise.all(
+      lote.map((u) => sb.from('financeiro_movimentos').update(u.upd).eq('id', u.id))
     )
     for (const { error } of res) {
       if (error) { erro = error.message; break }

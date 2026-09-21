@@ -7,6 +7,7 @@ import type { CartaPorteExtraida, CampoCarta, Confianca } from '@/types/cartaPor
 import { CAMPOS_CARTA } from '@/types/cartaPorte'
 import type { DespesaExtraida, CampoDespesa } from '@/types/despesa'
 import { CAMPOS_DESPESA } from '@/types/despesa'
+import type { FaturaExtraida, CampoFatura } from '@/types/pedidoFatura'
 
 export const MODELO_DOC = 'claude-sonnet-4-6'
 
@@ -230,6 +231,54 @@ export async function extrairDespesa(ficheiro: FicheiroDoc): Promise<DespesaExtr
     valor: numero(dados.valor),
     iva: numero(dados.iva),
     num_documento: texto(dados.num_documento),
+    confianca,
+  }
+}
+
+// ─── Extração específica: fatura emitida (Pedidos de Fatura) ─────────────────
+const CAMPOS_FATURA: CampoFatura[] = ['num_fatura', 'data_fatura', 'valor_total']
+
+const TOOL_FATURA: Anthropic.Tool = {
+  name: 'registar_fatura',
+  description: 'Regista os dados extraídos de uma fatura emitida.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      num_fatura: nulavel('Número da fatura, como aparece (ex.: "FT 2026/123", "2026/A/45").'),
+      data_fatura: nulavel('Data da fatura, em formato ISO yyyy-mm-dd.'),
+      valor_total: { type: ['number', 'null'], description: 'Valor TOTAL da fatura (com IVA), em euros.' },
+      confianca: {
+        type: 'object',
+        description: 'Nível de confiança de cada campo: alta, media ou baixa.',
+        properties: Object.fromEntries(CAMPOS_FATURA.map((c) => [c, nivel])),
+      },
+    },
+    required: [...CAMPOS_FATURA, 'confianca'],
+  },
+}
+
+const SISTEMA_FATURA = `És um assistente que extrai dados de faturas emitidas pela All4laser,
+empresa portuguesa. Lês o documento (PDF ou foto) e extrais EXATAMENTE como aparece, sem inventar.
+"valor_total" é o total com IVA, em euros com ponto decimal. Datas em ISO yyyy-mm-dd. Se um campo
+não existir ou não for legível, devolve null. Indica a confiança de cada campo: alta, media, baixa.`
+
+export async function extrairFatura(ficheiro: FicheiroDoc): Promise<FaturaExtraida> {
+  const dados = await chamarExtracao(ficheiro, {
+    sistema: SISTEMA_FATURA,
+    tool: TOOL_FATURA,
+    instrucao: 'Extrai o número, a data e o valor total desta fatura, com o nível de confiança de cada campo.',
+    maxTokens: 512,
+  })
+  const confRaw = (dados.confianca ?? {}) as Record<string, unknown>
+  const confianca: Partial<Record<CampoFatura, 'alta' | 'media' | 'baixa'>> = {}
+  for (const c of CAMPOS_FATURA) {
+    const v = texto(confRaw[c])
+    if (v === 'alta' || v === 'media' || v === 'baixa') confianca[c] = v
+  }
+  return {
+    num_fatura: texto(dados.num_fatura),
+    data_fatura: texto(dados.data_fatura),
+    valor_total: numero(dados.valor_total),
     confianca,
   }
 }
