@@ -1,12 +1,15 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 import {
   listarPedidosFatura, criarPedidoFatura, listarClientesPedido,
+  criarClienteRapido, anexarComprovativo,
   type ClientePedidoOpc,
 } from '@/lib/pedidosFatura'
+import AvisoDuplicadosCliente from '@/components/AvisoDuplicadosCliente'
 import {
   ESTADOS_PEDIDO, estadoPedidoInfo, TIPOS_PEDIDO, tipoPedidoLabel, formatarEuro,
   type PedidoFatura, type PedidoFaturaTipo,
@@ -42,6 +45,7 @@ export default function PedidosFaturaPage() {
   const [descricao, setDescricao] = useState('')
   const [valor, setValor] = useState('')
   const [notas, setNotas] = useState('')
+  const [comprovativo, setComprovativo] = useState<File | null>(null)
   const [aGravar, setAGravar] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
@@ -71,7 +75,7 @@ export default function PedidosFaturaPage() {
 
   function limparForm() {
     setTipo('fatura'); setClienteNome(''); setClienteId(null); setClienteEmail('')
-    setDescricao(''); setValor(''); setNotas(''); setErro(null)
+    setDescricao(''); setValor(''); setNotas(''); setComprovativo(null); setErro(null)
   }
 
   async function submeter() {
@@ -82,10 +86,16 @@ export default function PedidosFaturaPage() {
     if (valorNum !== null && (isNaN(valorNum) || valorNum < 0)) { setErro('Valor inválido.'); return }
 
     setAGravar(true)
+    // Se o cliente ainda não existe (texto livre sem id), cria-o na hora.
+    let idCliente = clienteId
+    if (!idCliente) {
+      const novo = await criarClienteRapido(clienteNome.trim(), clienteEmail.trim() || null)
+      if (novo) idCliente = novo.id
+    }
     const { data, error } = await criarPedidoFatura(
       {
         tipo,
-        cliente_id: clienteId,
+        cliente_id: idCliente,
         cliente_nome: clienteNome.trim(),
         cliente_email: clienteEmail.trim() || null,
         descricao: descricao.trim(),
@@ -94,8 +104,9 @@ export default function PedidosFaturaPage() {
       },
       { id: perfil?.id ?? null, nome: perfil?.nome ?? null }
     )
+    if (error || !data) { setAGravar(false); setErro('Não foi possível criar o pedido: ' + (error?.message ?? '')); return }
+    if (comprovativo) await anexarComprovativo(data.id, comprovativo)
     setAGravar(false)
-    if (error || !data) { setErro('Não foi possível criar o pedido: ' + (error?.message ?? '')); return }
     limparForm()
     setAberto(false)
     await carregar()
@@ -132,9 +143,12 @@ export default function PedidosFaturaPage() {
           <h1 style={c.titulo}>🧾 Pedidos de Fatura</h1>
           <p style={c.sub}>Pede uma fatura ou pró-forma ao departamento financeiro e acompanha o estado.</p>
         </div>
-        <button style={c.btnPrimario} onClick={() => { setAberto((a) => !a); setErro(null) }}>
-          {aberto ? 'Fechar' : '+ Novo pedido'}
-        </button>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          {isFinanceiro && <Link href="/pedidos-fatura/monitorizacao" style={c.btnGhost}>📊 Monitorização</Link>}
+          <button style={c.btnPrimario} onClick={() => { setAberto((a) => !a); setErro(null) }}>
+            {aberto ? 'Fechar' : '+ Novo pedido'}
+          </button>
+        </div>
       </div>
 
       {/* Cards de resumo */}
@@ -175,6 +189,16 @@ export default function PedidosFaturaPage() {
               <datalist id="clientes-pedido">
                 {clientes.map((cl) => <option key={cl.id} value={cl.nome} />)}
               </datalist>
+              {!clienteId && clienteNome.trim().length >= 3 && (
+                <AvisoDuplicadosCliente
+                  nome={clienteNome}
+                  email={clienteEmail || undefined}
+                  onUsar={(cl) => {
+                    setClienteNome(cl.nome); setClienteId(cl.id)
+                    if (cl.email) setClienteEmail(cl.email)
+                  }}
+                />
+              )}
             </label>
             <label style={c.campo}>
               <span style={c.rotulo}>Email do cliente (para envio)</span>
@@ -217,6 +241,16 @@ export default function PedidosFaturaPage() {
               placeholder="Indicações adicionais"
               style={{ ...c.input, minHeight: 48, resize: 'vertical' }}
             />
+          </label>
+          <label style={{ ...c.campo, marginTop: 10 }}>
+            <span style={c.rotulo}>Comprovativo de pagamento (opcional)</span>
+            <input
+              type="file"
+              accept="image/*,application/pdf"
+              onChange={(e) => setComprovativo(e.target.files?.[0] ?? null)}
+              style={{ ...c.input, padding: 8 }}
+            />
+            {comprovativo && <span style={{ fontSize: 12, color: 'var(--muted)' }}>{comprovativo.name}</span>}
           </label>
           {erro && <div style={c.erro}>{erro}</div>}
           <div style={c.formAcoes}>

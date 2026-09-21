@@ -17,6 +17,7 @@ export type PedidoFaturaEstado =
   | 'a_realizar'
   | 'realizado'
   | 'enviado_cliente'
+  | 'recusado'
 
 export const ESTADOS_PEDIDO: {
   valor: PedidoFaturaEstado
@@ -24,11 +25,15 @@ export const ESTADOS_PEDIDO: {
   cor: string
   bg: string
 }[] = [
-  { valor: 'nao_realizado', label: 'Não realizado', cor: '#991B1B', bg: '#FEE2E2' },
-  { valor: 'a_realizar', label: 'A realizar', cor: '#1E40AF', bg: '#DBEAFE' },
-  { valor: 'realizado', label: 'Realizado', cor: '#92400E', bg: '#FEF3C7' },
-  { valor: 'enviado_cliente', label: 'Enviado ao cliente', cor: '#065F46', bg: '#D1FAE5' },
+  { valor: 'nao_realizado', label: 'Pedido', cor: '#991B1B', bg: '#FEE2E2' },
+  { valor: 'a_realizar', label: 'Em tratamento', cor: '#1E40AF', bg: '#DBEAFE' },
+  { valor: 'realizado', label: 'Faturada', cor: '#92400E', bg: '#FEF3C7' },
+  { valor: 'enviado_cliente', label: 'Enviada ao cliente', cor: '#065F46', bg: '#D1FAE5' },
+  { valor: 'recusado', label: 'Recusado', cor: '#6B7280', bg: '#F3F4F6' },
 ]
+
+// Estados "abertos" (ainda por responder) — contam para lembretes e monitorização.
+export const ESTADOS_ABERTOS: PedidoFaturaEstado[] = ['nao_realizado', 'a_realizar']
 
 export function estadoPedidoInfo(valor: string | null) {
   return ESTADOS_PEDIDO.find((e) => e.valor === valor) ?? ESTADOS_PEDIDO[0]
@@ -54,8 +59,32 @@ export type PedidoFatura = {
   criado_por_nome: string | null
   responsavel_id: string | null
   responsavel_nome: string | null
+  // Fatura emitida (Fase 2)
+  num_fatura: string | null
+  data_fatura: string | null
+  valor_total: number | null
+  motivo_recusa: string | null
+  comprovativo_url: string | null
+  comprovativo_caminho: string | null
+  enviado_whatsapp_em: string | null
+  respondido_em: string | null
+  canais_usados: string[]
+  financeiro_movimento_id: string | null
+  lembrete_ultimo: string | null
+  lembretes_count: number
   created_at: string
   updated_at: string
+}
+
+// Config única (admin): template do email + lembretes + substituto.
+export type PedidoFaturaConfig = {
+  assunto_template: string
+  corpo_template: string
+  lembrete_horas: number
+  lembrete_horas_uteis: boolean
+  escalona_cc_andreia: boolean
+  substituto_id: string | null
+  substituto_nome: string | null
 }
 
 // Campos que o colega preenche ao criar o pedido.
