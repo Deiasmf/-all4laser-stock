@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout do repositorio
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Instalar PostgreSQL client 17
         run: |
@@ -23,9 +23,9 @@ jobs:
           sudo apt-get install -y postgresql-client-17
 
       - name: Configurar Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Instalar googleapis
         # Tenta ate 3 vezes: o npm install falha por vezes com erros de rede
