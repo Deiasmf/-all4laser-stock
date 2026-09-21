@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 import {
   listarPedidosFatura, criarPedidoFatura, listarClientesPedido,
-  criarClienteRapido, anexarComprovativo,
+  criarClienteRapido, anexarComprovativo, notificarNovoPedidoCliente,
   type ClientePedidoOpc,
 } from '@/lib/pedidosFatura'
 import AvisoDuplicadosCliente from '@/components/AvisoDuplicadosCliente'
@@ -106,6 +106,7 @@ export default function PedidosFaturaPage() {
     )
     if (error || !data) { setAGravar(false); setErro('Não foi possível criar o pedido: ' + (error?.message ?? '')); return }
     if (comprovativo) await anexarComprovativo(data.id, comprovativo)
+    await notificarNovoPedidoCliente(data.id)
     setAGravar(false)
     limparForm()
     setAberto(false)
@@ -145,6 +146,7 @@ export default function PedidosFaturaPage() {
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           {isFinanceiro && <Link href="/pedidos-fatura/monitorizacao" style={c.btnGhost}>📊 Monitorização</Link>}
+          {isFinanceiro && <Link href="/pedidos-fatura/definicoes" style={c.btnGhost}>⚙️ Definições</Link>}
           <button style={c.btnPrimario} onClick={() => { setAberto((a) => !a); setErro(null) }}>
             {aberto ? 'Fechar' : '+ Novo pedido'}
           </button>

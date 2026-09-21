@@ -1,0 +1,21 @@
+name: Lembretes de pedidos de fatura
+
+# Avisa a faturação dos pedidos parados há mais de N horas úteis (configurável
+# em /pedidos-fatura/definicoes). Corre nos dias úteis às 09:00 UTC. Fica aqui e
+# não em vercel.json porque o plano Hobby da Vercel limita os crons.
+# Testar sem enviar: acrescentar ?dryrun=1 ao URL.
+
+on:
+  schedule:
+    - cron: '0 9 * * 1-5'
+  workflow_dispatch: {}
+
+jobs:
+  lembretes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar endpoint de lembretes
+        run: |
+          curl -sS --fail-with-body --max-time 115 \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://all4laser-stock.vercel.app/api/pedidos-fatura/lembretes"
