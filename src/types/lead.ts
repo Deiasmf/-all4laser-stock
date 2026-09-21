@@ -14,9 +14,25 @@ export type Lead = {
   data_fim: string | null
   estado: EstadoLead
   nota_interna: string | null
+  responsavel_id: string | null
+  motivo_perdida: string | null
+  estado_desde: string
   created_at: string
   updated_at: string
 }
+
+// Uma entrada da linha temporal de estados (tabela lead_status_history).
+export type LeadStatusHistory = {
+  id: string
+  lead_id: string
+  estado_anterior: EstadoLead | null
+  estado_novo: EstadoLead
+  ator_nome: string | null
+  created_at: string
+}
+
+// Estados que exigem um responsável (têm follow-up automático associado).
+export const ESTADOS_COM_FOLLOWUP: EstadoLead[] = ['contactada', 'proposta_enviada']
 
 export const CANAL_CONFIG: Record<CanalLead, { label: string; icone: string }> = {
   website: { label: 'Website', icone: '🌐' },
