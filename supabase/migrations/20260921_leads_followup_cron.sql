@@ -3,6 +3,9 @@
 
 -- lead_sync_followup: acrescenta p_raise (default true). O cron chama com false
 -- para SALTAR leads ativas sem responsável em vez de rebentar.
+-- Remove a versão de 2 argumentos (Fase 1): a de 3 com default trata essas chamadas
+-- e evita ambiguidade "function is not unique".
+drop function if exists public.lead_sync_followup(uuid, uuid);
 create or replace function public.lead_sync_followup(p_lead_id uuid, p_ator uuid, p_raise boolean default true)
 returns void language plpgsql security definer set search_path = public as $$
 declare v public.leads%rowtype; v_task uuid; v_resp uuid; v_et uuid;
