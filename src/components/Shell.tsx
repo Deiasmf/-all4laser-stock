@@ -40,6 +40,7 @@ const NAV: Seccao[] = [
         ],
       },
       { href: '/financeiro', label: 'Financeiro', icon: '💶', requer: 'financeiro' },
+      { href: '/contas-correntes', label: 'Contas Correntes', icon: '📒', exato: false },
       { href: '/pedidos-fatura', label: 'Pedidos de Fatura', icon: '🧾' },
       {
         href: '/comercial', label: 'Comercial', icon: '🤝',
@@ -130,6 +131,7 @@ const TITULOS: { prefixo: string; titulo: string }[] = [
   { prefixo: '/financeiro/recolhas', titulo: 'Recolhas' },
   { prefixo: '/financeiro/tabelas', titulo: 'Folhas de Cálculo' },
   { prefixo: '/financeiro', titulo: 'Financeiro' },
+  { prefixo: '/contas-correntes', titulo: 'Contas Correntes' },
   { prefixo: '/pedidos-fatura', titulo: 'Pedidos de Fatura' },
   { prefixo: '/definicoes/utilizadores', titulo: 'Utilizadores' },
   { prefixo: '/comercial/notas-encomenda', titulo: 'Notas de Encomenda' },
