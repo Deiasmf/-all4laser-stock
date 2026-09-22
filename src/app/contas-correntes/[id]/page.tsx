@@ -13,6 +13,7 @@ import {
 import TabConsignacao from './TabConsignacao'
 import TabPlanos from './TabPlanos'
 import TabReconciliacao from './TabReconciliacao'
+import TabAcessos from './TabAcessos'
 
 type Tab = 'extrato' | 'consignacao' | 'planos' | 'reconciliacao' | 'acessos'
 
@@ -21,7 +22,7 @@ const TABS: { id: Tab; label: string; pronto: boolean }[] = [
   { id: 'planos', label: 'Planos', pronto: true },
   { id: 'extrato', label: 'Extrato', pronto: true },
   { id: 'reconciliacao', label: 'Reconciliação', pronto: true },
-  { id: 'acessos', label: 'Acessos', pronto: false },
+  { id: 'acessos', label: 'Acessos', pronto: true },
 ]
 
 export default function DetalheContaPage() {
@@ -114,6 +115,8 @@ export default function DetalheContaPage() {
         ? <TabPlanos conta={conta} onMudou={recarregar} />
         : tab === 'reconciliacao'
         ? <TabReconciliacao conta={conta} onMudou={recarregar} />
+        : tab === 'acessos'
+        ? <TabAcessos conta={conta} />
         : <PlaceholderTab tab={tab} />}
     </main>
   )

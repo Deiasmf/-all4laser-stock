@@ -250,6 +250,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     pathname === '/redefinir-password' ||
     pathname.startsWith('/assinar') ||
     pathname.startsWith('/reservas') ||
+    pathname.startsWith('/portal-cc') ||
     pathname.startsWith('/registo-cliente') ||
     pathname.startsWith('/p/')
   ) {
