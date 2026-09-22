@@ -21,3 +21,9 @@ jobs:
           curl -sS --fail-with-body --max-time 55 \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             "https://all4laser-stock.vercel.app/api/contas-correntes/atrasos"
+
+      - name: Enviar alertas das contas correntes (email interno)
+        run: |
+          curl -sS --fail-with-body --max-time 55 \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://all4laser-stock.vercel.app/api/contas-correntes/alertas"

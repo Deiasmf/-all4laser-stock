@@ -163,6 +163,52 @@ export async function listarClientesPicker(): Promise<ClientePicker[]> {
 
 // ─── Escrita ─────────────────────────────────────────────────────────────────
 
+// ─── Cashflow e alertas (Fase 3) ─────────────────────────────────────────────
+
+export type CategoriaCashflow = 'prestacao' | 'venda' | 'recebido'
+export type CashflowLinha = {
+  conta_id: string
+  mes: string           // primeiro dia do mês (date)
+  moeda: string
+  categoria: CategoriaCashflow
+  valor: number
+  valor_eur: number
+}
+
+export async function cashflowMensal(): Promise<CashflowLinha[]> {
+  const { data } = await supabase.from('v_cc_cashflow_mensal').select('*').order('mes')
+  return (data ?? []) as CashflowLinha[]
+}
+
+export type SeveridadeAlerta = 'alta' | 'media' | 'baixa'
+export type TipoAlerta =
+  | 'prestacao_atrasada' | 'venda_por_receber' | 'maquina_parada'
+  | 'reconciliacao_atraso' | 'saldo_acima_limite'
+
+export type AlertaCC = {
+  conta_id: string
+  conta_nome: string
+  tipo: TipoAlerta
+  severidade: SeveridadeAlerta
+  mensagem: string
+  valor: number | null
+  moeda: string
+  data_ref: string | null
+}
+
+export async function listarAlertas(): Promise<AlertaCC[]> {
+  const { data } = await supabase.from('v_cc_alertas').select('*')
+  return (data ?? []) as AlertaCC[]
+}
+
+export const TIPOS_ALERTA_LABEL: Record<TipoAlerta, string> = {
+  prestacao_atrasada: 'Prestação atrasada',
+  venda_por_receber: 'Venda por receber',
+  maquina_parada: 'Máquina parada no parceiro',
+  reconciliacao_atraso: 'Reconciliação em atraso',
+  saldo_acima_limite: 'Saldo acima do limite',
+}
+
 export type NovaConta = {
   nome: string
   tipo: TipoConta

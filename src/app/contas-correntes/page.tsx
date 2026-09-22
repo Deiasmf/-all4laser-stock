@@ -4,18 +4,20 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
-  listarContas, tipoContaLabel, formatarMoeda, formatarData,
-  type ContaComSaldo,
+  listarContas, listarAlertas, tipoContaLabel, formatarMoeda, formatarData,
+  type ContaComSaldo, type AlertaCC,
 } from '@/lib/cc'
 
 export default function ContasCorrentesPage() {
   const router = useRouter()
   const [contas, setContas] = useState<ContaComSaldo[]>([])
+  const [alertas, setAlertas] = useState<AlertaCC[]>([])
   const [carregando, setCarregando] = useState(true)
   const [pesquisa, setPesquisa] = useState('')
 
   useEffect(() => {
     listarContas().then((cs) => { setContas(cs); setCarregando(false) })
+    listarAlertas().then(setAlertas)
   }, [])
 
   const filtradas = useMemo(() => {
@@ -36,8 +38,17 @@ export default function ContasCorrentesPage() {
           <h1 style={c.titulo}>📒 Contas Correntes</h1>
           <p style={c.sub}>Consignação e planos de pagamento por parceiro/cliente.</p>
         </div>
-        <Link href="/contas-correntes/nova" style={c.btnPrimario}>+ Nova conta</Link>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Link href="/contas-correntes/cashflow" style={c.btnSec}>📈 Cashflow</Link>
+          <Link href="/contas-correntes/nova" style={c.btnPrimario}>+ Nova conta</Link>
+        </div>
       </div>
+
+      {alertas.length > 0 && (
+        <Link href="/contas-correntes/cashflow" style={c.alertaBanner}>
+          ⚠️ {alertas.length} alerta(s) — ver no Cashflow →
+        </Link>
+      )}
 
       <div style={c.indicadores}>
         <div style={{ ...c.indicador, background: '#ECFDF5' }}>
@@ -117,6 +128,8 @@ const c: Record<string, React.CSSProperties> = {
   titulo: { fontSize: 22, fontWeight: 700, color: 'var(--primary)', marginBottom: 4 },
   sub: { color: 'var(--muted)', fontSize: 14 },
   btnPrimario: { background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 18px', fontWeight: 700, cursor: 'pointer', textDecoration: 'none', whiteSpace: 'nowrap' },
+  btnSec: { background: '#fff', color: 'var(--foreground)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 16px', fontWeight: 700, cursor: 'pointer', textDecoration: 'none', whiteSpace: 'nowrap' },
+  alertaBanner: { display: 'block', background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E', borderRadius: 10, padding: '10px 14px', fontWeight: 600, fontSize: 13.5, textDecoration: 'none', marginBottom: 16 },
   indicadores: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 16 },
   indicador: { borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 4, border: '1px solid var(--border)' },
   indicadorTitulo: { fontSize: 12.5, color: 'var(--muted)', fontWeight: 600 },
