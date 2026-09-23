@@ -1,0 +1,23 @@
+name: Contas Correntes — atrasos
+
+# Marca como atrasadas as prestações vencidas e ainda pendentes, todos os dias às
+# 06:00 UTC. Fica aqui e não em vercel.json porque o plano Hobby da Vercel limita
+# o número/frequência de crons — mesma solução dos pedidos de pagamento.
+#
+# A rota é idempotente (só muda pendente→atrasada). Para testar sem alterar nada:
+# acrescentar ?dryrun=1 ao URL.
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  atrasos:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar endpoint de atrasos das contas correntes
+        run: |
+          curl -sS --fail-with-body --max-time 55 \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://all4laser-stock.vercel.app/api/contas-correntes/atrasos"
