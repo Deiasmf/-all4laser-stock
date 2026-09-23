@@ -21,8 +21,11 @@ async function obterOuCriarUser(sb: SupabaseClient, email: string, nome: string 
   const { data, error } = await sb.auth.admin.createUser({
     email,
     email_confirm: true,
+    // app_metadata p/ o claim; user_metadata p/ o trigger handle_new_user (o
+    // GoTrue só aplica o app_metadata DEPOIS do trigger, por isso o marcador de
+    // portal tem de vir também no user_metadata, presente já no INSERT).
     app_metadata: { role: 'portal' },
-    user_metadata: nome ? { nome } : {},
+    user_metadata: { role: 'portal', ...(nome ? { nome } : {}) },
   })
   if (!error && data.user) return data.user.id
   if (error && /registered|already|exists/i.test(error.message)) {
