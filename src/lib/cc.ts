@@ -558,6 +558,34 @@ export type NovoMovimento = {
   notas: string | null
 }
 
+// ─── Acessos ao portal (portal_users) ────────────────────────────────────────
+
+export type PortalUser = {
+  id: string
+  user_id: string
+  conta_id: string
+  email: string
+  nome: string | null
+  ativo: boolean
+  created_at: string
+}
+
+export async function listarPortalUsers(contaId: string): Promise<PortalUser[]> {
+  const { data } = await supabase
+    .from('portal_users').select('*').eq('conta_id', contaId).order('created_at', { ascending: false })
+  return (data ?? []) as PortalUser[]
+}
+
+export async function setPortalUserAtivo(id: string, ativo: boolean): Promise<{ error: { message: string } | null }> {
+  const { error } = await supabase.from('portal_users').update({ ativo }).eq('id', id)
+  return { error: error ? { message: error.message } : null }
+}
+
+export async function removerPortalUser(id: string): Promise<{ error: { message: string } | null }> {
+  const { error } = await supabase.from('portal_users').delete().eq('id', id)
+  return { error: error ? { message: error.message } : null }
+}
+
 // Movimento manual no ledger (origem "manual"). O valor_eur é calculado pelo
 // trigger cc_movimentos_eur a partir de valor / taxa_cambio_eur.
 export async function criarMovimentoManual(
