@@ -7,7 +7,9 @@ import { useAuth } from '@/lib/auth'
 // Protege as páginas internas (staff):
 //  • sem sessão -> /login
 //  • sessão de cliente do portal (sem perfil de staff) -> /reservas
-// As rotas do portal (/reservas/*) têm a sua própria guarda e são tratadas como públicas aqui.
+// As rotas dos portais de cliente (/reservas/* e /portal-cc/*) têm a sua própria
+// guarda e são tratadas como públicas aqui (senão um cliente sem perfil de staff
+// seria reencaminhado para /reservas ao aterrar no /portal-cc via magic link).
 export default function AuthGate({ children }: { children: React.ReactNode }) {
   const { session, carregando, perfil, perfilCarregado } = useAuth()
   const pathname = usePathname()
@@ -19,6 +21,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     pathname === '/redefinir-password' ||
     pathname.startsWith('/assinar') ||
     pathname.startsWith('/reservas') ||
+    pathname.startsWith('/portal-cc') ||
     pathname.startsWith('/registo-cliente') ||
     pathname.startsWith('/p/')
 
