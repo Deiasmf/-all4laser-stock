@@ -1,11 +1,11 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import { enviarEmail } from '@/lib/email'
 
 // Convite de um cliente para o portal de Contas Correntes.
 //   POST { conta_id, email, nome } — só staff (sessão válida).
 // Cria (ou reutiliza) o utilizador auth com app_metadata.role='portal' (o
 // handle_new_user não lhe dá profile → sem acesso interno), liga-o à conta em
-// portal_users e envia-lhe um magic link por email (SendGrid).
+// portal_users e envia-lhe um magic link pelo EMAIL DO PRÓPRIO SUPABASE
+// (signInWithOtp) — não depende do SendGrid.
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -95,27 +95,18 @@ export async function POST(req: Request) {
   )
   if (erroPU) return Response.json({ ok: false, erro: erroPU.message }, { status: 500 })
 
-  // Magic link (gerado, enviado pela nossa infra SendGrid).
+  // Magic link enviado pelo EMAIL DO PRÓPRIO SUPABASE (não pelo SendGrid).
+  // signInWithOtp com o cliente anon é o mesmo que a página de login faz;
+  // shouldCreateUser:false porque o utilizador já existe. Requer o /portal-cc na
+  // allowlist de Redirect URLs do Supabase (senão dá erro de redirect).
   const origem = new URL(req.url).origin
-  const redirectTo = `${origem}/portal-cc`
-  const { data: link, error: erroLink } = await sb.auth.admin.generateLink({
-    type: 'magiclink', email, options: { redirectTo },
+  const anon = createClient(url, anonKey, { auth: { persistSession: false } })
+  const { error: erroOtp } = await anon.auth.signInWithOtp({
+    email,
+    options: { shouldCreateUser: false, emailRedirectTo: `${origem}/portal-cc` },
   })
-  const actionLink = (link as { properties?: { action_link?: string } } | null)?.properties?.action_link
-  if (erroLink || !actionLink) {
-    return Response.json({ ok: true, avisoEmail: 'Utilizador ligado, mas não consegui gerar o link de acesso.' })
+  if (erroOtp) {
+    return Response.json({ ok: true, emailEnviado: false, motivoEmail: erroOtp.message })
   }
-
-  const html = `<div style="font-family:Arial,sans-serif;color:#222;font-size:14px;line-height:1.55">
-    <p>Hello${nome ? ' ' + nome : ''},</p>
-    <p>You now have access to the <strong>All4laser Client Portal</strong> for the account
-       <strong>${conta.nome}</strong>. Click below to sign in:</p>
-    <p><a href="${actionLink}" style="background:#0b3d2e;color:#fff;padding:11px 20px;border-radius:8px;text-decoration:none;display:inline-block">Sign in to the portal</a></p>
-    <p style="color:#666;font-size:12px">If the button does not work, copy this link:<br>${actionLink}</p>
-    <hr style="border:none;border-top:1px solid #eee;margin:16px 0">
-    <p style="color:#666;font-size:13px">Olá${nome ? ' ' + nome : ''}, já tens acesso ao Portal do Cliente da All4laser para a conta <strong>${conta.nome}</strong>. Usa o link acima para entrar.</p>
-  </div>`
-  const r = await enviarEmail({ para: email, assunto: 'All4laser — Client Portal access', html })
-
-  return Response.json({ ok: true, emailEnviado: r.ok, motivoEmail: r.ok ? null : r.motivo ?? null })
+  return Response.json({ ok: true, emailEnviado: true })
 }
