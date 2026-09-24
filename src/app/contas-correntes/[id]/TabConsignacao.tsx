@@ -32,6 +32,27 @@ export default function TabConsignacao({ conta, onMudou }: {
 
   const emStock = consigs.filter((x) => x.estado === 'em_stock').length
 
+  // Agrupa por batch (data de envio); "sem data" fica num grupo "Por receber" no fim.
+  const batches = useMemo(() => {
+    const map = new Map<string, ConsignacaoRow[]>()
+    for (const cg of consigs) {
+      const k = cg.data_envio ?? 'sem_data'
+      if (!map.has(k)) map.set(k, [])
+      map.get(k)!.push(cg)
+    }
+    const keys = [...map.keys()].sort((a, b) =>
+      a === 'sem_data' ? 1 : b === 'sem_data' ? -1 : a.localeCompare(b))
+    return keys.map((k) => {
+      const ms = map.get(k)!
+      const custoEur = ms.reduce((s, m) => s + (m.custo_declarado || 0), 0)
+      const custoAed = ms.reduce((s, m) => s + (m.custo_declarado || 0) * (m.taxa_cambio_custo || 0), 0)
+      const devidoAed = ms.reduce((s, m) => s + (m.vendas || []).reduce((a, v) => a + (v.valor_devido || 0), 0), 0)
+      const taxa = ms.find((m) => m.taxa_cambio_custo)?.taxa_cambio_custo ?? null
+      const nVend = ms.filter((m) => (m.vendas || []).length > 0).length
+      return { key: k, label: k === 'sem_data' ? 'Por receber' : formatarData(k), taxa, ms, custoEur, custoAed, devidoAed, nVend }
+    })
+  }, [consigs])
+
   return (
     <div>
       <div style={c.barra}>
@@ -54,14 +75,35 @@ export default function TabConsignacao({ conta, onMudou }: {
       ) : consigs.length === 0 ? (
         <p style={c.estado}>Ainda não há máquinas nesta consignação.</p>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {consigs.map((cg) => (
-            <CartaoConsignacao
-              key={cg.id}
-              conta={conta}
-              cg={cg}
-              onMudou={() => { recarregar(); onMudou() }}
-            />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          {batches.map((b) => (
+            <div key={b.key}>
+              <div style={c.batchHeader}>
+                <div>
+                  <span style={c.batchTitulo}>
+                    {b.key === 'sem_data' ? '📦 Por receber' : `📦 Envio ${b.label}`}
+                  </span>
+                  <span style={c.batchSub}>
+                    {b.ms.length} máquina(s) · {b.nVend} vendida(s)
+                    {b.taxa ? ` · taxa ${b.taxa}` : ''}
+                  </span>
+                </div>
+                <div style={c.batchNums}>
+                  <span>custo {formatarMoeda(b.custoEur, 'EUR')}{b.custoAed ? ` · ${formatarMoeda(b.custoAed, conta.moeda)}` : ''}</span>
+                  {b.devidoAed > 0 && <span>devido {formatarMoeda(b.devidoAed, conta.moeda)}</span>}
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {b.ms.map((cg) => (
+                  <CartaoConsignacao
+                    key={cg.id}
+                    conta={conta}
+                    cg={cg}
+                    onMudou={() => { recarregar(); onMudou() }}
+                  />
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       )}
@@ -511,6 +553,10 @@ function FormVenda({ conta, consignacaoId, taxaConsignacao, onCancelar, onGuarda
 
 const c: Record<string, React.CSSProperties> = {
   barra: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 },
+  batchHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap', padding: '6px 4px 8px', borderBottom: '2px solid var(--border)', marginBottom: 10 },
+  batchTitulo: { fontSize: 15, fontWeight: 800, color: 'var(--primary)', marginRight: 10 },
+  batchSub: { fontSize: 12.5, color: 'var(--muted)' },
+  batchNums: { display: 'flex', gap: 14, fontSize: 12.5, color: 'var(--muted)', flexWrap: 'wrap' },
   contagem: { color: 'var(--muted)', fontSize: 13 },
   estado: { color: 'var(--muted)', padding: 12 },
   cartao: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 },
