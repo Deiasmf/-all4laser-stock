@@ -277,6 +277,7 @@ export type Venda = {
   moeda_venda: string
   cliente_final: string | null
   taxa_cambio_custo: number | null
+  clearing: number
   custo_convertido: number | null
   margem: number | null
   valor_devido: number | null
@@ -301,6 +302,7 @@ export type Consignacao = {
   numero_serie: string | null
   custo_declarado: number
   moeda_custo: string
+  taxa_cambio_custo: number | null
   origem: OrigemConsignacao | null
   data_envio: string | null
   estado: EstadoConsignacao
@@ -373,6 +375,7 @@ export type NovaConsignacao = {
   numero_serie: string | null
   custo_declarado: number
   moeda_custo: string
+  taxa_cambio_custo: number | null
   origem: OrigemConsignacao | null
   data_envio: string | null
   entidade_faturada: EntidadeFaturada | null
@@ -397,6 +400,7 @@ export type NovaVenda = {
   moeda_venda: string
   cliente_final: string | null
   taxa_cambio_custo: number | null
+  clearing: number
   notas: string | null
 }
 
