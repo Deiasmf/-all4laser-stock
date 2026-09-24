@@ -278,6 +278,8 @@ export type Venda = {
   cliente_final: string | null
   taxa_cambio_custo: number | null
   clearing: number
+  downpayment: number
+  prazo_meses: number | null
   custo_convertido: number | null
   margem: number | null
   valor_devido: number | null
@@ -285,6 +287,7 @@ export type Venda = {
   estado: EstadoVenda
   notas: string | null
   created_at: string
+  meses_pagos?: number   // calculado (não é coluna): meses distintos com recebimento
 }
 
 export type EquipRef = {
@@ -323,21 +326,39 @@ export type EquipamentoPicker = {
   status: string | null
 }
 
-// Consignações da conta, com o equipamento e as vendas embutidos.
+// Consignações da conta, com o equipamento e as vendas embutidos. Cada venda
+// leva o nº de meses já pagos (meses distintos com recebimento ligado à venda).
 export async function listarConsignacoes(contaId: string): Promise<ConsignacaoRow[]> {
-  const { data } = await supabase
-    .from('cc_consignacoes')
-    .select('*, equipamentos(modelo,marca,ano,serial_number,status), cc_vendas(*)')
-    .eq('conta_id', contaId)
-    .order('created_at', { ascending: false })
-  return (data ?? []).map((r) => {
+  const [consRes, payRes] = await Promise.all([
+    supabase
+      .from('cc_consignacoes')
+      .select('*, equipamentos(modelo,marca,ano,serial_number,status), cc_vendas(*)')
+      .eq('conta_id', contaId)
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('cc_movimentos')
+      .select('origem_id, data')
+      .eq('conta_id', contaId).eq('tipo', 'recebido').eq('origem_tipo', 'venda'),
+  ])
+  // meses distintos pagos por venda
+  const mesesPorVenda = new Map<string, Set<string>>()
+  for (const p of (payRes.data ?? []) as { origem_id: string | null; data: string }[]) {
+    if (!p.origem_id) continue
+    const set = mesesPorVenda.get(p.origem_id) ?? new Set<string>()
+    set.add((p.data ?? '').slice(0, 7))
+    mesesPorVenda.set(p.origem_id, set)
+  }
+  return (consRes.data ?? []).map((r) => {
     const row = r as Record<string, unknown>
     const acessorios = Array.isArray(row.acessorios) ? (row.acessorios as string[]) : []
+    const vendas = ((row.cc_vendas ?? []) as Venda[]).map((v) => ({
+      ...v, meses_pagos: mesesPorVenda.get(v.id)?.size ?? 0,
+    }))
     return {
       ...(row as unknown as Consignacao),
       acessorios,
       equipamento: (row.equipamentos ?? null) as EquipRef,
-      vendas: ((row.cc_vendas ?? []) as Venda[]),
+      vendas,
     }
   })
 }
@@ -401,6 +422,8 @@ export type NovaVenda = {
   cliente_final: string | null
   taxa_cambio_custo: number | null
   clearing: number
+  downpayment: number
+  prazo_meses: number | null
   notas: string | null
 }
 

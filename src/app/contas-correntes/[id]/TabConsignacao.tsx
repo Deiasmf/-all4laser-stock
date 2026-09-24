@@ -22,6 +22,7 @@ export default function TabConsignacao({ conta, onMudou }: {
   const [consigs, setConsigs] = useState<ConsignacaoRow[]>([])
   const [carregando, setCarregando] = useState(true)
   const [addOpen, setAddOpen] = useState(false)
+  const [recolhidos, setRecolhidos] = useState<Set<string>>(new Set())
 
   async function recarregar() {
     setConsigs(await listarConsignacoes(conta.id))
@@ -76,11 +77,19 @@ export default function TabConsignacao({ conta, onMudou }: {
         <p style={c.estado}>Ainda não há máquinas nesta consignação.</p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-          {batches.map((b) => (
+          {batches.map((b) => {
+            const aberto = !recolhidos.has(b.key)
+            return (
             <div key={b.key}>
-              <div style={c.batchHeader}>
+              <div
+                style={{ ...c.batchHeader, cursor: 'pointer' }}
+                onClick={() => setRecolhidos((s) => {
+                  const n = new Set(s); if (n.has(b.key)) n.delete(b.key); else n.add(b.key); return n
+                })}
+              >
                 <div>
                   <span style={c.batchTitulo}>
+                    <span style={c.chevron}>{aberto ? '▾' : '▸'}</span>{' '}
                     {b.key === 'sem_data' ? '📦 Por receber' : `📦 Envio ${b.label}`}
                   </span>
                   <span style={c.batchSub}>
@@ -93,18 +102,20 @@ export default function TabConsignacao({ conta, onMudou }: {
                   {b.devidoAed > 0 && <span>devido {formatarMoeda(b.devidoAed, conta.moeda)}</span>}
                 </div>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {b.ms.map((cg) => (
-                  <CartaoConsignacao
-                    key={cg.id}
-                    conta={conta}
-                    cg={cg}
-                    onMudou={() => { recarregar(); onMudou() }}
-                  />
-                ))}
-              </div>
+              {aberto && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {b.ms.map((cg) => (
+                    <CartaoConsignacao
+                      key={cg.id}
+                      conta={conta}
+                      cg={cg}
+                      onMudou={() => { recarregar(); onMudou() }}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
-          ))}
+          )})}
         </div>
       )}
     </div>
@@ -175,6 +186,15 @@ function CartaoConsignacao({ conta, cg, onMudou }: {
           <span style={{ ...c.estadoPill, color: info.cor, background: info.bg }}>{info.label}</span>
           <div style={c.custo}>custo declarado: <strong>{formatarMoeda(cg.custo_declarado, cg.moeda_custo)}</strong></div>
         </div>
+      </div>
+
+      <div style={c.detalhes}>
+        <Num rotulo="Envio (nós)" valor={formatarData(cg.data_envio)} />
+        <Num rotulo="Venda (eles)" valor={venda ? formatarData(venda.data_venda) : '—'} />
+        <Num rotulo="Downpayment" valor={venda && venda.downpayment > 0 ? formatarMoeda(venda.downpayment, venda.moeda_venda) : 'Não'} />
+        <Num rotulo="Prazo (meses)" valor={venda?.prazo_meses != null ? String(venda.prazo_meses) : '—'} />
+        <Num rotulo="Meses pagos" valor={venda ? String(venda.meses_pagos ?? 0) : '—'} />
+        <Num rotulo="Em falta" valor={venda?.prazo_meses != null ? String(Math.max(0, venda.prazo_meses - (venda.meses_pagos ?? 0))) : '—'} destaque={!!venda?.prazo_meses} />
       </div>
 
       {erro && <div style={c.erro}>{erro}</div>}
@@ -410,6 +430,8 @@ function FormVenda({ conta, consignacaoId, taxaConsignacao, onCancelar, onGuarda
   const [moedaVenda, setMoedaVenda] = useState(conta.moeda)
   const [clienteFinal, setClienteFinal] = useState('')
   const [clearing, setClearing] = useState('')
+  const [downpayment, setDownpayment] = useState('')
+  const [prazoMeses, setPrazoMeses] = useState('')
   const [notas, setNotas] = useState('')
 
   // Taxa contratual aplicável à data escolhida? Se sim, pré-preenche e a taxa
@@ -449,6 +471,8 @@ function FormVenda({ conta, consignacaoId, taxaConsignacao, onCancelar, onGuarda
         cliente_final: clienteFinal.trim() || null,
         taxa_cambio_custo: taxaNum > 0 ? taxaNum : null,
         clearing: parseNum(clearing),
+        downpayment: parseNum(downpayment),
+        prazo_meses: parseInt(prazoMeses) || null,
         notas: notas.trim() || null,
       },
       { id: perfil?.id ?? null, nome: perfil?.nome ?? null },
@@ -536,6 +560,19 @@ function FormVenda({ conta, consignacaoId, taxaConsignacao, onCancelar, onGuarda
         </label>
       </div>
 
+      <div style={c.grelha2}>
+        <label style={c.campo}>
+          <span style={c.rotulo}>Downpayment <span style={c.opc}>(opcional)</span></span>
+          <input inputMode="decimal" value={downpayment} onChange={(e) => setDownpayment(e.target.value)} placeholder="0,00" style={c.input} />
+          <span style={c.ajuda}>Entrada inicial (em {moedaVenda}).</span>
+        </label>
+        <label style={c.campo}>
+          <span style={c.rotulo}>Prazo <span style={c.opc}>(meses, opcional)</span></span>
+          <input inputMode="numeric" value={prazoMeses} onChange={(e) => setPrazoMeses(e.target.value)} placeholder="ex.: 12" style={c.input} />
+          <span style={c.ajuda}>Nº total de meses; em falta = prazo − meses pagos.</span>
+        </label>
+      </div>
+
       <label style={c.campo}>
         <span style={c.rotulo}>Notas <span style={c.opc}>(opcional)</span></span>
         <textarea value={notas} onChange={(e) => setNotas(e.target.value)} style={{ ...c.input, minHeight: 44, resize: 'vertical' }} />
@@ -557,6 +594,8 @@ const c: Record<string, React.CSSProperties> = {
   batchTitulo: { fontSize: 15, fontWeight: 800, color: 'var(--primary)', marginRight: 10 },
   batchSub: { fontSize: 12.5, color: 'var(--muted)' },
   batchNums: { display: 'flex', gap: 14, fontSize: 12.5, color: 'var(--muted)', flexWrap: 'wrap' },
+  chevron: { fontSize: 12, color: 'var(--muted)' },
+  detalhes: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 8, padding: '8px 0', borderTop: '1px solid #f2f2f2' },
   contagem: { color: 'var(--muted)', fontSize: 13 },
   estado: { color: 'var(--muted)', padding: 12 },
   cartao: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 },
