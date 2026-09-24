@@ -174,6 +174,7 @@ function CartaoConsignacao({ conta, cg, onMudou }: {
         <FormVenda
           conta={conta}
           consignacaoId={cg.id}
+          taxaConsignacao={cg.taxa_cambio_custo}
           onCancelar={() => setVendaOpen(false)}
           onGuardado={() => { setVendaOpen(false); onMudou() }}
         />
@@ -208,6 +209,7 @@ function FormAdicionar({ conta, onCancelar, onGuardado }: {
   const [nConjuntos, setNConjuntos] = useState('1')
   const [custo, setCusto] = useState('')
   const [moedaCusto, setMoedaCusto] = useState('EUR')
+  const [taxaCusto, setTaxaCusto] = useState('')
   const [origem, setOrigem] = useState<OrigemConsignacao>('envio_direto')
   const [dataEnvio, setDataEnvio] = useState(hojeISO())
   const [entidadeFaturada, setEntidadeFaturada] = useState<EntidadeFaturada | ''>('')
@@ -255,6 +257,7 @@ function FormAdicionar({ conta, onCancelar, onGuardado }: {
         numero_serie: equipSel?.serial_number ?? null,
         custo_declarado: custoNum,
         moeda_custo: moedaCusto,
+        taxa_cambio_custo: parseNum(taxaCusto) > 0 ? parseNum(taxaCusto) : null,
         origem,
         data_envio: dataEnvio || null,
         entidade_faturada: entidadeFaturada || null,
@@ -309,6 +312,11 @@ function FormAdicionar({ conta, onCancelar, onGuardado }: {
 
       <div style={c.grelha3}>
         <label style={c.campo}>
+          <span style={c.rotulo}>Taxa de câmbio <span style={c.opc}>(opcional)</span></span>
+          <input inputMode="decimal" value={taxaCusto} onChange={(e) => setTaxaCusto(e.target.value)} placeholder="ex.: 4,378" style={c.input} />
+          <span style={c.ajuda}>Unidades por 1 EUR. Fica ligada à máquina e serve de default na venda.</span>
+        </label>
+        <label style={c.campo}>
           <span style={c.rotulo}>Origem</span>
           <select value={origem} onChange={(e) => setOrigem(e.target.value as OrigemConsignacao)} style={c.input}>
             {ORIGENS_CONSIGNACAO.map((o) => <option key={o.valor} value={o.valor}>{o.label}</option>)}
@@ -350,7 +358,8 @@ function FormAdicionar({ conta, onCancelar, onGuardado }: {
 
 // ─── Formulário: registar venda ──────────────────────────────────────────────
 
-function FormVenda({ conta, consignacaoId, onCancelar, onGuardado }: {
+function FormVenda({ conta, consignacaoId, taxaConsignacao, onCancelar, onGuardado }: {
+  taxaConsignacao: number | null;
   conta: ContaComSaldo; consignacaoId: string; onCancelar: () => void; onGuardado: () => void
 }) {
   const { perfil } = useAuth()
@@ -358,6 +367,7 @@ function FormVenda({ conta, consignacaoId, onCancelar, onGuardado }: {
   const [preco, setPreco] = useState('')
   const [moedaVenda, setMoedaVenda] = useState(conta.moeda)
   const [clienteFinal, setClienteFinal] = useState('')
+  const [clearing, setClearing] = useState('')
   const [notas, setNotas] = useState('')
 
   // Taxa contratual aplicável à data escolhida? Se sim, pré-preenche e a taxa
@@ -369,7 +379,7 @@ function FormVenda({ conta, consignacaoId, onCancelar, onGuardado }: {
     return conta.taxa_contratual
   }
   const [taxa, setTaxa] = useState(() => {
-    const t = conta.taxa_contratual
+    const t = conta.taxa_contratual ?? taxaConsignacao
     return t != null ? String(t) : ''
   })
   const taxaContratual = taxaContratualAplicavel(dataVenda)
@@ -381,7 +391,7 @@ function FormVenda({ conta, consignacaoId, onCancelar, onGuardado }: {
 
   const precoNum = parseNum(preco)
   const taxaNum = parseNum(taxa)
-  const taxaEfetiva = taxaNum > 0 ? taxaNum : (taxaContratual ?? 0)
+  const taxaEfetiva = taxaNum > 0 ? taxaNum : (taxaContratual ?? taxaConsignacao ?? 0)
   const podeGuardar = precoNum > 0 && !!dataVenda && taxaEfetiva > 0
 
   async function registar() {
@@ -396,6 +406,7 @@ function FormVenda({ conta, consignacaoId, onCancelar, onGuardado }: {
         moeda_venda: moedaVenda.trim().toUpperCase(),
         cliente_final: clienteFinal.trim() || null,
         taxa_cambio_custo: taxaNum > 0 ? taxaNum : null,
+        clearing: parseNum(clearing),
         notas: notas.trim() || null,
       },
       { id: perfil?.id ?? null, nome: perfil?.nome ?? null },
@@ -460,19 +471,26 @@ function FormVenda({ conta, consignacaoId, onCancelar, onGuardado }: {
         </label>
       </div>
 
-      <div style={c.grelha2}>
+      <div style={c.grelha3}>
         <label style={c.campo}>
           <span style={c.rotulo}>Cliente final <span style={c.opc}>(opcional)</span></span>
           <input value={clienteFinal} onChange={(e) => setClienteFinal(e.target.value)} style={c.input} />
         </label>
         <label style={c.campo}>
           <span style={c.rotulo}>Taxa de câmbio do custo ({moedaVenda}/EUR)</span>
-          <input inputMode="decimal" value={taxa} onChange={(e) => setTaxa(e.target.value)} placeholder="4,40" style={c.input} />
+          <input inputMode="decimal" value={taxa} onChange={(e) => setTaxa(e.target.value)} placeholder="4,378" style={c.input} />
           <span style={c.ajuda}>
             {taxaContratual != null
-              ? `Taxa contratual aplicável: ${taxaContratual}. Deixa em branco para a usar.`
-              : 'Sem taxa contratual nesta data — obrigatória.'}
+              ? `Taxa contratual: ${taxaContratual}. Deixa em branco para a usar.`
+              : taxaConsignacao != null
+              ? `Taxa da máquina: ${taxaConsignacao}. Deixa em branco para a usar.`
+              : 'Sem taxa definida — obrigatória.'}
           </span>
+        </label>
+        <label style={c.campo}>
+          <span style={c.rotulo}>Clearing <span style={c.opc}>(opcional)</span></span>
+          <input inputMode="decimal" value={clearing} onChange={(e) => setClearing(e.target.value)} placeholder="0,00" style={c.input} />
+          <span style={c.ajuda}>Desalfandegamento (em {moedaVenda}); reduz a margem.</span>
         </label>
       </div>
 
