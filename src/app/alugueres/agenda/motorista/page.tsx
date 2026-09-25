@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '@/lib/auth'
 import { diaSemanaPt, dataCurta, equipamentoParagem, type TransportStop } from '@/lib/transportes'
 import {
-  motoristaDoUtilizador, diaDoMotorista, paragensDoMotorista,
+  motoristaDoUtilizador, listarMotoristasAtivos, diaDoMotorista, paragensDoMotorista,
   marcarParagem, guardarNotaMotorista, linkMapa,
   type MotoristaLogado,
 } from '@/lib/transportesMotorista'
@@ -33,8 +33,9 @@ function janelaTexto(s: TransportStop): string {
 
 export default function MotoristaAgendaPage() {
   const { session, perfilCarregado } = useAuth()
-  const [motorista, setMotorista] = useState<MotoristaLogado | null>(null)
-  const [semMotorista, setSemMotorista] = useState(false)
+  const [motoristas, setMotoristas] = useState<MotoristaLogado[]>([])
+  const [ownId, setOwnId] = useState<string | null>(null)
+  const [driverId, setDriverId] = useState<string | null>(null)
   const [data, setData] = useState(hojeLocal())
   const [diaEstado, setDiaEstado] = useState<string | null>(null)
   const [carrinha, setCarrinha] = useState<string | null>(null)
@@ -44,14 +45,20 @@ export default function MotoristaAgendaPage() {
 
   const uid = session?.user?.id ?? null
 
+  // Carrega a lista de motoristas e o motorista do próprio login. Por omissão
+  // abre na agenda do próprio; se não for motorista, no 1.º da lista.
   useEffect(() => {
     if (!uid) return
-    motoristaDoUtilizador(uid).then((m) => { setMotorista(m); setSemMotorista(!m) })
+    Promise.all([motoristaDoUtilizador(uid), listarMotoristasAtivos()]).then(([own, lista]) => {
+      setMotoristas(lista)
+      setOwnId(own?.id ?? null)
+      setDriverId((cur) => cur ?? own?.id ?? lista[0]?.id ?? null)
+    })
   }, [uid])
 
-  const carregar = useCallback(async (driverId: string, dia: string) => {
+  const carregar = useCallback(async (id: string, dia: string) => {
     setCarregando(true)
-    const [dd, ps] = await Promise.all([diaDoMotorista(driverId, dia), paragensDoMotorista(driverId, dia)])
+    const [dd, ps] = await Promise.all([diaDoMotorista(id, dia), paragensDoMotorista(id, dia)])
     setDiaEstado(dd?.estado ?? null)
     setCarrinha(dd?.carrinha?.nome ?? null)
     setKmTotal(dd?.km_total ?? null)
@@ -59,7 +66,11 @@ export default function MotoristaAgendaPage() {
     setCarregando(false)
   }, [])
 
-  useEffect(() => { if (motorista) carregar(motorista.id, data) }, [motorista, data, carregar])
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { if (driverId) carregar(driverId, data) }, [driverId, data, carregar])
+
+  const motoristaAtual = motoristas.find((m) => m.id === driverId) ?? null
+  const isOwn = !!driverId && driverId === ownId
 
   // Só mostra o plano quando publicado/confirmado (não rascunhos).
   const planoVisivel = diaEstado === 'publicado' || diaEstado === 'confirmado'
@@ -71,20 +82,31 @@ export default function MotoristaAgendaPage() {
       ? { ...x, estado: feita ? 'concluida' : 'confirmada', concluida_em: feita ? new Date().toISOString() : null }
       : x))
     const { error } = await marcarParagem(p.id, feita)
-    if (error && motorista) carregar(motorista.id, data) // reverte se falhar
+    if (error && driverId) carregar(driverId, data) // reverte se falhar
   }
 
   if (perfilCarregado && !uid) {
-    return <main style={c.wrap}><p style={c.info}>Inicia sessão para veres as tuas entregas.</p></main>
+    return <main style={c.wrap}><p style={c.info}>Inicia sessão para veres a agenda do motorista.</p></main>
   }
-  if (semMotorista) {
-    return <main style={c.wrap}><p style={c.info}>A tua conta ainda não está associada a um motorista. Fala com a Andreia.</p></main>
+  if (perfilCarregado && uid && motoristas.length === 0) {
+    return <main style={c.wrap}><p style={c.info}>Ainda não há motoristas configurados na Agenda de Transportes.</p></main>
   }
 
   return (
     <main style={c.wrap}>
       <header style={c.header}>
-        <div style={{ fontSize: 18, fontWeight: 800 }}>{motorista?.nome ?? 'Motorista'}</div>
+        <div style={c.topoMotorista}>
+          {motoristas.length > 1 ? (
+            <select value={driverId ?? ''} onChange={(e) => setDriverId(e.target.value)} style={c.driverSelect} aria-label="Escolher motorista">
+              {motoristas.map((m) => (
+                <option key={m.id} value={m.id}>{m.nome}{m.id === ownId ? ' (tu)' : ''}</option>
+              ))}
+            </select>
+          ) : (
+            <div style={{ fontSize: 18, fontWeight: 800 }}>{motoristaAtual?.nome ?? 'Motorista'}</div>
+          )}
+          {!isOwn && <span style={c.soLeitura}>👁 Só leitura</span>}
+        </div>
         <div style={c.navData}>
           <button onClick={() => setData((d) => somaDias(d, -1))} style={c.navBtn} aria-label="Dia anterior">‹</button>
           <div style={{ textAlign: 'center', minWidth: 150 }}>
@@ -111,7 +133,7 @@ export default function MotoristaAgendaPage() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {paragens.map((p, i) => (
-            <ParagemCard key={p.id} p={p} ordem={p.ordem ?? i + 1} onAlternar={() => alternarFeita(p)} />
+            <ParagemCard key={p.id} p={p} ordem={p.ordem ?? i + 1} onAlternar={() => alternarFeita(p)} readOnly={!isOwn} />
           ))}
         </div>
       )}
@@ -119,7 +141,7 @@ export default function MotoristaAgendaPage() {
   )
 }
 
-function ParagemCard({ p, ordem, onAlternar }: { p: TransportStop; ordem: number; onAlternar: () => void }) {
+function ParagemCard({ p, ordem, onAlternar, readOnly }: { p: TransportStop; ordem: number; onAlternar: () => void; readOnly?: boolean }) {
   const [nota, setNota] = useState(p.nota_motorista ?? '')
   const [aGuardarNota, setAGuardarNota] = useState(false)
   const [notaMsg, setNotaMsg] = useState<string | null>(null)
@@ -156,23 +178,33 @@ function ParagemCard({ p, ordem, onAlternar }: { p: TransportStop; ordem: number
 
       <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
         {maps && <a href={maps} target="_blank" rel="noopener noreferrer" style={c.btnMapa}>🧭 Abrir no Maps</a>}
-        <button onClick={onAlternar} style={feita ? c.btnDesfazer : c.btnFeita}>
-          {feita ? `✓ Feita${p.concluida_em ? ' · ' + horas(p.concluida_em) : ''} — desfazer` : 'Marcar feita'}
-        </button>
+        {readOnly ? (
+          <span style={{ ...c.estadoLido, ...(feita ? c.estadoLidoFeita : c.estadoLidoPend) }}>
+            {feita ? `✓ Feita${p.concluida_em ? ' · ' + horas(p.concluida_em) : ''}` : '○ Por fazer'}
+          </span>
+        ) : (
+          <button onClick={onAlternar} style={feita ? c.btnDesfazer : c.btnFeita}>
+            {feita ? `✓ Feita${p.concluida_em ? ' · ' + horas(p.concluida_em) : ''} — desfazer` : 'Marcar feita'}
+          </button>
+        )}
       </div>
 
-      <div style={{ marginTop: 10 }}>
-        <textarea
-          value={nota}
-          onChange={(e) => { setNota(e.target.value); setNotaMsg(null) }}
-          placeholder="Nota do motorista (ex.: cliente ausente)…"
-          style={c.notaInput}
-        />
-        {(nota !== (p.nota_motorista ?? '')) && (
-          <button onClick={guardar} disabled={aGuardarNota} style={c.btnNota}>{aGuardarNota ? 'A guardar…' : 'Guardar nota'}</button>
-        )}
-        {notaMsg && <span style={{ marginLeft: 8, fontSize: 12, color: notaMsg.startsWith('Erro') ? 'var(--danger)' : 'var(--primary)' }}>{notaMsg}</span>}
-      </div>
+      {readOnly ? (
+        p.nota_motorista ? <div style={c.notaLida}>📝 {p.nota_motorista}</div> : null
+      ) : (
+        <div style={{ marginTop: 10 }}>
+          <textarea
+            value={nota}
+            onChange={(e) => { setNota(e.target.value); setNotaMsg(null) }}
+            placeholder="Nota do motorista (ex.: cliente ausente)…"
+            style={c.notaInput}
+          />
+          {(nota !== (p.nota_motorista ?? '')) && (
+            <button onClick={guardar} disabled={aGuardarNota} style={c.btnNota}>{aGuardarNota ? 'A guardar…' : 'Guardar nota'}</button>
+          )}
+          {notaMsg && <span style={{ marginLeft: 8, fontSize: 12, color: notaMsg.startsWith('Erro') ? 'var(--danger)' : 'var(--primary)' }}>{notaMsg}</span>}
+        </div>
+      )}
     </div>
   )
 }
@@ -180,6 +212,13 @@ function ParagemCard({ p, ordem, onAlternar }: { p: TransportStop; ordem: number
 const c: Record<string, React.CSSProperties> = {
   wrap: { maxWidth: 560, margin: '0 auto', padding: 14 },
   header: { position: 'sticky', top: 0, background: 'var(--background)', paddingBottom: 10, marginBottom: 8, zIndex: 5, borderBottom: '1px solid var(--border)' },
+  topoMotorista: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
+  driverSelect: { font: 'inherit', fontSize: 17, fontWeight: 800, color: 'var(--foreground)', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 10px', maxWidth: '100%' },
+  soLeitura: { fontSize: 12, fontWeight: 700, color: 'var(--muted)', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 999, padding: '3px 10px' },
+  estadoLido: { flex: 1, textAlign: 'center', borderRadius: 10, padding: '12px 10px', fontWeight: 700, fontSize: 14 },
+  estadoLidoFeita: { background: '#DCFCE7', color: '#166534' },
+  estadoLidoPend: { background: 'var(--surface)', color: 'var(--muted)', border: '1px solid var(--border)' },
+  notaLida: { marginTop: 10, fontSize: 13, color: 'var(--foreground)', background: 'var(--accent-bg)', borderRadius: 8, padding: '8px 10px' },
   navData: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 8 },
   navBtn: { fontSize: 26, lineHeight: 1, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, width: 44, height: 44, cursor: 'pointer' },
   dateInput: { border: 'none', background: 'transparent', font: 'inherit', color: 'var(--muted)', fontSize: 12, textAlign: 'center' },
