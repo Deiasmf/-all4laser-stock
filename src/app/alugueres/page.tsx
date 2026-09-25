@@ -454,7 +454,21 @@ function FormRecolha() {
       .is('data_recolha', null)
       .eq('recolha_aplicavel', true)   // só meses de recolha (não os meses só de faturação)
       .order('data_entrega', { ascending: true })
-    setAbertos((data as Aluguer[]) ?? [])
+    const lista = (data as Aluguer[]) ?? []
+    // Esconde os da zona "Mensais" (renovação mensal): renovam mês a mês e não
+    // têm recolha física a registar aqui. A zona vive em `aluguer_situacao`.
+    const ids = Array.from(new Set(lista.map((a) => a.equipamento_id).filter(Boolean))) as string[]
+    let zonaMensais = new Set<string>()
+    if (ids.length) {
+      const { data: fichas } = await supabase
+        .from('aluguer_situacao').select('equipamento_id, zona').in('equipamento_id', ids)
+      zonaMensais = new Set(
+        ((fichas as { equipamento_id: string; zona: string | null }[]) ?? [])
+          .filter((f) => (f.zona ?? '').trim().toLowerCase() === 'mensais')
+          .map((f) => f.equipamento_id),
+      )
+    }
+    setAbertos(lista.filter((a) => !a.equipamento_id || !zonaMensais.has(a.equipamento_id)))
   }
 
   useEffect(() => {
@@ -484,7 +498,7 @@ function FormRecolha() {
       {okMsg && <div style={s.ok}>{okMsg}</div>}
       {erro && <div style={s.erro}>{erro}</div>}
 
-      <label style={s.label}>Alugueres em curso (por devolver)</label>
+      <label style={s.label}>Alugueres em curso (por devolver) <span style={s.nota}>— exclui zona “Mensais”</span></label>
       {abertos.length === 0 ? (
         <div style={s.nota}>Não há alugueres em aberto.</div>
       ) : (
