@@ -62,9 +62,14 @@ export default function ConciliacaoPage() {
           if (ex?.name === 'SheetNotFoundError' && Array.isArray(ex.sheets)) nomes = ex.sheets
           else throw e
         }
-        const alvo = nomes.filter(ehFolhaExtrato)
+        // 1.º as folhas com nome de extrato ("… BPI EUR/USD"); se não houver
+        // nenhuma, tenta todas as folhas normais (exceto "OBS") e deteta o
+        // extrato pelo conteúdo (cabeçalho). Assim aceita ficheiros com uma
+        // folha genérica (ex.: "Folha1").
+        const preferidas = nomes.filter(ehFolhaExtrato)
+        const alvo = preferidas.length > 0 ? preferidas : nomes.filter((n) => !/obs/i.test(n))
         if (alvo.length === 0) {
-          setErros([`Não encontrei folhas de extrato (esperava algo como "… BPI EUR" / "… BPI USD"). Folhas no ficheiro: ${nomes.join(', ')}`])
+          setErros([`Não encontrei folhas para ler. Folhas no ficheiro: ${nomes.join(', ')}`])
           setALer(false); return
         }
         for (const nome of alvo) {
@@ -104,7 +109,7 @@ export default function ConciliacaoPage() {
       }
     })
   }, [movimentos, moedaDaConta])
-  const novosTotal = useMemo(() => movimentos.filter((m) => !m.jaExiste).length, [movimentos])
+  const novosTotal = movimentos.filter((m) => !m.jaExiste).length
 
   return (
     <main style={c.page}>
