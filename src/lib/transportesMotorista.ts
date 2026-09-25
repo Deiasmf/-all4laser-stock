@@ -23,6 +23,18 @@ export async function motoristaDoUtilizador(userId: string): Promise<MotoristaLo
   return (data as MotoristaLogado | null) ?? null
 }
 
+// Todos os motoristas ativos (para o seletor). Qualquer staff pode VER a agenda
+// de qualquer motorista; marcar/nota fica reservado à agenda do próprio.
+export async function listarMotoristasAtivos(): Promise<MotoristaLogado[]> {
+  const { data } = await supabase
+    .from('transport_drivers')
+    .select('id, nome, partida_morada')
+    .eq('ativo', true)
+    .order('tipo')
+    .order('nome')
+  return (data as MotoristaLogado[]) ?? []
+}
+
 // O plano do motorista nesse dia (carrinha + estado). Só existe se já foi
 // planeado; a vista só mostra paragens quando o dia está publicado/confirmado.
 export async function diaDoMotorista(driverId: string, data: string): Promise<(DriverDay & { carrinha?: { nome: string | null; matricula: string | null } | null }) | null> {
