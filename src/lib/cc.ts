@@ -288,6 +288,15 @@ export type Venda = {
   notas: string | null
   created_at: string
   meses_pagos?: number   // calculado (não é coluna): meses distintos com recebimento
+  total_pago?: number    // calculado (não é coluna): soma dos recebimentos ligados à venda
+}
+
+// Uma venda está "totalmente paga" quando o total recebido cobre o valor devido
+// (tolerância de 0,5 para arredondamentos). É pelo VALOR, não pelo estado — o
+// estado 'recebida' é posto logo no 1.º recebimento e não significa liquidada.
+export function vendaPaga(v: Venda | null | undefined): boolean {
+  if (!v || v.valor_devido == null || v.valor_devido <= 0) return false
+  return (v.total_pago ?? 0) >= v.valor_devido - 0.5
 }
 
 export type EquipRef = {
@@ -337,22 +346,25 @@ export async function listarConsignacoes(contaId: string): Promise<ConsignacaoRo
       .order('created_at', { ascending: false }),
     supabase
       .from('cc_movimentos')
-      .select('origem_id, data')
+      .select('origem_id, data, valor')
       .eq('conta_id', contaId).eq('tipo', 'recebido').eq('origem_tipo', 'venda'),
   ])
-  // meses distintos pagos por venda
+  // meses distintos pagos e total recebido por venda
   const mesesPorVenda = new Map<string, Set<string>>()
-  for (const p of (payRes.data ?? []) as { origem_id: string | null; data: string }[]) {
+  const totalPorVenda = new Map<string, number>()
+  for (const p of (payRes.data ?? []) as { origem_id: string | null; data: string; valor: number | null }[]) {
     if (!p.origem_id) continue
     const set = mesesPorVenda.get(p.origem_id) ?? new Set<string>()
     set.add((p.data ?? '').slice(0, 7))
     mesesPorVenda.set(p.origem_id, set)
+    totalPorVenda.set(p.origem_id, (totalPorVenda.get(p.origem_id) ?? 0) + (p.valor ?? 0))
   }
   return (consRes.data ?? []).map((r) => {
     const row = r as Record<string, unknown>
     const acessorios = Array.isArray(row.acessorios) ? (row.acessorios as string[]) : []
     const vendas = ((row.cc_vendas ?? []) as Venda[]).map((v) => ({
       ...v, meses_pagos: mesesPorVenda.get(v.id)?.size ?? 0,
+      total_pago: totalPorVenda.get(v.id) ?? 0,
     }))
     return {
       ...(row as unknown as Consignacao),

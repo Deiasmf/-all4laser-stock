@@ -5,7 +5,7 @@ import { useAuth } from '@/lib/auth'
 import {
   listarConsignacoes, listarEquipamentosPicker, custoDeclaradoSugerido,
   criarConsignacao, registarVenda, confirmarVenda, eliminarVendaRegistada, marcarDevolucao,
-  estadoConsignacaoInfo, estadoVendaInfo, ORIGENS_CONSIGNACAO, MOEDAS,
+  estadoConsignacaoInfo, estadoVendaInfo, vendaPaga, ORIGENS_CONSIGNACAO, MOEDAS,
   formatarMoeda, formatarData, hojeISO,
   type ContaComSaldo, type ConsignacaoRow, type EquipamentoPicker,
   type Venda, type OrigemConsignacao, type EntidadeFaturada,
@@ -16,6 +16,14 @@ function parseNum(v: string): number {
   return isNaN(n) || n < 0 ? 0 : n
 }
 
+// Venda mais recente de uma consignação (por data de venda desc).
+function vendaMaisRecente(cg: ConsignacaoRow): Venda | null {
+  if (!cg.vendas?.length) return null
+  return [...cg.vendas].sort((a, b) => (b.data_venda ?? '').localeCompare(a.data_venda ?? ''))[0]
+}
+
+type FiltroPag = 'todas' | 'pagas' | 'por_pagar'
+
 export default function TabConsignacao({ conta, onMudou }: {
   conta: ContaComSaldo; onMudou: () => void
 }) {
@@ -23,6 +31,7 @@ export default function TabConsignacao({ conta, onMudou }: {
   const [carregando, setCarregando] = useState(true)
   const [addOpen, setAddOpen] = useState(false)
   const [recolhidos, setRecolhidos] = useState<Set<string>>(new Set())
+  const [filtroPag, setFiltroPag] = useState<FiltroPag>('todas')
 
   async function recarregar() {
     setConsigs(await listarConsignacoes(conta.id))
@@ -32,11 +41,22 @@ export default function TabConsignacao({ conta, onMudou }: {
   useEffect(() => { recarregar() }, [conta.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const emStock = consigs.filter((x) => x.estado === 'em_stock').length
+  const nPagas = useMemo(() => consigs.filter((cg) => vendaPaga(vendaMaisRecente(cg))).length, [consigs])
+  const nPorPagar = consigs.length - nPagas
+
+  // Aplica o filtro pagas / por pagar (por pagar = tudo o que não está liquidado).
+  const consigsFiltradas = useMemo(() => {
+    if (filtroPag === 'todas') return consigs
+    return consigs.filter((cg) => {
+      const paga = vendaPaga(vendaMaisRecente(cg))
+      return filtroPag === 'pagas' ? paga : !paga
+    })
+  }, [consigs, filtroPag])
 
   // Agrupa por batch (data de envio); "sem data" fica num grupo "Por receber" no fim.
   const batches = useMemo(() => {
     const map = new Map<string, ConsignacaoRow[]>()
-    for (const cg of consigs) {
+    for (const cg of consigsFiltradas) {
       const k = cg.data_envio ?? 'sem_data'
       if (!map.has(k)) map.set(k, [])
       map.get(k)!.push(cg)
@@ -52,16 +72,35 @@ export default function TabConsignacao({ conta, onMudou }: {
       const nVend = ms.filter((m) => (m.vendas || []).length > 0).length
       return { key: k, label: k === 'sem_data' ? 'Por receber' : formatarData(k), taxa, ms, custoEur, custoAed, devidoAed, nVend }
     })
-  }, [consigs])
+  }, [consigsFiltradas])
 
   return (
     <div>
       <div style={c.barra}>
-        <span style={c.contagem}>{consigs.length} máquina(s) · {emStock} em stock</span>
+        <span style={c.contagem}>
+          {consigs.length} máquina(s) · {emStock} em stock · <span style={{ color: '#065F46', fontWeight: 700 }}>{nPagas} paga(s)</span>
+        </span>
         <button style={c.btnPrimarioSm} onClick={() => setAddOpen((v) => !v)}>
           {addOpen ? '× Fechar' : '+ Adicionar máquina'}
         </button>
       </div>
+
+      {consigs.length > 0 && (
+        <div style={c.filtros}>
+          <button
+            style={{ ...c.filtroBtn, ...(filtroPag === 'todas' ? c.filtroBtnAtivo : {}) }}
+            onClick={() => setFiltroPag('todas')}
+          >Todas ({consigs.length})</button>
+          <button
+            style={{ ...c.filtroBtn, ...(filtroPag === 'pagas' ? c.filtroBtnAtivo : {}) }}
+            onClick={() => setFiltroPag('pagas')}
+          >✓ Pagas ({nPagas})</button>
+          <button
+            style={{ ...c.filtroBtn, ...(filtroPag === 'por_pagar' ? c.filtroBtnAtivo : {}) }}
+            onClick={() => setFiltroPag('por_pagar')}
+          >Por pagar ({nPorPagar})</button>
+        </div>
+      )}
 
       {addOpen && (
         <FormAdicionar
@@ -75,6 +114,8 @@ export default function TabConsignacao({ conta, onMudou }: {
         <p style={c.estado}>A carregar...</p>
       ) : consigs.length === 0 ? (
         <p style={c.estado}>Ainda não há máquinas nesta consignação.</p>
+      ) : consigsFiltradas.length === 0 ? (
+        <p style={c.estado}>{filtroPag === 'pagas' ? 'Nenhuma máquina totalmente paga.' : 'Nenhuma máquina por pagar.'}</p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
           {batches.map((b) => {
@@ -136,10 +177,8 @@ function CartaoConsignacao({ conta, cg, onMudou }: {
   const titulo = [eq?.marca, eq?.modelo].filter(Boolean).join(' ') || 'Equipamento'
   // Venda mais recente (a última criada; a lista vem por created_at desc do embed? não garantido) →
   // ordena por data_venda desc para mostrar a relevante.
-  const venda = useMemo<Venda | null>(() => {
-    if (!cg.vendas?.length) return null
-    return [...cg.vendas].sort((a, b) => (b.data_venda ?? '').localeCompare(a.data_venda ?? ''))[0]
-  }, [cg.vendas])
+  const venda = useMemo<Venda | null>(() => vendaMaisRecente(cg), [cg])
+  const pago = vendaPaga(venda)
 
   async function devolver() {
     if (!window.confirm('Marcar esta máquina como devolvida?')) return
@@ -168,10 +207,10 @@ function CartaoConsignacao({ conta, cg, onMudou }: {
   }
 
   return (
-    <div style={c.cartao}>
+    <div style={{ ...c.cartao, ...(pago ? c.cartaoPago : {}) }}>
       <div style={c.cartaoTopo}>
         <div style={{ minWidth: 0 }}>
-          <div style={c.cartaoTitulo}>{titulo}</div>
+          <div style={c.cartaoTitulo}>{titulo}{pago && <span style={c.pillPago}>✓ Pago</span>}</div>
           <div style={c.cartaoMeta}>
             {eq?.serial_number && <span>SN: <strong>{eq.serial_number}</strong></span>}
             {eq?.ano && <span> · {eq.ano}</span>}
@@ -599,6 +638,11 @@ const c: Record<string, React.CSSProperties> = {
   contagem: { color: 'var(--muted)', fontSize: 13 },
   estado: { color: 'var(--muted)', padding: 12 },
   cartao: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 },
+  cartaoPago: { border: '1px solid #6EE7B7', background: '#F0FDF4' },
+  pillPago: { display: 'inline-block', fontSize: 11, fontWeight: 800, borderRadius: 999, padding: '2px 9px', color: '#065F46', background: '#D1FAE5', marginLeft: 8, verticalAlign: 'middle' },
+  filtros: { display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' },
+  filtroBtn: { border: '1px solid var(--border)', background: '#fff', color: 'var(--muted)', borderRadius: 999, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
+  filtroBtnAtivo: { background: 'var(--primary)', color: '#fff', borderColor: 'var(--primary)' },
   cartaoTopo: { display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' },
   cartaoTitulo: { fontSize: 15, fontWeight: 700, color: 'var(--foreground)' },
   cartaoMeta: { fontSize: 12.5, color: 'var(--muted)', marginTop: 2 },
