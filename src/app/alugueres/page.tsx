@@ -554,6 +554,7 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
 // ---------------------------------------------------------------- RECOLHA
 function FormRecolha() {
   const [abertos, setAbertos] = useState<Aluguer[]>([])
+  const [rotuloPorEquip, setRotuloPorEquip] = useState<Map<string, string>>(new Map())
   const [selecionado, setSelecionado] = useState<string | null>(null)
   const [dataRecolha, setDataRecolha] = useState(hoje())
   const [aGuardar, setAGuardar] = useState(false)
@@ -568,19 +569,39 @@ function FormRecolha() {
       .eq('recolha_aplicavel', true)   // só meses de recolha (não os meses só de faturação)
       .order('data_entrega', { ascending: true })
     const lista = (data as Aluguer[]) ?? []
-    // Esconde os da zona "Mensais" (renovação mensal): renovam mês a mês e não
-    // têm recolha física a registar aqui. A zona vive em `aluguer_situacao`.
     const ids = Array.from(new Set(lista.map((a) => a.equipamento_id).filter(Boolean))) as string[]
+
     let zonaMensais = new Set<string>()
+    const rotulos = new Map<string, string>()
     if (ids.length) {
-      const { data: fichas } = await supabase
-        .from('aluguer_situacao').select('equipamento_id, zona').in('equipamento_id', ids)
-      zonaMensais = new Set(
-        ((fichas as { equipamento_id: string; zona: string | null }[]) ?? [])
-          .filter((f) => (f.zona ?? '').trim().toLowerCase() === 'mensais')
-          .map((f) => f.equipamento_id),
+      // Ficha (zona + cliente) e destino do equipamento — para esconder "Mensais"
+      // e para dar um rótulo (cliente da ficha / destino) às linhas sem cliente_nome.
+      const [rFichas, rEquips] = await Promise.all([
+        supabase.from('aluguer_situacao').select('equipamento_id, zona, cliente_id').in('equipamento_id', ids),
+        supabase.from('equipamentos').select('id, destino').in('id', ids),
+      ])
+      const fichas = (rFichas.data as { equipamento_id: string; zona: string | null; cliente_id: string | null }[]) ?? []
+      const destinoPorEquip = new Map(
+        ((rEquips.data as { id: string; destino: string | null }[]) ?? []).map((e) => [e.id, e.destino]),
       )
+      zonaMensais = new Set(
+        fichas.filter((f) => (f.zona ?? '').trim().toLowerCase() === 'mensais').map((f) => f.equipamento_id),
+      )
+      // Nome do cliente ligado na ficha (quando existe).
+      const clienteIds = Array.from(new Set(fichas.map((f) => f.cliente_id).filter(Boolean))) as string[]
+      const nomePorCliente = new Map<string, string>()
+      if (clienteIds.length) {
+        const { data: cls } = await supabase.from('clientes').select('id, nome').in('id', clienteIds)
+        for (const c of (cls as { id: string; nome: string | null }[]) ?? []) if (c.nome) nomePorCliente.set(c.id, c.nome)
+      }
+      for (const f of fichas) {
+        const rot = (f.cliente_id ? nomePorCliente.get(f.cliente_id) : null) || destinoPorEquip.get(f.equipamento_id) || ''
+        if (rot) rotulos.set(f.equipamento_id, rot)
+      }
+      // Para equipamentos sem ficha, usa só o destino.
+      for (const [id, destino] of destinoPorEquip) if (destino && !rotulos.has(id)) rotulos.set(id, destino)
     }
+    setRotuloPorEquip(rotulos)
     setAbertos(lista.filter((a) => !a.equipamento_id || !zonaMensais.has(a.equipamento_id)))
   }
 
@@ -622,7 +643,7 @@ function FormRecolha() {
               style={{ ...s.itemAberto, ...(selecionado === a.id ? s.itemSelecionado : {}) }}
               onClick={() => setSelecionado(a.id)}
             >
-              <strong>{a.cliente_nome ?? '—'}</strong>
+              <strong>{a.cliente_nome || (a.equipamento_id ? rotuloPorEquip.get(a.equipamento_id) : null) || '—'}</strong>
               <span style={s.itemDetalhe}>
                 {[a.modelo, a.serial_number].filter(Boolean).join(' · ')} · entrega {a.data_entrega}
               </span>
