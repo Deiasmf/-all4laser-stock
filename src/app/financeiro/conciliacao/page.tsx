@@ -24,6 +24,7 @@ export default function ConciliacaoPage() {
   const [aImportar, setAImportar] = useState(false)
   const [resultado, setResultado] = useState<ResultadoImport | null>(null)
   const [lotes, setLotes] = useState<LoteImport[]>([])
+  const [contaForcada, setContaForcada] = useState('') // '' = automático (pelo nome/cabeçalho)
 
   const moedaDaConta = useCallback((id: string) => contas.find((c) => c.id === id)?.moeda ?? 'EUR', [contas])
 
@@ -32,8 +33,8 @@ export default function ConciliacaoPage() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { carregarLotes() }, [carregarLotes])
 
-  const analisar = useCallback(async (fs: Folha[], cts: ContaBancaria[]) => {
-    const r = await processarFolhas(fs, cts)
+  const analisar = useCallback(async (fs: Folha[], cts: ContaBancaria[], forcadaId?: string) => {
+    const r = await processarFolhas(fs, cts, forcadaId)
     setMovimentos(r.movimentos)
     setMapPorConta(r.mapPorConta)
     setFolhasLidas(r.folhasLidas)
@@ -78,7 +79,7 @@ export default function ConciliacaoPage() {
         }
       }
       setFolhas(fs)
-      await analisar(fs, contas)
+      await analisar(fs, contas, contaForcada || undefined)
     } catch (e) {
       setErros([`Erro a ler o ficheiro: ${e instanceof Error ? e.message : String(e)}`])
     }
@@ -91,7 +92,7 @@ export default function ConciliacaoPage() {
     const r = await importarMovimentos(movimentos, mapPorConta as Record<string, never>, ficheiroNome, { id: perfil?.id ?? null, nome: perfil?.nome ?? null })
     setResultado(r)
     await carregarLotes()
-    if (folhas.length) await analisar(folhas, contas)  // refresca "já existe"
+    if (folhas.length) await analisar(folhas, contas, contaForcada || undefined)  // refresca "já existe"
     setAImportar(false)
   }
 
@@ -141,13 +142,24 @@ export default function ConciliacaoPage() {
         <div style={c.cardTitulo}>Importar extrato</div>
         <ol style={c.passos}>
           <li>Exporta/abre o extrato BPI (Excel <code style={c.code}>.xlsx</code> ou CSV).</li>
-          <li>Carrega o ficheiro. As folhas <strong>EUR</strong> e <strong>USD</strong> são associadas às contas certas automaticamente.</li>
+          <li>Carrega o ficheiro. As folhas <strong>EUR</strong>/<strong>USD</strong> são associadas às contas automaticamente; se o ficheiro não indicar a moeda, escolhe a <strong>Conta do extrato</strong> ao lado.</li>
           <li>Confirma a pré-visualização e clica <strong>Importar</strong>. Reimportar o mesmo período não duplica.</li>
         </ol>
         <div style={c.acoesTopo}>
           <label style={c.btnPrim}>
             📄 Carregar extrato (.xlsx / .csv)
             <input type="file" accept=".xlsx,.csv" style={{ display: 'none' }} onChange={(e) => aoCarregarFicheiro(e.target.files?.[0])} />
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--muted)' }}>
+            Conta do extrato:
+            <select
+              value={contaForcada}
+              onChange={(e) => { const v = e.target.value; setContaForcada(v); if (folhas.length) analisar(folhas, contas, v || undefined) }}
+              style={{ padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 8, font: 'inherit' }}
+            >
+              <option value="">Automática (pelo nome/cabeçalho)</option>
+              {contas.map((cc) => <option key={cc.id} value={cc.id}>{cc.nome} ({cc.moeda})</option>)}
+            </select>
           </label>
           {ficheiroNome && <span style={c.muted}>{ficheiroNome}</span>}
           {aLer && <span style={c.muted}>A ler o ficheiro…</span>}

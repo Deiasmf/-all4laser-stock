@@ -112,24 +112,22 @@ function acha(cab: string[], termos: string[]): number {
   return n.findIndex((h) => termos.every((t) => h.includes(t)))
 }
 
-// Procura a linha de cabeçalho (que tem "Data Mov" e "Descri..."/"Movimento").
+// Procura a linha de cabeçalho. Precisa de uma coluna de DATA, uma de DESCRIÇÃO
+// e uma de VALOR (montante). Aceita tanto "Data Mov" (extrato BPI multi-folha)
+// como só "Data" (extrato simples numa folha genérica).
 function detetarCabecalho(linhas: unknown[][]): { headerRow: number; map: Mapeamento } | null {
   for (let i = 0; i < Math.min(linhas.length, 40); i++) {
     const cab = (linhas[i] ?? []).map((c) => String(c ?? ''))
-    const dataMov = acha(cab, ['data', 'mov'])
+    const norm = cab.map((h) => semAcentos(h).toLowerCase())
+    const dataValor = acha(cab, ['data', 'valor'])
+    // Coluna do montante: contém "valor" mas NÃO é a coluna "data valor".
+    const valor = norm.findIndex((h, idx) => h.includes('valor') && idx !== dataValor)
     const descritivo = acha(cab, ['descri'])
-    const valor = acha(cab, ['valor'])
+    // Data do movimento: "data mov"; em falta, a 1.ª coluna "data" que não seja "data valor".
+    let dataMov = acha(cab, ['data', 'mov'])
+    if (dataMov < 0) dataMov = norm.findIndex((h, idx) => h.includes('data') && idx !== dataValor)
     if (dataMov >= 0 && descritivo >= 0 && valor >= 0) {
-      return {
-        headerRow: i,
-        map: {
-          dataMov,
-          dataValor: acha(cab, ['data', 'valor']),
-          descritivo,
-          valor,
-          obs: acha(cab, ['observ']),
-        },
-      }
+      return { headerRow: i, map: { dataMov, dataValor, descritivo, valor, obs: acha(cab, ['observ']) } }
     }
   }
   return null
@@ -155,6 +153,11 @@ function detetarMoeda(nome: string, linhas: unknown[][], det: { headerRow: numbe
   const todo = cab.join(' ')
   if (/usd|\$/.test(todo)) return 'USD'
   if (/eur|€/.test(todo)) return 'EUR'
+  // Metadados acima do cabeçalho (ex.: "Conta … EUR", "Moeda: USD").
+  const meta = linhas.slice(0, det.headerRow)
+    .map((r) => (r ?? []).map((c) => String(c ?? '')).join(' ')).join(' ').toLowerCase()
+  if (/\busd\b|\$/.test(meta)) return 'USD'
+  if (/\beur\b|€/.test(meta)) return 'EUR'
   return null
 }
 
@@ -171,7 +174,8 @@ export type ResultadoLeitura = {
 // as linhas por folha e tratamos a lógica.
 export async function processarFolhas(
   folhas: { nome: string; linhas: unknown[][] }[],
-  contas: ContaBancaria[]
+  contas: ContaBancaria[],
+  contaForcadaId?: string
 ): Promise<ResultadoLeitura> {
   const erros: string[] = []
   const folhasLidas: string[] = []
@@ -180,12 +184,16 @@ export async function processarFolhas(
 
   for (const { nome, linhas } of folhas) {
     const det = detetarCabecalho(linhas)
-    if (!det) { erros.push(`Folha "${nome}": não encontrei o cabeçalho (Data Mov · Descrição · Valor).`); continue }
-    const moeda = detetarMoeda(nome, linhas, det)
-    let conta = moeda ? contas.find((c) => c.moeda === moeda) : undefined
-    if (!conta && contas.length === 1) conta = contas[0]   // uma única conta configurada → usa-a
+    if (!det) { erros.push(`Folha "${nome}": não encontrei o cabeçalho (Data · Descrição · Valor).`); continue }
+    // Conta: 1.º a escolhida à mão; senão pela moeda detetada; senão, se só há uma conta, essa.
+    let conta = contaForcadaId ? contas.find((c) => c.id === contaForcadaId) : undefined
     if (!conta) {
-      erros.push(`Folha "${nome}": não consegui determinar a conta${moeda ? ` (moeda ${moeda})` : ' (moeda desconhecida)'}. Inclui "BPI EUR"/"BPI USD" no nome da folha ou confirma as contas configuradas.`)
+      const moeda = detetarMoeda(nome, linhas, det)
+      conta = moeda ? contas.find((c) => c.moeda === moeda) : undefined
+      if (!conta && contas.length === 1) conta = contas[0]
+    }
+    if (!conta) {
+      erros.push(`Folha "${nome}": não consegui identificar a moeda automaticamente. Escolhe a conta em "Conta do extrato" e volta a carregar.`)
       continue
     }
     mapPorConta[conta.id] = det.map
