@@ -12,6 +12,7 @@ import {
   TIPOS_ALUGUER,
   TIPOS_INTERNACIONAL,
   METODOS_PAGAMENTO,
+  MOTIVOS_SEM_ZIMMER,
   type Cliente,
   type Aluguer,
 } from '@/types/aluguer'
@@ -111,6 +112,17 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
   const [modelo, setModelo] = useState('')
   const [ano, setAno] = useState('')
 
+  // Zimmer (opcional): SN próprio, com a mesma pesquisa no stock.
+  const [serialZimmer, setSerialZimmer] = useState('')
+  const [sugestoesZimmer, setSugestoesZimmer] = useState<EquipResumo[]>([])
+  const [equipamentoZimmerId, setEquipamentoZimmerId] = useState<string | null>(null)
+  const [marcaZimmer, setMarcaZimmer] = useState('')
+  const [modeloZimmer, setModeloZimmer] = useState('')
+  const [anoZimmer, setAnoZimmer] = useState('')
+  // Justificação obrigatória quando NÃO se preenche o SN do Zimmer.
+  const [motivoZimmer, setMotivoZimmer] = useState('')
+  const [motivoZimmerOutro, setMotivoZimmerOutro] = useState('')
+
   const [tipo, setTipo] = useState<string>('')
   const [valor, setValor] = useState('')
   const [metodo, setMetodo] = useState<string>('')
@@ -207,14 +219,46 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
     return () => clearTimeout(t)
   }, [serial])
 
+  // Pesquisa de serial do ZIMMER no stock (preenche marca/modelo/ano do Zimmer)
+  useEffect(() => {
+    const q = serialZimmer.trim()
+    const t = setTimeout(async () => {
+      if (q.length < 2) { setSugestoesZimmer([]); return }
+      const { data } = await supabase
+        .from('equipamentos')
+        .select('id, marca, modelo, ano, serial_number')
+        .ilike('serial_number', `%${q}%`)
+        .limit(8)
+      const lista = (data as EquipResumo[]) ?? []
+      setSugestoesZimmer(lista)
+      const exato = lista.find((e) => (e.serial_number ?? '').trim().toLowerCase() === q.toLowerCase())
+      if (exato) {
+        setEquipamentoZimmerId(exato.id)
+        setMarcaZimmer(exato.marca ?? '')
+        setModeloZimmer(exato.modelo ?? '')
+        setAnoZimmer(exato.ano ?? '')
+      } else {
+        setEquipamentoZimmerId(null)
+      }
+    }, 300)
+    return () => clearTimeout(t)
+  }, [serialZimmer])
+
   async function guardar() {
     setErro(null)
     if (!cliente.trim()) return setErro('Indica o cliente.')
-    if (!serial.trim()) return setErro('Indica o serial number.')
+    if (!serial.trim()) return setErro('Indica o serial number do laser.')
     if (!tipo) return setErro('Escolhe o tipo de aluguer.')
     const valorNum = parseNumeroPt(valor)
     if (valorNum === null) return setErro('Indica um valor válido.')
     if (!metodo) return setErro('Escolhe o método de pagamento.')
+
+    // Zimmer: opcional; se não for preenchido, exige justificação.
+    const temZimmer = !!serialZimmer.trim()
+    const justificacaoZimmer = motivoZimmer === 'Outro' ? motivoZimmerOutro.trim() : motivoZimmer
+    if (!temZimmer && !justificacaoZimmer) {
+      return setErro('Sem SN do Zimmer: escolhe (ou escreve) a justificação.')
+    }
 
     setAGuardar(true)
 
@@ -259,18 +303,44 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
       // Os meses anteriores são só para faturação (não aparecem em "Registar
       // recolha" nem contam como equipamento por devolver).
       recolha_aplicavel: k === nMeses - 1,
+      // Justificação fica na linha do laser quando a entrega não inclui Zimmer.
+      zimmer_justificacao: temZimmer ? null : justificacaoZimmer,
       criado_por: uid,
       criado_por_nome: nome,
     }))
-    const { error: e2 } = await supabase.from('alugueres').insert(linhas)
+    // Zimmer (se preenchido): mesmas datas/cliente, SEM valor e "não faturar"
+    // (o preço do conjunto já vai no laser) — para registar a entrega/recolha do
+    // Zimmer sem duplicar a faturação. Aparece também no "Registar recolha".
+    const linhasZimmer = temZimmer ? Array.from({ length: nMeses }, (_, k) => ({
+      cliente_id: clienteId,
+      cliente_nome: clienteNome,
+      equipamento_id: equipamentoZimmerId,
+      serial_number: serialZimmer.trim(),
+      marca: marcaZimmer.trim() || null,
+      modelo: modeloZimmer.trim() || 'Zimmer',
+      ano: anoZimmer.trim() || null,
+      tipo_aluguer: tipo,
+      valor: null,
+      metodo_pagamento: null,
+      nacional,
+      data_entrega: adicionarMeses(entregaBase, k),
+      data_recolha: null,
+      recolha_aplicavel: k === nMeses - 1,
+      nao_faturar: true,
+      zimmer_justificacao: null,
+      criado_por: uid,
+      criado_por_nome: nome,
+    })) : []
+    const { error: e2 } = await supabase.from('alugueres').insert([...linhas, ...linhasZimmer])
 
     setAGuardar(false)
     if (e2) return setErro(mensagemErro(e2, { entidade: 'aluguer' }))
 
+    const equipTxt = temZimmer ? `${serial.trim()} + Zimmer ${serialZimmer.trim()}` : serial.trim()
     setOkMsg(
       nMeses > 1
-        ? `Entrega registada para ${clienteNome} (${serial.trim()}) — ${nMeses} meses criados.`
-        : `Entrega registada para ${clienteNome} (${serial.trim()}).`
+        ? `Entrega registada para ${clienteNome} (${equipTxt}) — ${nMeses} meses criados.`
+        : `Entrega registada para ${clienteNome} (${equipTxt}).`
     )
     // limpar para o próximo registo
     setCliente('')
@@ -283,6 +353,13 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
     setMarca('')
     setModelo('')
     setAno('')
+    setSerialZimmer('')
+    setEquipamentoZimmerId(null)
+    setMarcaZimmer('')
+    setModeloZimmer('')
+    setAnoZimmer('')
+    setMotivoZimmer('')
+    setMotivoZimmerOutro('')
     setTipo('')
     setValor('')
     setMetodo('')
@@ -374,6 +451,42 @@ function FormEntrega({ uid, nome }: { uid: string | null; nome: string | null })
           <input style={s.input} value={ano} onChange={(e) => setAno(e.target.value)} />
         </div>
       </div>
+
+      <label style={s.label}>SN do Zimmer <span style={s.nota}>(opcional)</span></label>
+      <input
+        style={s.input}
+        list="lista-serials-zimmer"
+        placeholder="Serial do Zimmer (deixa vazio se não houver)"
+        value={serialZimmer}
+        onChange={(e) => setSerialZimmer(e.target.value)}
+      />
+      <datalist id="lista-serials-zimmer">
+        {sugestoesZimmer.map((e) => (
+          <option key={e.id} value={e.serial_number ?? ''}>
+            {[e.modelo, e.marca].filter(Boolean).join(' ')}
+          </option>
+        ))}
+      </datalist>
+      {serialZimmer.trim() ? (
+        <div style={s.nota}>
+          {equipamentoZimmerId
+            ? `✓ ${[marcaZimmer, modeloZimmer].filter(Boolean).join(' ')} — encontrado no stock`
+            : 'Não encontrado no stock (fica com o SN escrito).'}
+        </div>
+      ) : (
+        <>
+          <label style={s.label}>Justificação (entrega sem Zimmer)</label>
+          <select style={s.input} value={motivoZimmer} onChange={(e) => setMotivoZimmer(e.target.value)}>
+            <option value="">— escolher motivo —</option>
+            {MOTIVOS_SEM_ZIMMER.map((m) => <option key={m} value={m}>{m}</option>)}
+            <option value="Outro">Outro (especificar)</option>
+          </select>
+          {motivoZimmer === 'Outro' && (
+            <input style={s.input} placeholder="Escreve o motivo" value={motivoZimmerOutro}
+              onChange={(e) => setMotivoZimmerOutro(e.target.value)} />
+          )}
+        </>
+      )}
 
       <label style={s.label}>
         Tipo de aluguer {!nacionalAtual && <span style={s.nota}>(internacional — contrato)</span>}
