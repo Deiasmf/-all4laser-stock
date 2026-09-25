@@ -27,6 +27,8 @@ export type Aluguer = {
   recolha_aplicavel: boolean | null
   // Contrato sinalizado para avançar para venda (data da marcação).
   marcado_venda_em: string | null
+  // Motivo de a entrega não incluir Zimmer (só na linha do laser, quando sem Zimmer).
+  zimmer_justificacao: string | null
   criado_por: string | null
   criado_por_nome: string | null
   created_at: string
@@ -100,4 +102,11 @@ export const METODOS_PAGAMENTO = [
   'Numerário',
   'Transferência',
   'MBway',
+] as const
+
+// Motivos para uma entrega não incluir Zimmer (SN do Zimmer por preencher).
+export const MOTIVOS_SEM_ZIMMER = [
+  'Cliente não solicitou Zimmer',
+  'Cliente usa garrafas de criogénio',
+  'Zimmer não disponível para entrega',
 ] as const
