@@ -140,8 +140,22 @@ export function ehFolhaExtrato(nome: string): boolean {
   const n = nome.toLowerCase()
   return /bpi/.test(n) && /(eur|usd)/.test(n) && !/obs/.test(n)
 }
-function moedaDaFolha(nome: string): string {
-  return /usd/i.test(nome) ? 'USD' : 'EUR'
+
+// Deteta a moeda da folha: primeiro pelo nome ("… USD"/"… EUR"); se o nome não
+// disser nada (ex.: "Folha1"), tenta o cabeçalho da coluna do valor
+// ("Valor [Eur]" / "Valor [USD]") e, em último caso, qualquer pista no cabeçalho.
+// Devolve null se não conseguir determinar.
+function detetarMoeda(nome: string, linhas: unknown[][], det: { headerRow: number; map: Mapeamento }): string | null {
+  if (/usd/i.test(nome)) return 'USD'
+  if (/eur/i.test(nome)) return 'EUR'
+  const cab = (linhas[det.headerRow] ?? []).map((c) => String(c ?? '').toLowerCase())
+  const colValor = cab[det.map.valor] ?? ''
+  if (/usd|\$/.test(colValor)) return 'USD'
+  if (/eur|€/.test(colValor)) return 'EUR'
+  const todo = cab.join(' ')
+  if (/usd|\$/.test(todo)) return 'USD'
+  if (/eur|€/.test(todo)) return 'EUR'
+  return null
 }
 
 // ── Leitura de um ficheiro (Excel/CSV) → movimentos por conta ────────────────
@@ -165,11 +179,15 @@ export async function processarFolhas(
   const brutos: MovExtrato[] = []
 
   for (const { nome, linhas } of folhas) {
-    const moeda = moedaDaFolha(nome)
-    const conta = contas.find((c) => c.moeda === moeda)
-    if (!conta) { erros.push(`Folha "${nome}": sem conta bancária de moeda ${moeda}.`); continue }
     const det = detetarCabecalho(linhas)
     if (!det) { erros.push(`Folha "${nome}": não encontrei o cabeçalho (Data Mov · Descrição · Valor).`); continue }
+    const moeda = detetarMoeda(nome, linhas, det)
+    let conta = moeda ? contas.find((c) => c.moeda === moeda) : undefined
+    if (!conta && contas.length === 1) conta = contas[0]   // uma única conta configurada → usa-a
+    if (!conta) {
+      erros.push(`Folha "${nome}": não consegui determinar a conta${moeda ? ` (moeda ${moeda})` : ' (moeda desconhecida)'}. Inclui "BPI EUR"/"BPI USD" no nome da folha ou confirma as contas configuradas.`)
+      continue
+    }
     mapPorConta[conta.id] = det.map
     folhasLidas.push(nome)
 
