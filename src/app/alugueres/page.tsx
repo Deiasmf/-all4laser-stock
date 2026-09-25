@@ -567,6 +567,7 @@ function FormRecolha() {
       .select('*')
       .is('data_recolha', null)
       .eq('recolha_aplicavel', true)   // só meses de recolha (não os meses só de faturação)
+      .not('data_entrega', 'is', null) // só os efetivamente ENTREGUES (com data de entrega)
       .order('data_entrega', { ascending: true })
     const lista = (data as Aluguer[]) ?? []
     const ids = Array.from(new Set(lista.map((a) => a.equipamento_id).filter(Boolean))) as string[]
