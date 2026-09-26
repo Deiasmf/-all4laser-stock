@@ -67,9 +67,13 @@ export async function extrairLead(email: EmailLead, fonte: FonteLead): Promise<L
   })
 
   const bloco = resp.content.find((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use')
-  const dados = (bloco?.input ?? {}) as Partial<LeadExtraida>
-  // Sentinelas que o modelo às vezes devolve em vez de null.
-  const SENTINELAS = new Set(['', 'unknown', '<unknown>', 'n/a', 'na', 'null', 'none', 'desconhecido', 'sem nome', '-'])
+  return normalizarLead((bloco?.input ?? {}) as Partial<LeadExtraida>)
+}
+
+// Sentinelas que o modelo às vezes devolve em vez de null.
+const SENTINELAS = new Set(['', 'unknown', '<unknown>', 'n/a', 'na', 'null', 'none', 'desconhecido', 'sem nome', '-'])
+
+export function normalizarLead(dados: Partial<LeadExtraida>): LeadExtraida {
   const t = (v: unknown) => {
     if (typeof v !== 'string') return null
     const s = v.trim()
@@ -83,4 +87,19 @@ export async function extrairLead(email: EmailLead, fonte: FonteLead): Promise<L
     cidade: t(dados.cidade),
     mensagem: t(dados.mensagem),
   }
+}
+
+// Uma extração pode falhar só por causa daquele email (conteúdo estranho, pedido
+// inválido) ou por algo que afeta a corrida toda: saldo/créditos esgotados, chave
+// errada, limite de pedidos, API em baixo ou sem rede. No segundo caso não vale a
+// pena tentar os emails seguintes — ficam por etiquetar e entram na corrida a seguir.
+export function falhaGlobalIA(e: unknown): boolean {
+  if (e instanceof Anthropic.APIError) {
+    // Erro de ligação/timeout: sem status.
+    if (typeof e.status !== 'number') return true
+    if (e.status === 401 || e.status === 403 || e.status === 429 || e.status >= 500) return true
+    // Sem créditos chega como 400 (invalid_request_error), não como 402.
+    return /credit balance|billing|quota/i.test(e.message)
+  }
+  return e instanceof Error && /ANTHROPIC_API_KEY/.test(e.message)
 }
