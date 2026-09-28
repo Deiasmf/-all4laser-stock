@@ -8,6 +8,7 @@ import {
   obterPedido, listarItens, listarCotacoes, listarFornecedores,
   criarCotacao, selecionarCotacao, aprovarEncomendar, registarRececao, marcarUrgente,
   marcarCotacaoPaga, pedirPagamentoCotacao,
+  listarFotosPedido, carregarFotoPedido, apagarFotoPedido, type PedidoFoto,
 } from '@/lib/compras'
 import { ESTADO_PEDIDO_CONFIG, DESTINATARIOS_PAGAMENTO, type PedidoCompra, type PedidoItem, type Cotacao, type Fornecedor } from '@/types/compras'
 
@@ -45,6 +46,9 @@ export default function DetalhePedidoPage() {
   const [cotacoes, setCotacoes] = useState<Cotacao[]>([])
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([])
   const [carregando, setCarregando] = useState(true)
+  // fotos
+  const [fotos, setFotos] = useState<PedidoFoto[]>([])
+  const [fotoOcupado, setFotoOcupado] = useState(false)
 
   // form cotação
   const [forn, setForn] = useState(''); const [fornOutro, setFornOutro] = useState('')
@@ -65,6 +69,7 @@ export default function DetalhePedidoPage() {
     setPedido((data as PedidoCompra) ?? null)
     setItens(await listarItens(id))
     setCotacoes(await listarCotacoes(id))
+    setFotos(await listarFotosPedido(id))
     setCarregando(false)
   }
   useEffect(() => {
@@ -122,6 +127,25 @@ export default function DetalhePedidoPage() {
     carregar()
   }
 
+  async function adicionarFotos(files: FileList | null) {
+    if (!files || files.length === 0) return
+    setFotoOcupado(true)
+    for (const f of Array.from(files)) {
+      const r = await carregarFotoPedido(id, f)
+      if (!r.ok) { alert('Não foi possível carregar a foto: ' + (r.motivo ?? '')); break }
+    }
+    setFotos(await listarFotosPedido(id))
+    setFotoOcupado(false)
+  }
+
+  async function removerFoto(foto: PedidoFoto) {
+    if (!window.confirm('Apagar esta foto?')) return
+    setFotoOcupado(true)
+    await apagarFotoPedido(foto.id, foto.caminho)
+    setFotos(await listarFotosPedido(id))
+    setFotoOcupado(false)
+  }
+
   async function confirmarRececao() {
     const map: Record<string, number> = {}
     for (const it of itens) map[it.id] = Math.max(0, Number(recebido[it.id] ?? it.quantidade_recebida) || 0)
@@ -156,6 +180,33 @@ export default function DetalhePedidoPage() {
           </div>
         ))}
         {pedido.notas && <p style={{ marginTop: 12, fontSize: 13, color: 'var(--a4l-text-mid)', whiteSpace: 'pre-wrap' }}>{pedido.notas}</p>}
+      </div>
+
+      {/* Fotos */}
+      <div className="a4l-card" style={{ marginBottom: 14 }}>
+        <h2 style={h2}>Fotos ({fotos.length})</h2>
+        {fotos.length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 10, marginBottom: 12 }}>
+            {fotos.map((foto) => (
+              <div key={foto.id} style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', border: '0.5px solid var(--a4l-border)' }}>
+                <a href={foto.url} target="_blank" rel="noopener noreferrer">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={foto.url} alt="Foto do pedido" style={{ width: '100%', height: 110, objectFit: 'cover', display: 'block' }} />
+                </a>
+                <button
+                  onClick={() => removerFoto(foto)}
+                  disabled={fotoOcupado}
+                  title="Apagar foto"
+                  style={{ position: 'absolute', top: 4, right: 4, width: 24, height: 24, borderRadius: 999, border: 'none', background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 15, lineHeight: '24px', cursor: 'pointer', padding: 0 }}
+                >×</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <label className="a4l-btn-ghost" style={{ alignSelf: 'flex-start', cursor: fotoOcupado ? 'default' : 'pointer', opacity: fotoOcupado ? 0.6 : 1 }}>
+          {fotoOcupado ? 'A carregar...' : '+ Adicionar foto'}
+          <input type="file" accept="image/*" multiple disabled={fotoOcupado} onChange={(e) => { adicionarFotos(e.target.files); e.target.value = '' }} style={{ display: 'none' }} />
+        </label>
       </div>
 
       {/* Cotações */}
