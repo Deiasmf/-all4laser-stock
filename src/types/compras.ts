@@ -56,7 +56,24 @@ export type Cotacao = {
   criado_por: string | null
   criado_por_nome: string | null
   created_at: string
+  // Pedido de pagamento por email + estado de liquidação
+  pagamento_pedido_em: string | null
+  pago: boolean
+  pago_em: string | null
+  pago_por: string | null
+  pago_por_nome: string | null
+  lembrete_ultimo: string | null
+  lembretes_count: number
+  destinatarios: string[] | null
 }
+
+// Destinatários por omissão do pedido de pagamento (editáveis no envio).
+export const DESTINATARIOS_PAGAMENTO = [
+  'andreia.fernandes@all4laser.com',
+  'vanessa.tavares@all4laser.com',
+  'sara.evaristo@all4laser.com',
+  'all4laser@gmail.com',
+]
 
 export type Fornecedor = {
   id: string

@@ -134,6 +134,36 @@ export async function aprovarEncomendar(id: string) {
   return atualizarEstadoPedido(id, 'encomendado')
 }
 
+// ─── Pedido de pagamento de uma cotação ───────────────────────────────────────
+
+// Marca a cotação como paga (pára os lembretes de 24h).
+export async function marcarCotacaoPaga(id: string, autor: { id: string | null; nome: string | null }) {
+  return supabase.from('pedidos_compra_cotacoes')
+    .update({ pago: true, pago_em: new Date().toISOString(), pago_por: autor.id, pago_por_nome: autor.nome })
+    .eq('id', id)
+}
+export async function reabrirCotacaoPagamento(id: string) {
+  return supabase.from('pedidos_compra_cotacoes')
+    .update({ pago: false, pago_em: null, pago_por: null, pago_por_nome: null })
+    .eq('id', id)
+}
+
+// Envia o pedido de pagamento por email (rota servidor — usa o Gmail e regista
+// o envio na cotação: pagamento_pedido_em, lembrete_ultimo, destinatarios).
+export async function pedirPagamentoCotacao(input: {
+  cotacaoId: string; destinatarios: string[]; assunto: string; corpo: string
+}): Promise<{ ok: boolean; erro?: string }> {
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  const r = await fetch('/api/compras/pedir-pagamento', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify(input),
+  })
+  const j = await r.json().catch(() => ({}))
+  return { ok: !!j.ok, erro: j.erro as string | undefined }
+}
+
 // ─── Receção ─────────────────────────────────────────────────────────────────
 
 // Regista a receção: atualiza quantidade_recebida, incrementa o stock da peça
