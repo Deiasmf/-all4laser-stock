@@ -66,7 +66,7 @@ export default function NovoPedidoPage() {
     setAGuardar(true)
     const uid = session?.user.id ?? null
     const nome = perfil?.nome ?? perfil?.email ?? null
-    const { data, error } = await criarPedido({ urgente, notas: notasFinal, estado: 'rascunho' }, validos, uid, nome)
+    const { data, error } = await criarPedido({ urgente, notas: notasFinal, estado: 'submetido' }, validos, uid, nome)
     if (error || !data) { setAGuardar(false); setErro('Erro ao criar o pedido: ' + (error?.message ?? '')); return }
     // Envia as fotos escolhidas (o pedido já existe; falhas não impedem a criação).
     for (const f of fotos) {
@@ -172,7 +172,7 @@ export default function NovoPedidoPage() {
       {erro && <div style={{ background: '#fdecea', color: '#DC2626', border: '1px solid #DC2626', borderRadius: 8, padding: '10px 12px', fontSize: 14, fontWeight: 600, marginBottom: 12 }}>{erro}</div>}
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <button className="a4l-btn-ghost" disabled={aGuardar} onClick={() => guardar(false)}>{aGuardar ? 'A guardar...' : 'Guardar rascunho'}</button>
+        <button className="a4l-btn-ghost" disabled={aGuardar} onClick={() => guardar(false)}>{aGuardar ? 'A guardar...' : 'Guardar'}</button>
         <button className="a4l-btn" disabled={aGuardar} onClick={() => guardar(true)}>{aGuardar ? 'A guardar...' : 'Enviar para Compras'}</button>
       </div>
     </div>

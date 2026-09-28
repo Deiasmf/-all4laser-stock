@@ -7,12 +7,12 @@ import { useAuth } from '@/lib/auth'
 import PecaAutocomplete from '@/components/PecaAutocomplete'
 import {
   obterPedido, listarItens, listarCotacoes, listarFornecedores,
-  criarCotacao, selecionarCotacao, aprovarEncomendar, registarRececao, marcarUrgente,
+  criarCotacao, selecionarCotacao, registarRececao, marcarUrgente, atualizarEstadoPedido,
   marcarCotacaoPaga, pedirPagamentoCotacao,
   atualizarPedido, adicionarItemPedido, atualizarItemPedido, eliminarItemPedido,
   listarFotosPedido, carregarFotoPedido, apagarFotoPedido, type PedidoFoto, type ItemInput,
 } from '@/lib/compras'
-import { ESTADO_PEDIDO_CONFIG, DESTINATARIOS_PAGAMENTO, type PedidoCompra, type PedidoItem, type Cotacao, type Fornecedor } from '@/types/compras'
+import { ESTADO_PEDIDO_CONFIG, ESTADO_PEDIDO_OPCOES, DESTINATARIOS_PAGAMENTO, type PedidoCompra, type PedidoItem, type Cotacao, type Fornecedor, type EstadoPedido } from '@/types/compras'
 
 function eur(v: number | null) {
   return v == null ? '—' : v.toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' })
@@ -103,8 +103,7 @@ export default function DetalhePedidoPage() {
 
   const cfg = ESTADO_PEDIDO_CONFIG[pedido.estado]
   const autor = { id: session?.user.id ?? null, nome: perfil?.nome ?? perfil?.email ?? null }
-  const selecionada = cotacoes.find((c) => c.selecionado)
-  const podeReceber = pedido.estado === 'encomendado' || pedido.estado === 'recebido_parcial'
+  const tudoRecebido = itens.length > 0 && itens.every((it) => it.quantidade_recebida >= it.quantidade)
 
   async function adicionarCotacao() {
     const f = (forn === '__outro__' ? fornOutro : forn).trim()
@@ -215,7 +214,7 @@ export default function DetalhePedidoPage() {
   async function confirmarRececao() {
     const map: Record<string, number> = {}
     for (const it of itens) map[it.id] = Math.max(0, Number(recebido[it.id] ?? it.quantidade_recebida) || 0)
-    await registarRececao(id, itens, map)
+    await registarRececao(itens, map)
     setRececaoAberta(false)
     carregar()
   }
@@ -229,7 +228,16 @@ export default function DetalhePedidoPage() {
         <span style={{ fontSize: 12, fontWeight: 700, color: cfg.color, background: cfg.bg, borderRadius: 999, padding: '3px 12px' }}>{cfg.label}</span>
         {pedido.urgente && <span style={{ fontSize: 13, fontWeight: 700, color: '#DC2626' }}>🔴 Urgente</span>}
         {!editando && (
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <select
+              className="a4l-input"
+              style={{ width: 'auto', padding: '8px 10px' }}
+              value={pedido.estado}
+              onChange={async (e) => { await atualizarEstadoPedido(id, e.target.value as EstadoPedido); carregar() }}
+              title="Mudar estado do pedido"
+            >
+              {ESTADO_PEDIDO_OPCOES.map((s) => <option key={s} value={s}>{ESTADO_PEDIDO_CONFIG[s].label}</option>)}
+            </select>
             {!pedido.urgente && <button className="a4l-btn-ghost" onClick={async () => { await marcarUrgente(id); carregar() }}>Marcar como urgente</button>}
             <button className="a4l-btn-ghost" onClick={abrirEdicao}>✎ Editar</button>
           </div>
@@ -369,20 +377,14 @@ export default function DetalhePedidoPage() {
           <button className="a4l-btn-ghost" style={{ alignSelf: 'flex-start' }} onClick={adicionarCotacao}>+ Adicionar cotação</button>
         </div>
 
-        {selecionada && pedido.estado !== 'encomendado' && !podeReceber && (
-          <button className="a4l-btn" style={{ marginTop: 12 }} onClick={async () => { await aprovarEncomendar(id); carregar() }}>
-            Aprovar e Encomendar ({selecionada.fornecedor})
-          </button>
-        )}
       </div>
 
       {/* Receção */}
-      {(podeReceber || pedido.estado === 'recebido_total') && (
+      {pedido.estado !== 'cancelado' && (
         <div className="a4l-card">
           <h2 style={h2}>Receção</h2>
-          {pedido.estado === 'recebido_total'
-            ? <p style={{ color: '#00A87A', fontWeight: 700, fontSize: 14 }}>✓ Tudo recebido.</p>
-            : <button className="a4l-btn" onClick={() => { setRecebido(Object.fromEntries(itens.map((i) => [i.id, String(i.quantidade_recebida || i.quantidade)]))); setRececaoAberta(true) }}>Registar Receção</button>}
+          {tudoRecebido && <p style={{ color: '#00A87A', fontWeight: 700, fontSize: 14, marginBottom: 8 }}>✓ Tudo recebido.</p>}
+          <button className="a4l-btn" onClick={() => { setRecebido(Object.fromEntries(itens.map((i) => [i.id, String(i.quantidade_recebida || i.quantidade)]))); setRececaoAberta(true) }}>Registar Receção</button>
         </div>
       )}
 

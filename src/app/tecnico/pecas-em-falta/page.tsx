@@ -85,7 +85,7 @@ export default function PecasEmFaltaPage() {
     setACriar(true)
     const itens: ItemInput[] = selecionadas.map((p) => ({ peca_id: p.peca_id, peca_nome: p.peca_nome ?? '', quantidade: p.quantidade_necessaria, notas: p.equipamento_sn ? `Equip. ${p.equipamento_sn}` : null }))
     const { data, error } = await criarPedido(
-      { urgente: false, notas: 'Gerado a partir de peças em falta.', estado: 'rascunho' },
+      { urgente: false, notas: 'Gerado a partir de peças em falta.', estado: 'submetido' },
       itens, session?.user.id ?? null, perfil?.nome ?? perfil?.email ?? null
     )
     if (error || !data) { setACriar(false); alert('Erro ao criar o pedido.'); return }
