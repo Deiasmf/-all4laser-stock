@@ -5,10 +5,11 @@ import { useAuth } from '@/lib/auth'
 import {
   listarConsignacoes, listarEquipamentosPicker, custoDeclaradoSugerido,
   criarConsignacao, registarVenda, confirmarVenda, eliminarVendaRegistada, marcarDevolucao,
-  estadoConsignacaoInfo, estadoVendaInfo, vendaPaga, ORIGENS_CONSIGNACAO, MOEDAS,
+  estadoConsignacaoInfo, estadoVendaInfo, vendaPaga, ORIGENS_CONSIGNACAO,
+  ESTADOS_CONSIGNACAO, MOEDAS,
   formatarMoeda, formatarData, hojeISO,
   type ContaComSaldo, type ConsignacaoRow, type EquipamentoPicker,
-  type Venda, type OrigemConsignacao, type EntidadeFaturada,
+  type Venda, type OrigemConsignacao, type EntidadeFaturada, type EstadoConsignacao,
 } from '@/lib/cc'
 
 function parseNum(v: string): number {
@@ -32,6 +33,10 @@ export default function TabConsignacao({ conta, onMudou }: {
   const [addOpen, setAddOpen] = useState(false)
   const [recolhidos, setRecolhidos] = useState<Set<string>>(new Set())
   const [filtroPag, setFiltroPag] = useState<FiltroPag>('todas')
+  const [busca, setBusca] = useState('')
+  const [filtroAno, setFiltroAno] = useState('')
+  const [filtroEnvio, setFiltroEnvio] = useState('')
+  const [filtroEstado, setFiltroEstado] = useState<'' | EstadoConsignacao>('')
 
   async function recarregar() {
     setConsigs(await listarConsignacoes(conta.id))
@@ -44,14 +49,45 @@ export default function TabConsignacao({ conta, onMudou }: {
   const nPagas = useMemo(() => consigs.filter((cg) => vendaPaga(vendaMaisRecente(cg))).length, [consigs])
   const nPorPagar = consigs.length - nPagas
 
-  // Aplica o filtro pagas / por pagar (por pagar = tudo o que não está liquidado).
+  // Anos e datas de envio distintos (para os dropdowns), pela ordem mais recente primeiro.
+  const anos = useMemo(() => {
+    const set = new Set<string>()
+    for (const cg of consigs) if (cg.equipamento?.ano) set.add(cg.equipamento.ano)
+    return [...set].sort((a, b) => b.localeCompare(a))
+  }, [consigs])
+  const envios = useMemo(() => {
+    const set = new Set<string>()
+    for (const cg of consigs) set.add(cg.data_envio ?? 'sem_data')
+    return [...set].sort((a, b) => (a === 'sem_data' ? 1 : b === 'sem_data' ? -1 : b.localeCompare(a)))
+  }, [consigs])
+
+  // Aplica todos os filtros (pagamento, ano, envio, estado e texto) antes de agrupar.
   const consigsFiltradas = useMemo(() => {
-    if (filtroPag === 'todas') return consigs
+    const q = busca.trim().toLowerCase()
     return consigs.filter((cg) => {
-      const paga = vendaPaga(vendaMaisRecente(cg))
-      return filtroPag === 'pagas' ? paga : !paga
+      if (filtroPag !== 'todas') {
+        const paga = vendaPaga(vendaMaisRecente(cg))
+        if (filtroPag === 'pagas' ? !paga : paga) return false
+      }
+      if (filtroAno && (cg.equipamento?.ano ?? '') !== filtroAno) return false
+      if (filtroEnvio && (cg.data_envio ?? 'sem_data') !== filtroEnvio) return false
+      if (filtroEstado && cg.estado !== filtroEstado) return false
+      if (q) {
+        const eq = cg.equipamento
+        const campos = [
+          eq?.marca, eq?.modelo, eq?.serial_number, cg.numero_serie,
+          ...(cg.vendas ?? []).map((v) => v.cliente_final),
+        ]
+        if (!campos.some((x) => (x ?? '').toLowerCase().includes(q))) return false
+      }
+      return true
     })
-  }, [consigs, filtroPag])
+  }, [consigs, filtroPag, filtroAno, filtroEnvio, filtroEstado, busca])
+
+  const temFiltros = !!busca || !!filtroAno || !!filtroEnvio || !!filtroEstado || filtroPag !== 'todas'
+  function limparFiltros() {
+    setBusca(''); setFiltroAno(''); setFiltroEnvio(''); setFiltroEstado(''); setFiltroPag('todas')
+  }
 
   // Agrupa por batch (data de envio); "sem data" fica num grupo "Por receber" no fim.
   const batches = useMemo(() => {
@@ -86,6 +122,38 @@ export default function TabConsignacao({ conta, onMudou }: {
       </div>
 
       {consigs.length > 0 && (
+        <div style={c.filtroBar}>
+          <input
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Procurar equipamento, nº de série ou cliente..."
+            style={c.filtroBusca}
+          />
+          <select value={filtroAno} onChange={(e) => setFiltroAno(e.target.value)} style={c.filtroSelect}>
+            <option value="">Todos os anos</option>
+            {anos.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+          <select value={filtroEnvio} onChange={(e) => setFiltroEnvio(e.target.value)} style={c.filtroSelect}>
+            <option value="">Todos os envios</option>
+            {envios.map((k) => (
+              <option key={k} value={k}>{k === 'sem_data' ? 'Por receber' : formatarData(k)}</option>
+            ))}
+          </select>
+          <select
+            value={filtroEstado}
+            onChange={(e) => setFiltroEstado(e.target.value as '' | EstadoConsignacao)}
+            style={c.filtroSelect}
+          >
+            <option value="">Todos os estados</option>
+            {ESTADOS_CONSIGNACAO.map((es) => <option key={es.valor} value={es.valor}>{es.label}</option>)}
+          </select>
+          {temFiltros && (
+            <button style={c.filtroLimpar} onClick={limparFiltros}>Limpar</button>
+          )}
+        </div>
+      )}
+
+      {consigs.length > 0 && (
         <div style={c.filtros}>
           <button
             style={{ ...c.filtroBtn, ...(filtroPag === 'todas' ? c.filtroBtnAtivo : {}) }}
@@ -99,6 +167,9 @@ export default function TabConsignacao({ conta, onMudou }: {
             style={{ ...c.filtroBtn, ...(filtroPag === 'por_pagar' ? c.filtroBtnAtivo : {}) }}
             onClick={() => setFiltroPag('por_pagar')}
           >Por pagar ({nPorPagar})</button>
+          <span style={{ ...c.contagem, marginLeft: 'auto', alignSelf: 'center' }}>
+            {consigsFiltradas.length} de {consigs.length}
+          </span>
         </div>
       )}
 
@@ -115,7 +186,7 @@ export default function TabConsignacao({ conta, onMudou }: {
       ) : consigs.length === 0 ? (
         <p style={c.estado}>Ainda não há máquinas nesta consignação.</p>
       ) : consigsFiltradas.length === 0 ? (
-        <p style={c.estado}>{filtroPag === 'pagas' ? 'Nenhuma máquina totalmente paga.' : 'Nenhuma máquina por pagar.'}</p>
+        <p style={c.estado}>Nenhuma máquina corresponde aos filtros.</p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
           {batches.map((b) => {
@@ -641,6 +712,10 @@ const c: Record<string, React.CSSProperties> = {
   cartaoPago: { border: '1px solid #6EE7B7', background: '#F0FDF4' },
   pillPago: { display: 'inline-block', fontSize: 11, fontWeight: 800, borderRadius: 999, padding: '2px 9px', color: '#065F46', background: '#D1FAE5', marginLeft: 8, verticalAlign: 'middle' },
   filtros: { display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' },
+  filtroBar: { display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' },
+  filtroBusca: { flex: '1 1 220px', minWidth: 160, padding: '9px 12px', border: '1px solid var(--border)', borderRadius: 8, font: 'inherit', boxSizing: 'border-box' },
+  filtroSelect: { padding: '9px 12px', border: '1px solid var(--border)', borderRadius: 8, font: 'inherit', background: '#fff', boxSizing: 'border-box' },
+  filtroLimpar: { background: '#fff', color: 'var(--muted)', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 14px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' },
   filtroBtn: { border: '1px solid var(--border)', background: '#fff', color: 'var(--muted)', borderRadius: 999, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
   filtroBtnAtivo: { background: 'var(--primary)', color: '#fff', borderColor: 'var(--primary)' },
   cartaoTopo: { display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' },
