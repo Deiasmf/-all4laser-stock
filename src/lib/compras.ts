@@ -20,17 +20,21 @@ export async function pesquisarPecas(q: string): Promise<PecaOpc[]> {
 
 // ─── Pedidos de compra ──────────────────────────────────────────────────────
 
-export type PedidoComContagem = PedidoCompra & { n_itens: number }
+export type PedidoComContagem = PedidoCompra & { n_itens: number; materiais: string[] }
 
 export async function listarPedidos(): Promise<PedidoComContagem[]> {
   const { data } = await supabase
     .from('pedidos_compra')
-    .select('*, pedidos_compra_itens(count)')
+    .select('*, pedidos_compra_itens(peca_nome)')
     .order('created_at', { ascending: false })
-  return ((data ?? []) as unknown as (PedidoCompra & { pedidos_compra_itens: { count: number }[] })[]).map((p) => ({
-    ...p,
-    n_itens: p.pedidos_compra_itens?.[0]?.count ?? 0,
-  }))
+  return ((data ?? []) as unknown as (PedidoCompra & { pedidos_compra_itens: { peca_nome: string | null }[] })[]).map((p) => {
+    const itens = p.pedidos_compra_itens ?? []
+    return {
+      ...p,
+      n_itens: itens.length,
+      materiais: itens.map((i) => i.peca_nome).filter((x): x is string => !!x),
+    }
+  })
 }
 
 export async function obterPedido(id: string) {
