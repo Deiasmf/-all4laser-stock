@@ -203,6 +203,43 @@ export async function registarRececao(
   return estado
 }
 
+// ─── Fotos do pedido ──────────────────────────────────────────────────────────
+
+const BUCKET_COMPRAS_FOTOS = 'compras-fotos'
+
+export type PedidoFoto = { id: string; pedido_id: string; url: string; caminho: string; created_at: string }
+
+function nomeSeguro(nome: string) {
+  return nome.normalize('NFD').replace(/[^\w.\-]/g, '_')
+}
+
+export async function listarFotosPedido(pedidoId: string): Promise<PedidoFoto[]> {
+  const { data } = await supabase
+    .from('pedidos_compra_fotos')
+    .select('*')
+    .eq('pedido_id', pedidoId)
+    .order('created_at', { ascending: true })
+  return (data as PedidoFoto[]) ?? []
+}
+
+// Carrega uma foto para o bucket e regista-a na tabela.
+export async function carregarFotoPedido(pedidoId: string, ficheiro: File): Promise<{ ok: boolean; motivo?: string }> {
+  const caminho = `${pedidoId}/${Date.now()}-${nomeSeguro(ficheiro.name)}`
+  const { error } = await supabase.storage.from(BUCKET_COMPRAS_FOTOS).upload(caminho, ficheiro)
+  if (error) return { ok: false, motivo: error.message }
+  const { data: pub } = supabase.storage.from(BUCKET_COMPRAS_FOTOS).getPublicUrl(caminho)
+  const { error: erroBd } = await supabase
+    .from('pedidos_compra_fotos')
+    .insert({ pedido_id: pedidoId, url: pub.publicUrl, caminho })
+  if (erroBd) return { ok: false, motivo: erroBd.message }
+  return { ok: true }
+}
+
+export async function apagarFotoPedido(fotoId: string, caminho: string) {
+  await supabase.storage.from(BUCKET_COMPRAS_FOTOS).remove([caminho])
+  return supabase.from('pedidos_compra_fotos').delete().eq('id', fotoId)
+}
+
 // ─── Fornecedores ────────────────────────────────────────────────────────────
 
 export async function listarFornecedores(soAtivos = false): Promise<Fornecedor[]> {
