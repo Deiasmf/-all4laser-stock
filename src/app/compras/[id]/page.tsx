@@ -7,11 +7,34 @@ import { useAuth } from '@/lib/auth'
 import {
   obterPedido, listarItens, listarCotacoes, listarFornecedores,
   criarCotacao, selecionarCotacao, aprovarEncomendar, registarRececao, marcarUrgente,
+  marcarCotacaoPaga, pedirPagamentoCotacao,
 } from '@/lib/compras'
-import { ESTADO_PEDIDO_CONFIG, type PedidoCompra, type PedidoItem, type Cotacao, type Fornecedor } from '@/types/compras'
+import { ESTADO_PEDIDO_CONFIG, DESTINATARIOS_PAGAMENTO, type PedidoCompra, type PedidoItem, type Cotacao, type Fornecedor } from '@/types/compras'
 
 function eur(v: number | null) {
   return v == null ? '—' : v.toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' })
+}
+
+function dataCurta(s: string | null) {
+  if (!s) return '—'
+  const d = new Date(s)
+  return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('pt-PT')
+}
+
+// Assunto + corpo (editáveis) do pedido de pagamento de uma cotação.
+function templatePagamento(pedidoNumero: string, c: Cotacao) {
+  const assunto = `Pedido de pagamento — ${c.fornecedor ?? 'fornecedor'} (${pedidoNumero})`
+  const corpo = [
+    'Olá,', '',
+    `Pedido de pagamento referente à cotação do fornecedor ${c.fornecedor ?? '—'}:`, '',
+    `• Pedido: ${pedidoNumero}`,
+    `• Fornecedor: ${c.fornecedor ?? '—'}`,
+    `• Valor: ${eur(c.valor_total)}`,
+    ...(c.prazo_entrega_dias != null ? [`• Prazo de entrega: ${c.prazo_entrega_dias} dias`] : []),
+    ...(c.notas ? [`• Notas: ${c.notas}`] : []),
+    '', 'Por favor procedam ao pagamento e marquem como pago na plataforma.', '', 'Obrigada.',
+  ].join('\n')
+  return { assunto, corpo }
 }
 
 export default function DetalhePedidoPage() {
@@ -29,6 +52,13 @@ export default function DetalhePedidoPage() {
   // receção
   const [rececaoAberta, setRececaoAberta] = useState(false)
   const [recebido, setRecebido] = useState<Record<string, string>>({})
+  // pedido de pagamento (email editável)
+  const [pagCot, setPagCot] = useState<Cotacao | null>(null)
+  const [pagDest, setPagDest] = useState('')
+  const [pagAssunto, setPagAssunto] = useState('')
+  const [pagCorpo, setPagCorpo] = useState('')
+  const [pagEnviando, setPagEnviando] = useState(false)
+  const [pagErro, setPagErro] = useState<string | null>(null)
 
   async function carregar() {
     const { data } = await obterPedido(id)
@@ -62,6 +92,33 @@ export default function DetalhePedidoPage() {
       notas: cotNotas.trim() || null,
     }, autor)
     setForn(''); setFornOutro(''); setValor(''); setPrazo(''); setCotNotas('')
+    carregar()
+  }
+
+  function abrirPedidoPagamento(c: Cotacao) {
+    const t = templatePagamento(pedido?.numero ?? '', c)
+    setPagCot(c)
+    setPagDest((c.destinatarios && c.destinatarios.length ? c.destinatarios : DESTINATARIOS_PAGAMENTO).join(', '))
+    setPagAssunto(t.assunto)
+    setPagCorpo(t.corpo)
+    setPagErro(null)
+  }
+
+  async function enviarPedidoPagamento() {
+    if (!pagCot) return
+    const destinatarios = pagDest.split(',').map((s) => s.trim()).filter(Boolean)
+    if (destinatarios.length === 0) { setPagErro('Indica pelo menos um destinatário.'); return }
+    setPagEnviando(true); setPagErro(null)
+    const r = await pedirPagamentoCotacao({ cotacaoId: pagCot.id, destinatarios, assunto: pagAssunto, corpo: pagCorpo })
+    setPagEnviando(false)
+    if (!r.ok) { setPagErro(r.erro ?? 'Falha ao enviar.'); return }
+    setPagCot(null)
+    carregar()
+  }
+
+  async function marcarPago(c: Cotacao) {
+    if (!window.confirm('Marcar esta cotação como paga? Pára os lembretes.')) return
+    await marcarCotacaoPaga(c.id, autor)
     carregar()
   }
 
