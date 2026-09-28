@@ -80,7 +80,6 @@ export async function marcarUrgente(id: string) {
 // Envia o pedido para o departamento de Compras: muda estado e cria comunicado
 // para a Sara (área 'compras'), urgente conforme a flag.
 export async function enviarParaCompras(pedido: PedidoCompra, nItens: number, autor: { id: string | null; nome: string | null }) {
-  await atualizarEstadoPedido(pedido.id, 'enviado')
   const autorNome = autor.nome ?? 'Equipa'
   await supabase.from('comunicados').insert({
     titulo: `Novo pedido de compra: ${pedido.numero ?? ''}`.trim(),
@@ -144,8 +143,7 @@ export async function criarCotacao(
   dados: { fornecedor: string | null; valor_total: number | null; prazo_entrega_dias: number | null; notas: string | null },
   autor: { id: string | null; nome: string | null }
 ) {
-  // Primeira cotação muda o pedido para 'em_cotacao' (se ainda enviado/rascunho).
-  await supabase.from('pedidos_compra').update({ estado: 'em_cotacao' }).eq('id', pedidoId).in('estado', ['rascunho', 'enviado'])
+  // O estado do pedido é definido manualmente pela equipa; adicionar cotação não o muda.
   return supabase.from('pedidos_compra_cotacoes').insert({
     pedido_id: pedidoId,
     ...dados,
@@ -158,11 +156,6 @@ export async function criarCotacao(
 export async function selecionarCotacao(pedidoId: string, cotacaoId: string) {
   await supabase.from('pedidos_compra_cotacoes').update({ selecionado: false }).eq('pedido_id', pedidoId)
   await supabase.from('pedidos_compra_cotacoes').update({ selecionado: true }).eq('id', cotacaoId)
-  await supabase.from('pedidos_compra').update({ estado: 'aprovado' }).eq('id', pedidoId)
-}
-
-export async function aprovarEncomendar(id: string) {
-  return atualizarEstadoPedido(id, 'encomendado')
 }
 
 // ─── Pedido de pagamento de uma cotação ───────────────────────────────────────
@@ -197,11 +190,10 @@ export async function pedirPagamentoCotacao(input: {
 
 // ─── Receção ─────────────────────────────────────────────────────────────────
 
-// Regista a receção: atualiza quantidade_recebida, incrementa o stock da peça
-// (via função SECURITY DEFINER) e ajusta o estado do pedido. Quando tudo for
-// recebido, marca as peças em falta ligadas como 'recebida'.
+// Regista a receção: atualiza quantidade_recebida e incrementa o stock da peça
+// (via função SECURITY DEFINER). O estado do pedido é definido manualmente pela
+// equipa. Quando tudo for recebido, marca as peças em falta ligadas como 'recebida'.
 export async function registarRececao(
-  pedidoId: string,
   itens: PedidoItem[],
   recebido: Record<string, number> // itemId -> quantidade recebida agora (total acumulado)
 ) {
@@ -217,10 +209,6 @@ export async function registarRececao(
   }
 
   const tudo = itens.every((it) => (recebido[it.id] ?? it.quantidade_recebida) >= it.quantidade)
-  const algum = itens.some((it) => (recebido[it.id] ?? it.quantidade_recebida) > 0)
-  const estado: EstadoPedido = tudo ? 'recebido_total' : algum ? 'recebido_parcial' : 'encomendado'
-  await atualizarEstadoPedido(pedidoId, estado)
-
   if (tudo) {
     const pecaIds = itens.map((i) => i.peca_id).filter((x): x is string => !!x)
     if (pecaIds.length) {
@@ -231,7 +219,7 @@ export async function registarRececao(
         .eq('estado', 'pedida')
     }
   }
-  return estado
+  return tudo
 }
 
 // ─── Fotos do pedido ──────────────────────────────────────────────────────────

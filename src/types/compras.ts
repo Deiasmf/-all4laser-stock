@@ -19,8 +19,7 @@ export type PecaFalta = {
 }
 
 export type EstadoPedido =
-  | 'rascunho' | 'enviado' | 'em_cotacao' | 'aprovado'
-  | 'encomendado' | 'recebido_parcial' | 'recebido_total' | 'cancelado'
+  | 'submetido' | 'em_analise' | 'aguarda_pagamento' | 'enviado' | 'recebido' | 'cancelado'
 
 export type PedidoCompra = {
   id: string
@@ -115,13 +114,11 @@ export type FornecedorInput = {
 }
 
 export const ESTADO_PEDIDO_CONFIG: Record<EstadoPedido, { label: string; color: string; bg: string }> = {
-  rascunho: { label: 'Rascunho', color: '#6B7280', bg: '#f1f2f4' },
-  enviado: { label: 'Enviado', color: '#2563EB', bg: '#e8f0fe' },
-  em_cotacao: { label: 'Em cotação', color: '#644de3', bg: '#ECE8FB' },
-  aprovado: { label: 'Aprovado', color: '#0891B2', bg: '#e3f5f9' },
-  encomendado: { label: 'Encomendado', color: '#D4820A', bg: '#fdf2e3' },
-  recebido_parcial: { label: 'Receção parcial', color: '#B45309', bg: '#fdf2e3' },
-  recebido_total: { label: 'Recebido', color: '#00A87A', bg: '#e6f7f1' },
+  submetido: { label: 'Submetido', color: '#2563EB', bg: '#e8f0fe' },
+  em_analise: { label: 'Em análise', color: '#644de3', bg: '#ECE8FB' },
+  aguarda_pagamento: { label: 'Aguarda pagamento', color: '#D4820A', bg: '#fdf2e3' },
+  enviado: { label: 'Enviado', color: '#0891B2', bg: '#e3f5f9' },
+  recebido: { label: 'Recebido', color: '#00A87A', bg: '#e6f7f1' },
   cancelado: { label: 'Cancelado', color: '#6B7280', bg: '#f1f2f4' },
 }
 
@@ -129,7 +126,7 @@ export const ESTADO_PEDIDO_OPCOES = Object.keys(ESTADO_PEDIDO_CONFIG) as EstadoP
 
 // Estados em que um pedido ainda está "em aberto" (peça com encomenda pendente).
 export const ESTADOS_PEDIDO_ABERTO: EstadoPedido[] = [
-  'rascunho', 'enviado', 'em_cotacao', 'aprovado', 'encomendado', 'recebido_parcial',
+  'submetido', 'em_analise', 'aguarda_pagamento', 'enviado',
 ]
 
 export const ESTADO_FALTA_CONFIG: Record<EstadoPecaFalta, { label: string; color: string; bg: string }> = {
