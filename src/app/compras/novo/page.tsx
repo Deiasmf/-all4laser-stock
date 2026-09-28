@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
-import { criarPedido, enviarParaCompras, listarFornecedores, type ItemInput } from '@/lib/compras'
+import { criarPedido, carregarFotoPedido, enviarParaCompras, listarFornecedores, type ItemInput } from '@/lib/compras'
 import PecaAutocomplete from '@/components/PecaAutocomplete'
 import { useFormDraft, RascunhoAviso } from '@/lib/useFormDraft'
 import type { Fornecedor } from '@/types/compras'
@@ -26,10 +26,15 @@ export default function NovoPedidoPage() {
   const [fornecedor, setFornecedor] = useState('')
   const [fornecedorOutro, setFornecedorOutro] = useState('')
   const [notas, setNotas] = useState('')
+  const [fotos, setFotos] = useState<File[]>([])
   const [aGuardar, setAGuardar] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
   useEffect(() => { listarFornecedores(true).then(setFornecedores) }, [])
+
+  // Pré-visualizações das fotos escolhidas (revoga os object URLs ao mudar).
+  const previews = useMemo(() => fotos.map((f) => ({ f, url: URL.createObjectURL(f) })), [fotos])
+  useEffect(() => () => { previews.forEach((p) => URL.revokeObjectURL(p.url)) }, [previews])
 
   function setLinha(i: number, patch: Partial<LinhaItem>) {
     setItens((arr) => arr.map((l, idx) => (idx === i ? { ...l, ...patch } : l)))
@@ -63,6 +68,11 @@ export default function NovoPedidoPage() {
     const nome = perfil?.nome ?? perfil?.email ?? null
     const { data, error } = await criarPedido({ urgente, notas: notasFinal, estado: 'rascunho' }, validos, uid, nome)
     if (error || !data) { setAGuardar(false); setErro('Erro ao criar o pedido: ' + (error?.message ?? '')); return }
+    // Envia as fotos escolhidas (o pedido já existe; falhas não impedem a criação).
+    for (const f of fotos) {
+      const r = await carregarFotoPedido(data.id, f)
+      if (!r.ok) alert('Pedido criado, mas uma foto não foi carregada: ' + (r.motivo ?? ''))
+    }
     if (emitir) await enviarParaCompras(data, validos.length, { id: uid, nome })
     setAGuardar(false)
     limpar()
@@ -131,6 +141,32 @@ export default function NovoPedidoPage() {
           <label style={lbl}>Notas gerais</label>
           <textarea className="a4l-input" rows={3} value={notas} onChange={(e) => setNotas(e.target.value)} />
         </div>
+      </div>
+
+      {/* Fotos */}
+      <div className="a4l-card" style={{ marginBottom: 14 }}>
+        <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--a4l-text-dark)', marginBottom: 8 }}>Fotos {fotos.length > 0 ? `(${fotos.length})` : ''}</h2>
+        {previews.length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 10, marginBottom: 12 }}>
+            {previews.map((p, i) => (
+              <div key={i} style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', border: '0.5px solid var(--a4l-border)' }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={p.url} alt="Pré-visualização" style={{ width: '100%', height: 110, objectFit: 'cover', display: 'block' }} />
+                <button
+                  type="button"
+                  onClick={() => setFotos((a) => a.filter((_, idx) => idx !== i))}
+                  title="Remover foto"
+                  style={{ position: 'absolute', top: 4, right: 4, width: 24, height: 24, borderRadius: 999, border: 'none', background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 15, lineHeight: '24px', cursor: 'pointer', padding: 0 }}
+                >×</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <label className="a4l-btn-ghost" style={{ alignSelf: 'flex-start', cursor: 'pointer' }}>
+          + Adicionar foto
+          <input type="file" accept="image/*" multiple onChange={(e) => { const fs = e.target.files; if (fs) setFotos((a) => [...a, ...Array.from(fs)]); e.target.value = '' }} style={{ display: 'none' }} />
+        </label>
+        <p style={{ marginTop: 8, fontSize: 12, color: 'var(--a4l-text-light)' }}>As fotos são guardadas ao criar o pedido.</p>
       </div>
 
       {erro && <div style={{ background: '#fdecea', color: '#DC2626', border: '1px solid #DC2626', borderRadius: 8, padding: '10px 12px', fontSize: 14, fontWeight: 600, marginBottom: 12 }}>{erro}</div>}
