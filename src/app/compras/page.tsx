@@ -107,7 +107,14 @@ export default function ComprasPage() {
                 <tr key={p.id} onClick={() => router.push(`/compras/${p.id}`)} style={{ cursor: 'pointer', borderBottom: '0.5px solid var(--a4l-border)' }}>
                   <td style={{ ...td, fontWeight: 700 }}>{p.numero ?? '—'}</td>
                   <td style={{ ...td, whiteSpace: 'normal', maxWidth: 280, color: 'var(--a4l-text-dark)' }}>
-                    {p.materiais.length ? p.materiais.join(', ') : '—'}
+                    {p.materiais.length === 0 ? '—' : (
+                      <span title={p.materiais.join(', ')}>
+                        {p.materiais.slice(0, 3).join(', ')}
+                        {p.materiais.length > 3 && (
+                          <span style={{ color: 'var(--a4l-text-light)', fontWeight: 600 }}> +{p.materiais.length - 3}</span>
+                        )}
+                      </span>
+                    )}
                   </td>
                   <td style={td}>{formatarData(p.created_at)}</td>
                   <td style={td}><EstadoTag estado={p.estado} /></td>
