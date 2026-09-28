@@ -97,6 +97,37 @@ export async function eliminarPedido(id: string) {
   return supabase.from('pedidos_compra').delete().eq('id', id)
 }
 
+// Atualiza campos do próprio pedido (urgência, notas e/ou data do documento).
+export async function atualizarPedido(
+  id: string,
+  patch: { urgente?: boolean; notas?: string | null; created_at?: string }
+) {
+  return supabase.from('pedidos_compra').update(patch).eq('id', id)
+}
+
+// ─── Itens do pedido (edição) ────────────────────────────────────────────────
+
+export async function adicionarItemPedido(pedidoId: string, item: ItemInput) {
+  return supabase.from('pedidos_compra_itens').insert({
+    pedido_id: pedidoId,
+    peca_id: item.peca_id,
+    peca_nome: item.peca_nome.trim(),
+    quantidade: item.quantidade,
+    notas: item.notas,
+  })
+}
+
+export async function atualizarItemPedido(
+  itemId: string,
+  patch: { peca_id?: string | null; peca_nome?: string; quantidade?: number; notas?: string | null }
+) {
+  return supabase.from('pedidos_compra_itens').update(patch).eq('id', itemId)
+}
+
+export async function eliminarItemPedido(itemId: string) {
+  return supabase.from('pedidos_compra_itens').delete().eq('id', itemId)
+}
+
 // ─── Cotações ────────────────────────────────────────────────────────────────
 
 export async function listarCotacoes(pedidoId: string): Promise<Cotacao[]> {

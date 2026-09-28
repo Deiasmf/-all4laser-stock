@@ -4,11 +4,13 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
+import PecaAutocomplete from '@/components/PecaAutocomplete'
 import {
   obterPedido, listarItens, listarCotacoes, listarFornecedores,
   criarCotacao, selecionarCotacao, aprovarEncomendar, registarRececao, marcarUrgente,
   marcarCotacaoPaga, pedirPagamentoCotacao,
-  listarFotosPedido, carregarFotoPedido, apagarFotoPedido, type PedidoFoto,
+  atualizarPedido, adicionarItemPedido, atualizarItemPedido, eliminarItemPedido,
+  listarFotosPedido, carregarFotoPedido, apagarFotoPedido, type PedidoFoto, type ItemInput,
 } from '@/lib/compras'
 import { ESTADO_PEDIDO_CONFIG, DESTINATARIOS_PAGAMENTO, type PedidoCompra, type PedidoItem, type Cotacao, type Fornecedor } from '@/types/compras'
 
@@ -21,6 +23,16 @@ function dataCurta(s: string | null) {
   const d = new Date(s)
   return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('pt-PT')
 }
+
+// created_at (ISO) → yyyy-mm-dd para o <input type="date">.
+function dataInput(s: string | null): string {
+  if (!s) return ''
+  const d = new Date(s)
+  if (isNaN(d.getTime())) return ''
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+type LinhaEdit = { id?: string; peca_id: string | null; peca_nome: string; quantidade: string; notas: string }
 
 // Assunto + corpo (editáveis) do pedido de pagamento de uma cotação.
 function templatePagamento(pedidoNumero: string, c: Cotacao) {
@@ -49,6 +61,13 @@ export default function DetalhePedidoPage() {
   // fotos
   const [fotos, setFotos] = useState<PedidoFoto[]>([])
   const [fotoOcupado, setFotoOcupado] = useState(false)
+  // edição do pedido
+  const [editando, setEditando] = useState(false)
+  const [urgenteEd, setUrgenteEd] = useState(false)
+  const [dataEd, setDataEd] = useState('')
+  const [notasEd, setNotasEd] = useState('')
+  const [itensEd, setItensEd] = useState<LinhaEdit[]>([])
+  const [aGuardarEd, setAGuardarEd] = useState(false)
 
   // form cotação
   const [forn, setForn] = useState(''); const [fornOutro, setFornOutro] = useState('')
@@ -127,6 +146,53 @@ export default function DetalhePedidoPage() {
     carregar()
   }
 
+  function abrirEdicao() {
+    if (!pedido) return
+    setUrgenteEd(pedido.urgente)
+    setNotasEd(pedido.notas ?? '')
+    setDataEd(dataInput(pedido.created_at))
+    setItensEd(itens.map((it) => ({ id: it.id, peca_id: it.peca_id, peca_nome: it.peca_nome ?? '', quantidade: String(it.quantidade), notas: it.notas ?? '' })))
+    setEditando(true)
+  }
+
+  function setLinhaEd(i: number, patch: Partial<LinhaEdit>) {
+    setItensEd((arr) => arr.map((l, idx) => (idx === i ? { ...l, ...patch } : l)))
+  }
+
+  async function guardarEdicao() {
+    if (!pedido) return
+    const linhas = itensEd.filter((l) => l.peca_nome.trim())
+    if (linhas.length === 0) { alert('O pedido tem de ter pelo menos um item.'); return }
+    setAGuardarEd(true)
+
+    // Dados do pedido (data às 12h para não trocar de dia por fuso horário).
+    const createdISO = dataEd ? new Date(dataEd + 'T12:00:00').toISOString() : undefined
+    await atualizarPedido(id, { urgente: urgenteEd, notas: notasEd.trim() || null, ...(createdISO ? { created_at: createdISO } : {}) })
+
+    // Itens: apaga os removidos, atualiza os alterados, cria os novos.
+    const originais = new Map(itens.map((it) => [it.id, it]))
+    const idsMantidos = new Set(itensEd.filter((l) => l.id && l.peca_nome.trim()).map((l) => l.id))
+    for (const it of itens) if (!idsMantidos.has(it.id)) await eliminarItemPedido(it.id)
+    for (const l of linhas) {
+      const nome = l.peca_nome.trim()
+      const qtd = Math.max(1, Number(l.quantidade) || 1)
+      const notas = l.notas.trim() || null
+      if (l.id) {
+        const o = originais.get(l.id)
+        if (o && (o.peca_nome !== nome || o.peca_id !== l.peca_id || o.quantidade !== qtd || (o.notas ?? null) !== notas)) {
+          await atualizarItemPedido(l.id, { peca_id: l.peca_id, peca_nome: nome, quantidade: qtd, notas })
+        }
+      } else {
+        const novo: ItemInput = { peca_id: l.peca_id, peca_nome: nome, quantidade: qtd, notas }
+        await adicionarItemPedido(id, novo)
+      }
+    }
+
+    setAGuardarEd(false)
+    setEditando(false)
+    carregar()
+  }
+
   async function adicionarFotos(files: FileList | null) {
     if (!files || files.length === 0) return
     setFotoOcupado(true)
@@ -162,25 +228,79 @@ export default function DetalhePedidoPage() {
         <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--a4l-text-dark)' }}>{pedido.numero}</h1>
         <span style={{ fontSize: 12, fontWeight: 700, color: cfg.color, background: cfg.bg, borderRadius: 999, padding: '3px 12px' }}>{cfg.label}</span>
         {pedido.urgente && <span style={{ fontSize: 13, fontWeight: 700, color: '#DC2626' }}>🔴 Urgente</span>}
-        {!pedido.urgente && <button className="a4l-btn-ghost" style={{ marginLeft: 'auto' }} onClick={async () => { await marcarUrgente(id); carregar() }}>Marcar como urgente</button>}
+        {!editando && (
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {!pedido.urgente && <button className="a4l-btn-ghost" onClick={async () => { await marcarUrgente(id); carregar() }}>Marcar como urgente</button>}
+            <button className="a4l-btn-ghost" onClick={abrirEdicao}>✎ Editar</button>
+          </div>
+        )}
       </div>
 
-      {/* Itens */}
-      <div className="a4l-card" style={{ marginBottom: 14 }}>
-        <h2 style={h2}>Itens ({itens.length})</h2>
-        {itens.map((it) => (
-          <div key={it.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '8px 0', borderTop: '0.5px solid var(--a4l-border)', fontSize: 14 }}>
-            <div>
-              <div style={{ fontWeight: 600, color: 'var(--a4l-text-dark)' }}>{it.peca_nome}</div>
-              {it.notas && <div style={{ fontSize: 12.5, color: 'var(--a4l-text-light)' }}>{it.notas}</div>}
+      {/* Itens (leitura) ou formulário de edição */}
+      {editando ? (
+        <div className="a4l-card" style={{ marginBottom: 14 }}>
+          <h2 style={h2}>Editar pedido</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={lbl}>Data do pedido</span>
+                <input className="a4l-input" type="date" value={dataEd} onChange={(e) => setDataEd(e.target.value)} />
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBottom: 10, cursor: 'pointer', fontWeight: 700, color: urgenteEd ? '#DC2626' : 'var(--a4l-text-dark)' }}>
+                <input type="checkbox" checked={urgenteEd} onChange={(e) => setUrgenteEd(e.target.checked)} />
+                {urgenteEd ? '🔴 Urgente' : 'Marcar urgente'}
+              </label>
             </div>
-            <div style={{ whiteSpace: 'nowrap', color: 'var(--a4l-text-mid)' }}>
-              {it.quantidade_recebida > 0 ? `${it.quantidade_recebida}/${it.quantidade}` : `qt. ${it.quantidade}`}
+
+            <div>
+              <span style={lbl}>Itens a comprar</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 6 }}>
+                {itensEd.map((l, i) => (
+                  <div key={l.id ?? `novo-${i}`} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1, minWidth: 200 }}>
+                      <PecaAutocomplete
+                        valor={l.peca_nome}
+                        onTexto={(v) => setLinhaEd(i, { peca_nome: v, peca_id: null })}
+                        onEscolher={(p) => setLinhaEd(i, { peca_nome: p.nome, peca_id: p.id })}
+                      />
+                    </div>
+                    <input className="a4l-input" style={{ width: 70 }} type="number" min={1} value={l.quantidade} onChange={(e) => setLinhaEd(i, { quantidade: e.target.value })} />
+                    <input className="a4l-input" style={{ flex: 1, minWidth: 140 }} placeholder="Notas (opcional)" value={l.notas} onChange={(e) => setLinhaEd(i, { notas: e.target.value })} />
+                    <button type="button" onClick={() => setItensEd((a) => a.filter((_, idx) => idx !== i))} className="a4l-btn-ghost" style={{ padding: '8px 12px' }} title="Remover item">×</button>
+                  </div>
+                ))}
+              </div>
+              <button type="button" onClick={() => setItensEd((a) => [...a, { peca_id: null, peca_nome: '', quantidade: '1', notas: '' }])} className="a4l-btn-ghost" style={{ marginTop: 12 }}>+ Adicionar item</button>
+            </div>
+
+            <div>
+              <span style={lbl}>Notas gerais</span>
+              <textarea className="a4l-input" rows={3} value={notasEd} onChange={(e) => setNotasEd(e.target.value)} style={{ marginTop: 6 }} />
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="a4l-btn" disabled={aGuardarEd} onClick={guardarEdicao}>{aGuardarEd ? 'A guardar...' : 'Guardar alterações'}</button>
+              <button className="a4l-btn-ghost" disabled={aGuardarEd} onClick={() => setEditando(false)}>Cancelar</button>
             </div>
           </div>
-        ))}
-        {pedido.notas && <p style={{ marginTop: 12, fontSize: 13, color: 'var(--a4l-text-mid)', whiteSpace: 'pre-wrap' }}>{pedido.notas}</p>}
-      </div>
+        </div>
+      ) : (
+        <div className="a4l-card" style={{ marginBottom: 14 }}>
+          <h2 style={h2}>Itens ({itens.length}) · {dataCurta(pedido.created_at)}</h2>
+          {itens.map((it) => (
+            <div key={it.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '8px 0', borderTop: '0.5px solid var(--a4l-border)', fontSize: 14 }}>
+              <div>
+                <div style={{ fontWeight: 600, color: 'var(--a4l-text-dark)' }}>{it.peca_nome}</div>
+                {it.notas && <div style={{ fontSize: 12.5, color: 'var(--a4l-text-light)' }}>{it.notas}</div>}
+              </div>
+              <div style={{ whiteSpace: 'nowrap', color: 'var(--a4l-text-mid)' }}>
+                {it.quantidade_recebida > 0 ? `${it.quantidade_recebida}/${it.quantidade}` : `qt. ${it.quantidade}`}
+              </div>
+            </div>
+          ))}
+          {pedido.notas && <p style={{ marginTop: 12, fontSize: 13, color: 'var(--a4l-text-mid)', whiteSpace: 'pre-wrap' }}>{pedido.notas}</p>}
+        </div>
+      )}
 
       {/* Fotos */}
       <div className="a4l-card" style={{ marginBottom: 14 }}>
@@ -289,4 +409,5 @@ export default function DetalhePedidoPage() {
 
 const voltar: React.CSSProperties = { color: 'var(--a4l-text-light)', textDecoration: 'none', fontSize: 14 }
 const h2: React.CSSProperties = { fontSize: 15, fontWeight: 700, color: 'var(--a4l-text-dark)', marginBottom: 8 }
+const lbl: React.CSSProperties = { display: 'block', fontSize: 12.5, fontWeight: 600, color: 'var(--a4l-text-mid)', marginBottom: 4 }
 const backdrop: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(13,11,43,0.4)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }
