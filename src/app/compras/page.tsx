@@ -24,6 +24,7 @@ function formatarData(d: string | null) {
 // Colunas para exportação (espelham a tabela de pedidos de compra)
 const colunasExport: ColunaExport<PedidoComContagem>[] = [
   { cabecalho: 'Número', valor: (p) => p.numero },
+  { cabecalho: 'Material', valor: (p) => p.materiais.join('; ') },
   { cabecalho: 'Data', valor: (p) => formatarData(p.created_at) },
   { cabecalho: 'Estado', valor: (p) => ESTADO_PEDIDO_CONFIG[p.estado].label },
   { cabecalho: 'Urgente', valor: (p) => (p.urgente ? 'Sim' : 'Não') },
@@ -60,7 +61,7 @@ export default function ComprasPage() {
       if (fEstado && p.estado !== fEstado) return false
       if (fUrgente && !p.urgente) return false
       if (fMes && (p.created_at ?? '').slice(0, 7) !== fMes) return false
-      if (q && !`${p.numero ?? ''} ${p.criado_por_nome ?? ''}`.toLowerCase().includes(q)) return false
+      if (q && !`${p.numero ?? ''} ${p.criado_por_nome ?? ''} ${p.materiais.join(' ')}`.toLowerCase().includes(q)) return false
       return true
     })
   }, [pedidos, fEstado, fUrgente, fMes, pesquisa])
@@ -73,7 +74,7 @@ export default function ComprasPage() {
       </div>
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        <input className="a4l-input" style={{ flex: 1, minWidth: 200 }} placeholder="Pesquisar por nº ou autor..." value={pesquisa} onChange={(e) => setPesquisa(e.target.value)} />
+        <input className="a4l-input" style={{ flex: 1, minWidth: 200 }} placeholder="Pesquisar por nº, autor ou material..." value={pesquisa} onChange={(e) => setPesquisa(e.target.value)} />
         <select className="a4l-input" value={fEstado} onChange={(e) => setFEstado(e.target.value)}>
           <option value="">Todos os estados</option>
           {ESTADO_PEDIDO_OPCOES.map((e) => <option key={e} value={e}>{ESTADO_PEDIDO_CONFIG[e].label}</option>)}
@@ -96,7 +97,7 @@ export default function ComprasPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr>
-                {['Número', 'Data', 'Estado', '', 'Itens', 'Criado por'].map((h, i) => (
+                {['Número', 'Material', 'Data', 'Estado', '', 'Itens', 'Criado por'].map((h, i) => (
                   <th key={i} style={th}>{h}</th>
                 ))}
               </tr>
@@ -105,6 +106,9 @@ export default function ComprasPage() {
               {filtrados.map((p) => (
                 <tr key={p.id} onClick={() => router.push(`/compras/${p.id}`)} style={{ cursor: 'pointer', borderBottom: '0.5px solid var(--a4l-border)' }}>
                   <td style={{ ...td, fontWeight: 700 }}>{p.numero ?? '—'}</td>
+                  <td style={{ ...td, whiteSpace: 'normal', maxWidth: 280, color: 'var(--a4l-text-dark)' }}>
+                    {p.materiais.length ? p.materiais.join(', ') : '—'}
+                  </td>
                   <td style={td}>{formatarData(p.created_at)}</td>
                   <td style={td}><EstadoTag estado={p.estado} /></td>
                   <td style={td}>{p.urgente ? '🔴' : ''}</td>
