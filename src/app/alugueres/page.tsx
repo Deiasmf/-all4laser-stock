@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
@@ -612,17 +612,40 @@ function FormRecolha() {
     carregar()
   }, [])
 
+  // Agrupa laser + Zimmer da mesma entrega numa só entrada: um aluguer (conjunto)
+  // não deve dar duas linhas. O Zimmer (detetado pelo modelo Cryo/Zimmer) associa-se
+  // ao laser com o mesmo cliente e a mesma data de entrega. A recolha fecha as
+  // linhas do conjunto de uma vez.
+  const entradas = useMemo(() => {
+    const ehZimmer = (a: Aluguer) => /cryo|zimmer/i.test(a.modelo ?? '')
+    const grupos: { principal: Aluguer; extras: Aluguer[] }[] = abertos
+      .filter((a) => !ehZimmer(a))
+      .map((principal) => ({ principal, extras: [] as Aluguer[] }))
+    for (const z of abertos.filter(ehZimmer)) {
+      const alvo = grupos.find(
+        (g) => g.extras.length === 0
+          && (g.principal.cliente_id ?? '') === (z.cliente_id ?? '')
+          && (g.principal.data_entrega ?? '') === (z.data_entrega ?? ''),
+      )
+      if (alvo) alvo.extras.push(z)
+      else grupos.push({ principal: z, extras: [] }) // Zimmer sem laser: entrada própria
+    }
+    return grupos
+  }, [abertos])
+
   async function guardar() {
-    if (!selecionado) return setErro('Escolhe o aluguer a fechar.')
+    const entrada = entradas.find((e) => e.principal.id === selecionado)
+    if (!entrada) return setErro('Escolhe o aluguer a fechar.')
+    const ids = [entrada.principal.id, ...entrada.extras.map((x) => x.id)]
     setErro(null)
     setAGuardar(true)
     const { error } = await supabase
       .from('alugueres')
       .update({ data_recolha: dataRecolha || hoje(), updated_at: new Date().toISOString() })
-      .eq('id', selecionado)
+      .in('id', ids)
     setAGuardar(false)
     if (error) return setErro('Erro a registar a recolha: ' + error.message)
-    setOkMsg('Recolha registada.')
+    setOkMsg(ids.length > 1 ? `Recolha registada (${ids.length} equipamentos).` : 'Recolha registada.')
     setSelecionado(null)
     setDataRecolha(hoje())
     carregar()
@@ -634,22 +657,31 @@ function FormRecolha() {
       {erro && <div style={s.erro}>{erro}</div>}
 
       <label style={s.label}>Alugueres em curso (por devolver) <span style={s.nota}>— exclui zona “Mensais”</span></label>
-      {abertos.length === 0 ? (
+      {entradas.length === 0 ? (
         <div style={s.nota}>Não há alugueres em aberto.</div>
       ) : (
         <div style={s.listaAbertos}>
-          {abertos.map((a) => (
-            <button
-              key={a.id}
-              style={{ ...s.itemAberto, ...(selecionado === a.id ? s.itemSelecionado : {}) }}
-              onClick={() => setSelecionado(a.id)}
-            >
-              <strong>{a.cliente_nome || (a.equipamento_id ? rotuloPorEquip.get(a.equipamento_id) : null) || '—'}</strong>
-              <span style={s.itemDetalhe}>
-                {[a.modelo, a.serial_number].filter(Boolean).join(' · ')} · entrega {a.data_entrega}
-              </span>
-            </button>
-          ))}
+          {entradas.map((e) => {
+            const itens = [e.principal, ...e.extras]
+            const rotulo = e.principal.cliente_nome
+              || (e.principal.equipamento_id ? rotuloPorEquip.get(e.principal.equipamento_id) : null)
+              || '—'
+            const equipTxt = itens
+              .map((x) => [x.modelo, x.serial_number].filter(Boolean).join(' · '))
+              .join('  +  ')
+            return (
+              <button
+                key={e.principal.id}
+                style={{ ...s.itemAberto, ...(selecionado === e.principal.id ? s.itemSelecionado : {}) }}
+                onClick={() => setSelecionado(e.principal.id)}
+              >
+                <strong>{rotulo}</strong>
+                <span style={s.itemDetalhe}>
+                  {equipTxt} · entrega {e.principal.data_entrega}
+                </span>
+              </button>
+            )
+          })}
         </div>
       )}
 
