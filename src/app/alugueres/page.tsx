@@ -617,7 +617,9 @@ function FormRecolha() {
   // ao laser com o mesmo cliente e a mesma data de entrega. A recolha fecha as
   // linhas do conjunto de uma vez.
   const entradas = useMemo(() => {
-    const ehZimmer = (a: Aluguer) => /cryo|zimmer/i.test(a.modelo ?? '')
+    // O Zimmer é a linha "não faturar" que a entrega cria a par do laser
+    // (marcador fiável); o modelo Cryo/Zimmer é fallback para dados antigos.
+    const ehZimmer = (a: Aluguer) => a.nao_faturar === true || /cryo|zimmer/i.test(a.modelo ?? '')
     const grupos: { principal: Aluguer; extras: Aluguer[] }[] = abertos
       .filter((a) => !ehZimmer(a))
       .map((principal) => ({ principal, extras: [] as Aluguer[] }))
