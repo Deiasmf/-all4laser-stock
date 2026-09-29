@@ -22,8 +22,8 @@ type Linha = {
 }
 
 export default function EnvioMensalPage() {
-  const { isAdmin, isFinanceiro, perfilCarregado } = useAuth()
-  const podeAceder = isAdmin || isFinanceiro
+  const { isFinanceiro, perfilCarregado } = useAuth()
+  const podeAceder = isFinanceiro   // admin/financeiro (alinha com a RLS)
   const [mes, setMes] = useState(mesAtual())
   const chave = 'normal'   // template único
   const [linhas, setLinhas] = useState<Linha[]>([])

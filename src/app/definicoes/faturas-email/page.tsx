@@ -9,8 +9,8 @@ import { useAuth } from '@/lib/auth'
 import { PLACEHOLDERS_FATURA, type FaturaEmailTemplate } from '@/lib/faturaEmailRender'
 
 export default function TemplatesFaturaPage() {
-  const { isAdmin, isFinanceiro, perfilCarregado } = useAuth()
-  const podeAceder = isAdmin || isFinanceiro
+  const { isFinanceiro, perfilCarregado } = useAuth()
+  const podeAceder = isFinanceiro   // admin/financeiro (alinha com a RLS)
   const [assunto, setAssunto] = useState('')
   const [corpo, setCorpo] = useState('')
   const [incluirAssinatura, setIncluirAssinatura] = useState(true)
