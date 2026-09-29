@@ -8,6 +8,7 @@ import ClienteForm from '@/components/ClienteForm'
 import { limparRascunho } from '@/lib/useFormDraft'
 import BotaoPdf from '@/components/BotaoPdf'
 import CategoriaDefeitoCliente from '@/components/CategoriaDefeitoCliente'
+import Cliente360 from '@/components/Cliente360'
 import { obterCliente, atualizarCliente, eliminarCliente, historicoCliente } from '@/lib/clientes'
 import type { Cliente, ClienteInput, HistoricoItem } from '@/types/cliente'
 
@@ -186,6 +187,10 @@ export default function FichaClientePage() {
           </Bloco>
         )}
         {isFinanceiro && <CategoriaDefeitoCliente clienteId={cliente.id} />}
+      </div>
+
+      <div style={{ marginTop: 20 }}>
+        <Cliente360 cliente={cliente} />
       </div>
 
       <h2 style={s.subtitulo}>Histórico ({historico.length})</h2>
