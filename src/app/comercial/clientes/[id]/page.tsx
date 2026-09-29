@@ -9,21 +9,8 @@ import { limparRascunho } from '@/lib/useFormDraft'
 import BotaoPdf from '@/components/BotaoPdf'
 import CategoriaDefeitoCliente from '@/components/CategoriaDefeitoCliente'
 import Cliente360 from '@/components/Cliente360'
-import { obterCliente, atualizarCliente, eliminarCliente, historicoCliente } from '@/lib/clientes'
-import type { Cliente, ClienteInput, HistoricoItem } from '@/types/cliente'
-
-const HIST_ICON: Record<HistoricoItem['tipo'], string> = {
-  aluguer: '🔄', reserva: '📅', nota: '📋', contrato: '📄',
-}
-const HIST_LABEL: Record<HistoricoItem['tipo'], string> = {
-  aluguer: 'Aluguer', reserva: 'Reserva', nota: 'Nota de encomenda', contrato: 'Contrato',
-}
-
-function fmt(d: string | null) {
-  if (!d) return '—'
-  const dt = new Date(d)
-  return isNaN(dt.getTime()) ? d : dt.toLocaleDateString('pt-PT')
-}
+import { obterCliente, atualizarCliente, eliminarCliente } from '@/lib/clientes'
+import type { Cliente, ClienteInput } from '@/types/cliente'
 
 export default function FichaClientePage() {
   const params = useParams()
@@ -32,7 +19,6 @@ export default function FichaClientePage() {
   const id = params.id as string
 
   const [cliente, setCliente] = useState<Cliente | null>(null)
-  const [historico, setHistorico] = useState<HistoricoItem[]>([])
   const [carregando, setCarregando] = useState(true)
   const [naoEncontrado, setNaoEncontrado] = useState(false)
   const [editar, setEditar] = useState(false)
@@ -47,7 +33,6 @@ export default function FichaClientePage() {
       if (!data) { setNaoEncontrado(true); setCarregando(false); return }
       const cl = data as Cliente
       setCliente(cl)
-      setHistorico(await historicoCliente(cl))
       setCarregando(false)
     })
     return () => { activo = false }
@@ -65,7 +50,6 @@ export default function FichaClientePage() {
     }
     const cl = data as Cliente
     setCliente(cl)
-    setHistorico(await historicoCliente(cl))
     setAGuardar(false)
     setEditar(false)
     limparRascunho(`cliente:edit:${id}`)
@@ -192,31 +176,6 @@ export default function FichaClientePage() {
       <div style={{ marginTop: 20 }}>
         <Cliente360 cliente={cliente} />
       </div>
-
-      <h2 style={s.subtitulo}>Histórico ({historico.length})</h2>
-      {historico.length === 0 ? (
-        <p style={s.estado}>Sem alugueres, reservas, notas ou contratos para este cliente.</p>
-      ) : (
-        <div style={s.histWrap}>
-          {historico.map((h) => {
-            const conteudo = (
-              <>
-                <span style={s.histIcon}>{HIST_ICON[h.tipo]}</span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={s.histTitulo}>{h.titulo || HIST_LABEL[h.tipo]}</div>
-                  <div style={s.histDetalhe}>{HIST_LABEL[h.tipo]} · {h.detalhe}</div>
-                </div>
-                <div style={s.histData}>{fmt(h.data)}</div>
-              </>
-            )
-            return h.href ? (
-              <Link key={`${h.tipo}-${h.id}`} href={h.href} style={{ ...s.histItem, ...s.histLink }}>{conteudo}</Link>
-            ) : (
-              <div key={`${h.tipo}-${h.id}`} style={s.histItem}>{conteudo}</div>
-            )
-          })}
-        </div>
-      )}
     </main>
   )
 }

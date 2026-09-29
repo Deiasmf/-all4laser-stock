@@ -120,6 +120,42 @@ export async function apagarNotaCliente(id: string) {
   return supabase.from('cliente_notas').delete().eq('id', id)
 }
 
+// ─── Documentos & Comunicações ───────────────────────────────────────────────
+export type DocItem = { id: string; tipo: string; titulo: string; detalhe: string; data: string | null; href?: string }
+
+export async function carregarFichasEnviadas(clienteId: string): Promise<DocItem[]> {
+  const { data } = await supabase
+    .from('ficha_envios')
+    .select('id, para_email, created_at')
+    .eq('cliente_id', clienteId)
+    .order('created_at', { ascending: false })
+  return ((data as { id: string; para_email: string | null; created_at: string }[]) ?? [])
+    .map((f) => ({ id: f.id, tipo: 'ficha', titulo: 'Ficha de produto enviada', detalhe: f.para_email ?? '', data: f.created_at }))
+}
+
+export async function carregarAvisosPagamento(clienteId: string): Promise<DocItem[]> {
+  const { data } = await supabase
+    .from('financeiro_pedidos_pagamento')
+    .select('id, destinatario, enviado_em, enviado_por_nome')
+    .eq('cliente_id', clienteId)
+    .order('enviado_em', { ascending: false })
+  return ((data as { id: string; destinatario: string | null; enviado_em: string | null; enviado_por_nome: string | null }[]) ?? [])
+    .map((p) => ({ id: p.id, tipo: 'aviso', titulo: 'Pedido de pagamento enviado', detalhe: [p.destinatario, p.enviado_por_nome].filter(Boolean).join(' · '), data: p.enviado_em }))
+}
+
+// ─── Timeline unificada ──────────────────────────────────────────────────────
+export type TimelineTipo = 'aluguer' | 'reserva' | 'nota' | 'contrato' | 'envio' | 'entrega' | 'fatura' | 'pagamento' | 'aviso' | 'ficha' | 'nota_interna'
+export type TimelineEvento = { chave: string; tipo: TimelineTipo; data: string | null; titulo: string; detalhe: string; href?: string }
+export const TIMELINE_ICONE: Record<TimelineTipo, string> = {
+  aluguer: '🔄', reserva: '📅', nota: '📄', contrato: '📑', envio: '📦', entrega: '✅',
+  fatura: '🧾', pagamento: '💶', aviso: '📧', ficha: '📃', nota_interna: '📝',
+}
+export const TIMELINE_LABEL: Record<TimelineTipo, string> = {
+  aluguer: 'Aluguer', reserva: 'Reserva', nota: 'Nota de encomenda', contrato: 'Contrato',
+  envio: 'Envio', entrega: 'Entrega', fatura: 'Fatura', pagamento: 'Pagamento',
+  aviso: 'Aviso', ficha: 'Ficha', nota_interna: 'Nota interna',
+}
+
 // ─── Indicadores de topo (composto) ──────────────────────────────────────────
 export type Indicadores360 = {
   saldoCC: number
