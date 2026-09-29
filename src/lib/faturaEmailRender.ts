@@ -48,7 +48,7 @@ export const PLACEHOLDERS_FATURA: { chave: keyof FaturaEmailVars; desc: string }
 ]
 
 // Placeholders que, se vazios, tornam o email incompleto (avisar antes de enviar).
-export const CRITICOS: (keyof FaturaEmailVars)[] = ['n_fatura', 'data_fatura', 'valor_total', 'nome_cliente']
+export const CRITICOS: (keyof FaturaEmailVars)[] = ['n_fatura', 'data_fatura', 'valor_total']
 
 // Substitui {chave} e {{chave}} pelos valores; chaves em falta ficam vazias.
 // Faz primeiro as chavetas duplas e só depois as simples (para não partir
@@ -81,10 +81,14 @@ export function periodoDoMes(mes: string | null | undefined): string {
   return idx >= 0 && idx < 12 ? `${MESES_PT[idx]} ${m[1]}` : (mes ?? '')
 }
 
-// Número da fatura a partir do nome do ficheiro PDF (ex.: 'FT2026-06.pdf' -> 'FT2026-06').
+// Número da fatura a partir do nome do ficheiro PDF. O nome costuma ser
+// 'NUMERO_CODIGOCLIENTE_HASH.pdf' (ex.: '71000000723_CAROLINAPE_3EBA8.pdf');
+// ficamos só com o número ('71000000723'). Sem '_', devolve o nome sem extensão
+// (ex.: 'FT2026-06.pdf' -> 'FT2026-06').
 export function nFaturaDoNome(nome: string | null | undefined): string {
   if (!nome) return ''
-  return nome.replace(/\.[a-z0-9]+$/i, '').trim()
+  const semExt = nome.replace(/\.[a-z0-9]+$/i, '').trim()
+  return semExt.split('_')[0].trim()
 }
 
 // Formata o valor em euros (ex.: 1234.5 -> '1.234,50').
