@@ -7,11 +7,14 @@ import { formatarEuro, formatarData } from '@/lib/contasCorrentes'
 import {
   carregarFinanceiroCliente, carregarEnvios, carregarTracking, carregarAlugueres,
   carregarEquipamentos, carregarPecasParceiro, listarNotasCliente, criarNotaCliente, apagarNotaCliente,
-  emTransito,
+  carregarFichasEnviadas, carregarAvisosPagamento, emTransito,
+  TIMELINE_ICONE, TIMELINE_LABEL,
   type FinanceiroCliente, type EnvioResumo, type TrackingResumo, type AluguerResumo,
-  type EquipamentoResumo, type PecaSaldo, type ClienteNota,
+  type EquipamentoResumo, type PecaSaldo, type ClienteNota, type DocItem,
+  type TimelineEvento, type TimelineTipo,
 } from '@/lib/cliente360'
-import type { Cliente } from '@/types/cliente'
+import { historicoCliente } from '@/lib/clientes'
+import type { Cliente, HistoricoItem } from '@/types/cliente'
 
 // Vista 360º agregada por cliente. Só lê dos módulos existentes; a única secção
 // com escrita é "Notas internas". A secção Financeiro só aparece a admin/financeiro.
@@ -24,24 +27,32 @@ export default function Cliente360({ cliente }: { cliente: Cliente }) {
   const [equipamentos, setEquipamentos] = useState<EquipamentoResumo[]>([])
   const [pecas, setPecas] = useState<PecaSaldo[]>([])
   const [notas, setNotas] = useState<ClienteNota[]>([])
+  const [historico, setHistorico] = useState<HistoricoItem[]>([])
+  const [fichas, setFichas] = useState<DocItem[]>([])
+  const [avisos, setAvisos] = useState<DocItem[]>([])
   const [carregando, setCarregando] = useState(true)
   const [novaNota, setNovaNota] = useState('')
   const [aGuardarNota, setAGuardarNota] = useState(false)
+  const [filtro, setFiltro] = useState<TimelineTipo | 'todos'>('todos')
 
   const carregar = useCallback(async () => {
     setCarregando(true)
-    const [en, tr, al, eq, pc, no, f] = await Promise.all([
+    const [en, tr, al, eq, pc, no, hi, fi, f, av] = await Promise.all([
       carregarEnvios(cliente.id),
       carregarTracking(cliente.id),
       carregarAlugueres(cliente.id),
       carregarEquipamentos(cliente.nome),
       carregarPecasParceiro(cliente.nome),
       listarNotasCliente(cliente.id),
+      historicoCliente(cliente),
+      carregarFichasEnviadas(cliente.id),
       isFinanceiro ? carregarFinanceiroCliente(cliente.id) : Promise.resolve(null),
+      isFinanceiro ? carregarAvisosPagamento(cliente.id) : Promise.resolve([] as DocItem[]),
     ])
-    setEnvios(en); setTracking(tr); setAlugueres(al); setEquipamentos(eq); setPecas(pc); setNotas(no); setFin(f)
+    setEnvios(en); setTracking(tr); setAlugueres(al); setEquipamentos(eq); setPecas(pc)
+    setNotas(no); setHistorico(hi); setFichas(fi); setFin(f); setAvisos(av)
     setCarregando(false)
-  }, [cliente.id, cliente.nome, isFinanceiro])
+  }, [cliente, isFinanceiro])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { carregar() }, [carregar])
@@ -65,6 +76,31 @@ export default function Cliente360({ cliente }: { cliente: Cliente }) {
     ].filter(Boolean) as string[]
     return datas.length ? datas.sort().at(-1) ?? null : null
   }, [envios, tracking, alugueres, notas, fin])
+
+  // Timeline unificada (a partir dos dados já carregados; sem novas queries).
+  const timeline = useMemo<TimelineEvento[]>(() => {
+    const ev: TimelineEvento[] = []
+    for (const h of historico) ev.push({ chave: `h-${h.tipo}-${h.id}`, tipo: h.tipo as TimelineTipo, data: h.data, titulo: h.titulo || TIMELINE_LABEL[h.tipo as TimelineTipo], detalhe: h.detalhe, href: h.href ?? undefined })
+    for (const e of envios) {
+      ev.push({ chave: `env-${e.id}`, tipo: 'envio', data: e.expedido_em ?? e.created_at, titulo: `EP ${e.numero || ''}`.trim(), detalhe: e.transportadora || '—' })
+      if (e.entregue_em) ev.push({ chave: `env-ent-${e.id}`, tipo: 'entrega', data: e.entregue_em, titulo: `EP ${e.numero || ''} entregue`.trim(), detalhe: '' })
+    }
+    for (const t of tracking) {
+      ev.push({ chave: `trk-${t.id}`, tipo: 'envio', data: t.data_expedicao ?? t.created_at, titulo: `${t.carrier_nome || 'Envio'} ${t.tracking_number || t.awb || ''}`.trim(), detalhe: t.descricao_conteudo || '' })
+      if (t.entrega_efetiva) ev.push({ chave: `trk-ent-${t.id}`, tipo: 'entrega', data: t.entrega_efetiva, titulo: 'Entregue', detalhe: t.tracking_number || t.awb || '' })
+    }
+    if (fin) for (const m of fin.extrato) {
+      if (m.tipo_documento === 'fatura') ev.push({ chave: `fat-${m.id}`, tipo: 'fatura', data: m.data_documento, titulo: `Fatura ${m.documento_ref || ''}`.trim(), detalhe: formatarEuro(m.valor_debito) })
+      if (m.data_pagamento) ev.push({ chave: `pag-${m.id}`, tipo: 'pagamento', data: m.data_pagamento, titulo: `Pagamento ${m.documento_ref || ''}`.trim(), detalhe: formatarEuro(m.valor_credito || m.valor_liquidado || 0) })
+    }
+    for (const a of avisos) ev.push({ chave: `av-${a.id}`, tipo: 'aviso', data: a.data, titulo: a.titulo, detalhe: a.detalhe })
+    for (const f of fichas) ev.push({ chave: `fi-${f.id}`, tipo: 'ficha', data: f.data, titulo: f.titulo, detalhe: f.detalhe })
+    for (const n of notas) ev.push({ chave: `ni-${n.id}`, tipo: 'nota_interna', data: n.created_at, titulo: 'Nota interna', detalhe: n.texto })
+    return ev.filter((e) => e.data).sort((a, b) => (b.data ?? '').localeCompare(a.data ?? ''))
+  }, [historico, envios, tracking, fin, avisos, fichas, notas])
+
+  const tiposPresentes = useMemo(() => Array.from(new Set(timeline.map((e) => e.tipo))), [timeline])
+  const timelineFiltrada = filtro === 'todos' ? timeline : timeline.filter((e) => e.tipo === filtro)
 
   async function adicionarNota() {
     const t = novaNota.trim()
@@ -186,6 +222,20 @@ export default function Cliente360({ cliente }: { cliente: Cliente }) {
         </Seccao>
       )}
 
+      {/* Documentos & Comunicações */}
+      <Seccao titulo="Documentos & Comunicações">
+        {fichas.length === 0 && avisos.length === 0 ? <Vazio /> : (
+          <div style={c.lista}>
+            {[...fichas, ...avisos].map((d) => (
+              <div key={d.id} style={c.linha}>
+                <span style={c.linhaPrincipal}>{d.tipo === 'ficha' ? '📃' : '📧'} {d.titulo}</span>
+                <span style={c.linhaSec}>{[d.detalhe, formatarData(d.data)].filter(Boolean).join(' · ')}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Seccao>
+
       {/* Notas internas (escrita) */}
       <Seccao titulo="Notas internas">
         <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
@@ -213,6 +263,39 @@ export default function Cliente360({ cliente }: { cliente: Cliente }) {
               </div>
             ))}
           </div>
+        )}
+      </Seccao>
+
+      {/* Atividade — timeline unificada (a joia) */}
+      <Seccao titulo="Atividade">
+        {timeline.length === 0 ? <Vazio texto="Sem atividade registada." /> : (
+          <>
+            <div style={c.filtros}>
+              <button style={{ ...c.chip, ...(filtro === 'todos' ? c.chipAtivo : {}) }} onClick={() => setFiltro('todos')}>Todos ({timeline.length})</button>
+              {tiposPresentes.map((t) => (
+                <button key={t} style={{ ...c.chip, ...(filtro === t ? c.chipAtivo : {}) }} onClick={() => setFiltro(t)}>{TIMELINE_ICONE[t]} {TIMELINE_LABEL[t]}</button>
+              ))}
+            </div>
+            <div style={c.lista}>
+              {timelineFiltrada.map((e) => {
+                const inner = (
+                  <>
+                    <span style={c.tlIcone}>{TIMELINE_ICONE[e.tipo]}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={c.linhaPrincipal}>{e.titulo}</div>
+                      <div style={c.tlDetalhe}>{TIMELINE_LABEL[e.tipo]}{e.detalhe ? ` · ${e.detalhe}` : ''}</div>
+                    </div>
+                    <span style={c.tlData}>{formatarData(e.data)}</span>
+                  </>
+                )
+                return e.href ? (
+                  <Link key={e.chave} href={e.href} style={{ ...c.tlItem, textDecoration: 'none', color: 'inherit' }}>{inner}</Link>
+                ) : (
+                  <div key={e.chave} style={c.tlItem}>{inner}</div>
+                )
+              })}
+            </div>
+          </>
         )}
       </Seccao>
     </div>
@@ -270,4 +353,11 @@ const c: Record<string, React.CSSProperties> = {
   notaTexto: { fontSize: 14, color: 'var(--foreground)', whiteSpace: 'pre-wrap' },
   notaMeta: { fontSize: 12, color: 'var(--muted)', marginTop: 2 },
   notaApagar: { background: 'none', border: 'none', color: 'var(--muted)', fontSize: 18, cursor: 'pointer', lineHeight: 1, padding: 0 },
+  filtros: { display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 },
+  chip: { border: '1px solid var(--border)', background: 'var(--background)', color: 'var(--muted)', borderRadius: 999, padding: '4px 10px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' },
+  chipAtivo: { background: 'var(--primary)', color: '#fff', borderColor: 'var(--primary)' },
+  tlItem: { display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: '0.5px solid var(--border)' },
+  tlIcone: { fontSize: 16 },
+  tlDetalhe: { fontSize: 12.5, color: 'var(--muted)' },
+  tlData: { fontSize: 12.5, color: 'var(--muted)', whiteSpace: 'nowrap' },
 }
