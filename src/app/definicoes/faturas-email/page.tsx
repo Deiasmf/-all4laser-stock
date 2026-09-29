@@ -1,48 +1,39 @@
 'use client'
 
-// Administração dos templates de email das faturas de aluguer (normal / curto).
-// Acesso: admin + financeiro. Placeholders {{chave}} preenchidos no envio.
+// Administração do template de email das faturas de aluguer (único, PT).
+// Acesso: admin + financeiro. Placeholders {chave} preenchidos no envio.
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
-import { PLACEHOLDERS_FATURA, type FaturaEmailTemplate, type TemplateChave } from '@/lib/faturaEmailRender'
+import { PLACEHOLDERS_FATURA, type FaturaEmailTemplate } from '@/lib/faturaEmailRender'
 
 export default function TemplatesFaturaPage() {
   const { isAdmin, isFinanceiro, perfilCarregado } = useAuth()
   const podeAceder = isAdmin || isFinanceiro
-  const [templates, setTemplates] = useState<Record<string, FaturaEmailTemplate>>({})
-  const [chave, setChave] = useState<TemplateChave>('normal')
   const [assunto, setAssunto] = useState('')
   const [corpo, setCorpo] = useState('')
+  const [incluirAssinatura, setIncluirAssinatura] = useState(true)
   const [carregando, setCarregando] = useState(true)
   const [aGuardar, setAGuardar] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
 
   const carregar = useCallback(async () => {
     setCarregando(true)
-    const { data } = await supabase.from('alugueres_email_templates').select('*')
-    const map: Record<string, FaturaEmailTemplate> = {}
-    for (const t of (data as FaturaEmailTemplate[] | null) ?? []) map[t.chave] = t
-    setTemplates(map)
+    const { data } = await supabase.from('alugueres_email_templates').select('*').eq('chave', 'normal').maybeSingle()
+    const t = data as FaturaEmailTemplate | null
+    if (t) { setAssunto(t.assunto_template); setCorpo(t.corpo_template); setIncluirAssinatura(t.incluir_assinatura ?? true) }
     setCarregando(false)
   }, [])
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { if (podeAceder) carregar() }, [podeAceder, carregar])
 
-  // Ao trocar de template (ou ao carregar), reflete os campos.
-  useEffect(() => {
-    const t = templates[chave]
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (t) { setAssunto(t.assunto_template); setCorpo(t.corpo_template) }
-  }, [chave, templates])
-
   async function guardar() {
     setMsg(null)
     setAGuardar(true)
     const { error } = await supabase.from('alugueres_email_templates')
-      .update({ assunto_template: assunto, corpo_template: corpo, updated_at: new Date().toISOString() })
-      .eq('chave', chave)
+      .update({ assunto_template: assunto, corpo_template: corpo, incluir_assinatura: incluirAssinatura, updated_at: new Date().toISOString() })
+      .eq('chave', 'normal')
     setAGuardar(false)
     if (error) { setMsg('Erro ao guardar: ' + error.message); return }
     setMsg('Template guardado ✓ — o próximo envio usa esta versão.')
@@ -63,11 +54,6 @@ export default function TemplatesFaturaPage() {
         <Link href="/alugueres/lista" style={c.link}>Ir para Alugueres →</Link>
       </div>
 
-      <div style={c.tabs}>
-        <button style={chave === 'normal' ? c.tabAtiva : c.tab} onClick={() => setChave('normal')}>Normal</button>
-        <button style={chave === 'curto' ? c.tabAtiva : c.tab} onClick={() => setChave('curto')}>Curto</button>
-      </div>
-
       {carregando ? <p style={c.muted}>A carregar…</p> : (
         <>
           <label style={c.label}>Assunto</label>
@@ -76,11 +62,19 @@ export default function TemplatesFaturaPage() {
           <label style={c.label}>Corpo</label>
           <textarea style={{ ...c.input, minHeight: 300, fontFamily: 'inherit', whiteSpace: 'pre-wrap' }} value={corpo} onChange={(e) => setCorpo(e.target.value)} />
 
+          <label style={{ ...c.toggle }}>
+            <input type="checkbox" checked={incluirAssinatura} onChange={(e) => setIncluirAssinatura(e.target.checked)} />
+            <span>Acrescentar a assinatura do Gmail no fim do email</span>
+          </label>
+          <span style={c.toggleAjuda}>
+            Desliga isto se o texto do template já fecha com a sua própria assinatura (ex.: “Dep. Financeiro da All4laser”), para não ficarem duas assinaturas empilhadas.
+          </span>
+
           <div style={c.placeholders}>
-            <span style={c.phTitulo}>Placeholders disponíveis (escreve {'{{'}chave{'}}'}):</span>
+            <span style={c.phTitulo}>Placeholders disponíveis (escreve {'{'}chave{'}'}):</span>
             <div style={c.phLista}>
               {PLACEHOLDERS_FATURA.map((p) => (
-                <span key={p.chave} style={c.ph} title={p.desc}>{`{{${p.chave}}}`}</span>
+                <span key={p.chave} style={c.ph} title={p.desc}>{`{${p.chave}}`}</span>
               ))}
             </div>
           </div>
@@ -107,6 +101,8 @@ const c: Record<string, React.CSSProperties> = {
   tab: { padding: '8px 16px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface)', cursor: 'pointer', fontWeight: 600 },
   tabAtiva: { padding: '8px 16px', border: 'none', borderRadius: 8, background: 'var(--primary)', color: '#fff', cursor: 'pointer', fontWeight: 700 },
   label: { fontWeight: 600, fontSize: 14, marginTop: 12, marginBottom: 4, display: 'block' },
+  toggle: { display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, fontSize: 14, fontWeight: 600, cursor: 'pointer' },
+  toggleAjuda: { display: 'block', fontSize: 12.5, color: 'var(--muted)', marginTop: 4 },
   input: { width: '100%', padding: 10, border: '1px solid var(--border)', borderRadius: 8, fontSize: 15, boxSizing: 'border-box', background: 'var(--background)', color: 'var(--foreground)' },
   placeholders: { marginTop: 14, padding: 12, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10 },
   phTitulo: { fontSize: 13, color: 'var(--muted)', fontWeight: 600 },

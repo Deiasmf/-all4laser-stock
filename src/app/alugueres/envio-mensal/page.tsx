@@ -8,7 +8,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
 import { mesAtual, nomeMes, formatarEuro } from '@/lib/alugueres'
-import { nFaturaDoNome, type TemplateChave } from '@/lib/faturaEmailRender'
+import { nFaturaDoNome } from '@/lib/faturaEmailRender'
 import type { Aluguer } from '@/types/aluguer'
 
 type Fat = {
@@ -25,7 +25,7 @@ export default function EnvioMensalPage() {
   const { isAdmin, isFinanceiro, perfilCarregado } = useAuth()
   const podeAceder = isAdmin || isFinanceiro
   const [mes, setMes] = useState(mesAtual())
-  const [chave, setChave] = useState<TemplateChave>('normal')
+  const chave = 'normal'   // template único
   const [linhas, setLinhas] = useState<Linha[]>([])
   const [sel, setSel] = useState<Set<string>>(new Set())
   const [carregando, setCarregando] = useState(true)
@@ -113,10 +113,6 @@ export default function EnvioMensalPage() {
 
       <div style={c.filtros}>
         <input type="month" value={mes} onChange={(e) => setMes(e.target.value)} style={c.input} />
-        <select value={chave} onChange={(e) => setChave(e.target.value as TemplateChave)} style={c.input}>
-          <option value="normal">Template normal</option>
-          <option value="curto">Template curto</option>
-        </select>
       </div>
 
       {carregando ? <p style={c.muted}>A carregar…</p> : (

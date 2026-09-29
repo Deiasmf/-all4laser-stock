@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { enviarGmail } from '@/lib/gmailSend'
 import { obterAssinaturaHtml, corpoHtmlComAssinatura } from '@/lib/emailAssinatura'
 import {
-  render, periodoDoMes, nFaturaDoNome, formatarValor,
+  render, periodoDoMes, nFaturaDoNome, formatarValor, formatarDataFatura,
   type FaturaEmailVars, type TemplateChave,
 } from '@/lib/faturaEmailRender'
 
@@ -57,8 +57,8 @@ export async function POST(req: Request) {
 
   // Templates (para render quando não há override)
   const { data: tmplRows } = await db.from('alugueres_email_templates').select('*')
-  const templates = new Map<string, { assunto_template: string; corpo_template: string }>()
-  for (const t of (tmplRows as { chave: string; assunto_template: string; corpo_template: string }[] | null) ?? []) {
+  const templates = new Map<string, { assunto_template: string; corpo_template: string; incluir_assinatura?: boolean }>()
+  for (const t of (tmplRows as { chave: string; assunto_template: string; corpo_template: string; incluir_assinatura?: boolean }[] | null) ?? []) {
     templates.set(t.chave, t)
   }
   const assinatura = await obterAssinaturaHtml(db)   // assinatura única (após o bloco do colaborador)
@@ -83,7 +83,7 @@ export async function POST(req: Request) {
 
       // Carregar fatura + aluguer + cliente
       const { data: fatRow } = await db.from('alugueres_faturacao_mensal').select('*').eq('id', item.faturacaoId).single()
-      const fat = fatRow as { aluguer_id: string; mes: string; valor_a_faturar: number | null; fatura_url: string | null; fatura_caminho: string | null; fatura_nome: string | null } | null
+      const fat = fatRow as { aluguer_id: string; mes: string; valor_a_faturar: number | null; fatura_url: string | null; fatura_caminho: string | null; fatura_nome: string | null; created_at: string | null } | null
       if (!fat) { resultados.push({ faturacaoId: item.faturacaoId, estado: 'falhou', motivo: 'Fatura não encontrada.' }); await registar('falhou', { erro: 'Fatura não encontrada.' }); continue }
       if (!fat.fatura_caminho && !fat.fatura_url) { resultados.push({ faturacaoId: item.faturacaoId, estado: 'falhou', motivo: 'Sem PDF anexado.' }); await registar('falhou', { erro: 'Sem PDF anexado.', mes: fat.mes, aluguerId: fat.aluguer_id }); continue }
 
@@ -103,9 +103,12 @@ export async function POST(req: Request) {
         const tmpl = templates.get(item.templateChave)
         if (!tmpl) { resultados.push({ faturacaoId: item.faturacaoId, estado: 'falhou', motivo: 'Template não encontrado.' }); await registar('falhou', { erro: 'Template não encontrado.', mes: fat.mes, aluguerId: fat.aluguer_id }); continue }
         const vars: FaturaEmailVars = {
-          n_fatura: nFaturaDoNome(fat.fatura_nome), periodo: periodoDoMes(fat.mes), valor: formatarValor(fat.valor_a_faturar),
+          n_fatura: nFaturaDoNome(fat.fatura_nome), data_fatura: formatarDataFatura(fat.created_at),
+          periodo: periodoDoMes(fat.mes),
+          valor_total: formatarValor(fat.valor_a_faturar), valor: formatarValor(fat.valor_a_faturar),
           equipamento: al?.modelo ?? '', serial_number: al?.serial_number ?? '',
-          nome_contacto: contacto ?? clienteNome ?? '', cliente_nome: clienteNome ?? '',
+          nome_contacto: contacto ?? clienteNome ?? '',
+          nome_cliente: clienteNome ?? '', cliente_nome: clienteNome ?? '',
           nome_colaborador: remetenteNome, email_colaborador: remetenteEmail, telefone: '',
         }
         assunto = render(tmpl.assunto_template, vars)
@@ -127,12 +130,16 @@ export async function POST(req: Request) {
       const nomeFicheiro = fat.fatura_nome ?? `fatura-${fat.mes}.pdf`
       const mime = nomeFicheiro.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream'
       const cc = (item.cc ?? '').split(/[,;\n]/).map((e) => e.trim()).filter((e) => e.includes('@'))
+      // O template pode já fechar com a sua assinatura (incluir_assinatura=false):
+      // nesse caso não acrescentamos a assinatura do Gmail, para não empilhar duas.
+      const incluirAssin = templates.get(item.templateChave)?.incluir_assinatura ?? true
+      const assinaturaFinal = incluirAssin ? assinatura : ''
 
       // Enviar (com retries)
       let enviado = false, ultimoErro = '', msgId: string | undefined, threadId: string | undefined
       for (let tent = 0; tent < TENTATIVAS_MAX && !enviado; tent++) {
         if (tent > 0) await sleep(400)
-        const r = await enviarGmail({ para: [para], cc, assunto: assunto!, corpoTexto: corpo!, corpoHtml: corpoHtmlComAssinatura(corpo!, assinatura), anexos: [{ filename: nomeFicheiro, contentBase64: base64, mimeType: mime }] })
+        const r = await enviarGmail({ para: [para], cc, assunto: assunto!, corpoTexto: corpo!, corpoHtml: corpoHtmlComAssinatura(corpo!, assinaturaFinal), anexos: [{ filename: nomeFicheiro, contentBase64: base64, mimeType: mime }] })
         if (r.ok) { enviado = true; msgId = r.messageId; threadId = r.threadId }
         else { ultimoErro = r.erro ?? 'Falha no envio.'; if (!r.configurado) break }
       }

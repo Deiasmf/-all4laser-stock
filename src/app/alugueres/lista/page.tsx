@@ -9,8 +9,8 @@ import BotaoExportar from '@/components/BotaoExportar'
 import type { ColunaExport } from '@/lib/exportar'
 import { formatarEuro, mesAtual, nomeMes, somar, parseNumeroPt } from '@/lib/alugueres'
 import {
-  render, periodoDoMes, nFaturaDoNome, formatarValor, criticosEmFalta,
-  type FaturaEmailTemplate, type FaturaEmailVars, type TemplateChave,
+  render, periodoDoMes, nFaturaDoNome, formatarValor, formatarDataFatura, criticosEmFalta,
+  type FaturaEmailTemplate, type FaturaEmailVars,
 } from '@/lib/faturaEmailRender'
 import {
   TIPOS_ALUGUER,
@@ -36,6 +36,7 @@ type Fat = {
   fatura_nome: string | null
   fatura_enviada_em: string | null
   fatura_enviada_para: string | null
+  created_at: string | null
 }
 
 // Linha da lista = um aluguer ativo num mês + a faturação desse mês
@@ -46,7 +47,7 @@ function fatVazia(aluguerId: string, mes: string): Fat {
   return {
     id: null, aluguer_id: aluguerId, mes, valor_a_faturar: null,
     nao_faturar: false, validado: false, pago: false, fatura_url: null, fatura_caminho: null,
-    fatura_nome: null, fatura_enviada_em: null, fatura_enviada_para: null,
+    fatura_nome: null, fatura_enviada_em: null, fatura_enviada_para: null, created_at: null,
   }
 }
 
@@ -817,7 +818,7 @@ function ModalEnviarFatura({
 }) {
   const { perfil } = useAuth()
   const [templates, setTemplates] = useState<Map<string, FaturaEmailTemplate>>(new Map())
-  const [chave, setChave] = useState<TemplateChave>('normal')
+  const chave = 'normal'   // template único
   const [para, setPara] = useState(fat.fatura_enviada_para ?? '')
   const [cc, setCc] = useState('')
   const [assunto, setAssunto] = useState('')
@@ -845,11 +846,14 @@ function ModalEnviarFatura({
       const cli = cliRes.data as { contacto_nome: string | null; nome: string | null; email: string | null; email_faturacao: string | null } | null
       setVars({
         n_fatura: nFaturaDoNome(fat.fatura_nome),
+        data_fatura: formatarDataFatura(fat.created_at),
         periodo: periodoDoMes(mes),
+        valor_total: formatarValor(fat.valor_a_faturar),
         valor: formatarValor(fat.valor_a_faturar),
         equipamento: aluguer.modelo ?? '',
         serial_number: aluguer.serial_number ?? '',
         nome_contacto: cli?.contacto_nome ?? aluguer.cliente_nome ?? cli?.nome ?? '',
+        nome_cliente: aluguer.cliente_nome ?? cli?.nome ?? '',
         cliente_nome: aluguer.cliente_nome ?? cli?.nome ?? '',
         nome_colaborador: perfil?.nome ?? perfil?.email ?? '',
         email_colaborador: perfil?.email ?? '',
@@ -924,19 +928,8 @@ function ModalEnviarFatura({
           </div>
         )}
 
-        <div style={c.linha2}>
-          <div>
-            <label style={c.label}>Template</label>
-            <select style={c.input} value={chave} onChange={(e) => { setChave(e.target.value as TemplateChave); setEditado(false) }}>
-              <option value="normal">Normal</option>
-              <option value="curto">Curto</option>
-            </select>
-          </div>
-          <div>
-            <label style={c.label}>Para</label>
-            <input style={c.input} type="email" placeholder={aCarregar ? 'A carregar…' : 'cliente@exemplo.com'} value={para} onChange={(e) => setPara(e.target.value)} />
-          </div>
-        </div>
+        <label style={c.label}>Para</label>
+        <input style={c.input} type="email" placeholder={aCarregar ? 'A carregar…' : 'cliente@exemplo.com'} value={para} onChange={(e) => setPara(e.target.value)} />
 
         <label style={c.label}>CC (opcional, separar por vírgula)</label>
         <input style={c.input} value={cc} onChange={(e) => setCc(e.target.value)} placeholder="contabilidade@exemplo.com" />
