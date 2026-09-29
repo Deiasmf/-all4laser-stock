@@ -109,7 +109,9 @@ export default function ListaAlugueres() {
   // colaborador com perfil de staff — é o que a RLS da BD já permite.
   const podeFaturar = !!perfil
   // Enviar a fatura por email fica restrito a admin + financeiro.
-  const podeEnviar = isAdmin || isFinanceiro
+  // Enviar faturas é do Financeiro (admin/financeiro), não de todo o staff —
+  // alinha com a RLS/servidor (has_financeiro_access), senão dá "vazio/bloqueado".
+  const podeEnviar = isFinanceiro
   const estreito = useEcraEstreito()
   const [alugueres, setAlugueres] = useState<Aluguer[]>([])
   const [faturacao, setFaturacao] = useState<Map<string, Fat>>(new Map())
