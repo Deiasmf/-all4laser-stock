@@ -41,7 +41,7 @@ export default function DetalhePedidoFaturaPage() {
   const params = useParams<{ id: string }>()
   const id = params.id
   const router = useRouter()
-  const { perfil, isAdmin, isFinanceiro } = useAuth()
+  const { perfil, isFinanceiro, isGestorUtilizadores } = useAuth()
   const [pedido, setPedido] = useState<PedidoFatura | null>(null)
   const [carregando, setCarregando] = useState(true)
   const [aTrabalhar, setATrabalhar] = useState(false)
@@ -176,7 +176,8 @@ export default function DetalhePedidoFaturaPage() {
   if (!pedido) return <main style={c.page}><p style={c.muted}>Pedido não encontrado.</p></main>
 
   const i = estadoPedidoInfo(pedido.estado)
-  const podeApagar = isAdmin || souCriador
+  // Apagar: alinha com o RLS (is_admin() OR criado_por) — role admin ou o criador.
+  const podeApagar = isGestorUtilizadores || souCriador
 
   return (
     <main style={c.page}>
