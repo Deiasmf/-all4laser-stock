@@ -39,9 +39,13 @@ export async function POST(req: Request) {
     const code = Number(codeUnico)
     const serieFiltro = params.get('series')
     try {
-      const series = await listarSeries(code)
+      // listDocumentSeries falha em alguns tipos (ex.: Orçamento); tolera e segue
+      // para documentsList (que funciona mesmo sem séries listadas).
+      let series: Awaited<ReturnType<typeof listarSeries>> = []
+      let erroSeries: string | null = null
+      try { series = await listarSeries(code) } catch (e) { erroSeries = e instanceof Error ? e.message : String(e) }
       const porSerie = []
-      const alvo = series.length ? series : [{ IdSerie: undefined, Name: '(default)' }]
+      const alvo = series.length ? series : [{ IdSerie: undefined, Name: '(default/sem-série)' }]
       for (const s of alvo) {
         if (serieFiltro && String(s.IdSerie) !== serieFiltro) continue
         const docs = await listarDocumentos(code, 0, s.IdSerie)
@@ -55,7 +59,7 @@ export async function POST(req: Request) {
         const docs = await listarDocumentos(code, 0, serieFiltro)
         porSerie.push({ idSerie: serieFiltro, nome: '(direto)', nDocs: docs.length, amostra: docs.slice(0, 3).map((d) => ({ num: String(d.DocNum ?? ''), data: String(d.Date ?? ''), cliente: String(d.ClientName ?? '').trim().slice(0, 30), total: String(d.GrossTotal ?? '') })) })
       }
-      return Response.json({ ok: true, code, seriesTodas: series.map((s) => ({ id: s.IdSerie, nome: s.Name })), porSerie })
+      return Response.json({ ok: true, code, erroSeries, seriesTodas: series.map((s) => ({ id: s.IdSerie, nome: s.Name })), porSerie })
     } catch (e) {
       return Response.json({ ok: false, erro: e instanceof Error ? e.message : String(e) })
     }
