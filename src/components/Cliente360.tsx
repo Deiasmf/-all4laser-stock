@@ -35,24 +35,26 @@ export default function Cliente360({ cliente }: { cliente: Cliente }) {
   const [aGuardarNota, setAGuardarNota] = useState(false)
   const [filtro, setFiltro] = useState<TimelineTipo | 'todos'>('todos')
 
+  const clienteId = cliente.id
+  const clienteNome = cliente.nome
   const carregar = useCallback(async () => {
     setCarregando(true)
     const [en, tr, al, eq, pc, no, hi, fi, f, av] = await Promise.all([
-      carregarEnvios(cliente.id),
-      carregarTracking(cliente.id),
-      carregarAlugueres(cliente.id),
-      carregarEquipamentos(cliente.nome),
-      carregarPecasParceiro(cliente.nome),
-      listarNotasCliente(cliente.id),
-      historicoCliente(cliente),
-      carregarFichasEnviadas(cliente.id),
-      isFinanceiro ? carregarFinanceiroCliente(cliente.id) : Promise.resolve(null),
-      isFinanceiro ? carregarAvisosPagamento(cliente.id) : Promise.resolve([] as DocItem[]),
+      carregarEnvios(clienteId),
+      carregarTracking(clienteId),
+      carregarAlugueres(clienteId),
+      carregarEquipamentos(clienteNome),
+      carregarPecasParceiro(clienteNome),
+      listarNotasCliente(clienteId),
+      historicoCliente({ id: clienteId, nome: clienteNome } as Cliente),
+      carregarFichasEnviadas(clienteId),
+      isFinanceiro ? carregarFinanceiroCliente(clienteId) : Promise.resolve(null),
+      isFinanceiro ? carregarAvisosPagamento(clienteId) : Promise.resolve([] as DocItem[]),
     ])
     setEnvios(en); setTracking(tr); setAlugueres(al); setEquipamentos(eq); setPecas(pc)
     setNotas(no); setHistorico(hi); setFichas(fi); setFin(f); setAvisos(av)
     setCarregando(false)
-  }, [cliente, isFinanceiro])
+  }, [clienteId, clienteNome, isFinanceiro])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { carregar() }, [carregar])

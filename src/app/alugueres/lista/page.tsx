@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
 import AlugueresNav from '@/components/AlugueresNav'
+import LinkCliente from '@/components/LinkCliente'
 import BotaoExportar from '@/components/BotaoExportar'
 import type { ColunaExport } from '@/lib/exportar'
 import { formatarEuro, mesAtual, nomeMes, somar, parseNumeroPt } from '@/lib/alugueres'
@@ -285,7 +286,7 @@ export default function ListaAlugueres() {
       >
         <div style={c.cartaoTopo}>
           <span style={c.cartaoCliente}>
-            {a.cliente_nome ?? '—'}
+            <LinkCliente clienteId={a.cliente_id} nome={a.cliente_nome} />
             {!a.nacional && <span style={c.intl}>Internacional</span>}
           </span>
           <span onClick={(e) => e.stopPropagation()}>
@@ -345,7 +346,7 @@ export default function ListaAlugueres() {
           <VistoValidado fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, l.fat.mes, patch)} />
         </span>
         <span style={{ fontWeight: 600 }}>
-          {a.cliente_nome ?? '—'}
+          <LinkCliente clienteId={a.cliente_id} nome={a.cliente_nome} />
           {!a.nacional && <span style={c.intl}>Internacional</span>}
         </span>
         <span style={c.equip}>

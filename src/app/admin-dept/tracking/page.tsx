@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
+import LinkCliente from '@/components/LinkCliente'
 import { useAuth } from '@/lib/auth'
 import {
   listarCarriers, listarEnvios, criarEnvioManual, atualizarEnvio,
@@ -322,7 +323,7 @@ function TrackingConteudo() {
             return (
               <div key={e.id} style={{ ...c.card, ...(destaque(e) ? c.cardDestaque : {}), ...(e.origem_anulada ? c.trAnulada : {}) }}>
                 <div style={c.cardTitulo}>
-                  <span>{e.entidade_nome ?? '—'}</span>
+                  <span>{e.entidade_tipo === 'cliente' ? <LinkCliente clienteId={e.cliente_id} nome={e.entidade_nome} /> : (e.entidade_nome ?? '—')}</span>
                   <span style={{ ...c.badge, color: est.cor, background: est.bg }}>{est.label}{e.auto_tracking_enabled ? ' ⚡' : ''}</span>
                 </div>
                 {resumoUltimoEvento(e) && <div style={c.cardMeta} title={e.last_event_descricao ?? ''}>📍 {resumoUltimoEvento(e)}</div>}
@@ -368,7 +369,7 @@ function TrackingConteudo() {
                 const org = linkOrigem(e)
                 return (
                   <tr key={e.id} style={{ ...c.tr, ...(destaque(e) ? c.trDestaque : {}), ...(e.origem_anulada ? c.trAnulada : {}) }}>
-                    <td style={c.td}>{e.entidade_nome ?? '—'}</td>
+                    <td style={c.td}>{e.entidade_tipo === 'cliente' ? <LinkCliente clienteId={e.cliente_id} nome={e.entidade_nome} /> : (e.entidade_nome ?? '—')}</td>
                     <td style={c.td}>{e.carrier_nome ?? '—'}</td>
                     <td style={c.td}>
                       <div style={c.mono}>{e.tracking_number || e.awb || '—'}</div>

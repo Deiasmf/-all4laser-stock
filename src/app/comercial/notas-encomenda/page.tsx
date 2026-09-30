@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import LinkCliente from '@/components/LinkCliente'
 import { listarNotas } from '@/lib/notasEncomenda'
 import {
   ESTADO_NOTA_CONFIG, ESTADO_NOTA_OPCOES,
@@ -166,7 +167,7 @@ export default function NotasEncomendaPage() {
                 <tr key={n.id} onClick={() => router.push(`/comercial/notas-encomenda/${n.id}`)} style={c.tr}>
                   <td style={{ ...c.td, fontWeight: 700 }}>{n.numero ?? '—'}</td>
                   <td style={c.td}>{formatarData(n.data_pedido)}</td>
-                  <td style={c.td}>{n.cliente_nome ?? '—'}</td>
+                  <td style={c.td}><LinkCliente clienteId={n.cliente_id} nome={n.cliente_nome} /></td>
                   <td style={c.td}>{n.pais_destino ?? '—'}</td>
                   <td style={c.td}>{n.equipamento_modelo ?? '—'}</td>
                   <td style={c.td}>{n.equipamento_sn ?? '—'}</td>
