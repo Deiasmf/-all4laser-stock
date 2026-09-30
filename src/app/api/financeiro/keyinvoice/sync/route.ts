@@ -26,6 +26,7 @@ const TIPOS: { code: number; tipo: TipoDocumento; settle: 'check' | 'paid' | 'no
   { code: 7,  tipo: 'nota_credito', settle: 'none'  }, // Nota de Crédito
   { code: 6,  tipo: 'nota_credito', settle: 'none'  }, // Devolução
   { code: 13, tipo: 'pro_forma',    settle: 'none'  }, // Encomendas de Clientes → pró-forma
+  { code: 26, tipo: 'pro_forma',    settle: 'none'  }, // Orçamento → "Fatura Proforma" (não fiscal, não afeta saldo)
 ]
 
 const MAX_PAGINAS_TIPO = 100 // 100 docs/página → até 10 000 por tipo
@@ -85,13 +86,15 @@ async function buscarDocumentos(
   // 1) Por tipo → séries activas → listar cada série (paginada). Tolerante.
   for (const t of TIPOS) {
     if (chamadas >= MAX_CHAMADAS || Date.now() - inicio > LIMITE_MS) { truncado = true; break }
-    let series
+    // Alguns tipos (ex.: Orçamento/26) falham no listDocumentSeries mas funcionam
+    // no documentsList. Se listar séries falhar, não saltamos o tipo: listamos os
+    // documentos sem série (idSerie = undefined).
+    let series: Awaited<ReturnType<typeof listarSeries>> = []
     try {
       series = await listarSeries(t.code)
       chamadas++
     } catch (err) {
       tiposIgnorados.push({ code: t.code, tipo: t.tipo, erro: err instanceof Error ? err.message : String(err) })
-      continue
     }
     await sleep(PAUSA_MS)
     const idsSerie: (number | string | undefined)[] = series.length > 0 ? series.map((s) => s.IdSerie) : [undefined]
