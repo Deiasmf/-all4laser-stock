@@ -1,23 +1,17 @@
 import { createClient } from '@supabase/supabase-js'
-import { listarSeries, listarDocumentos } from '@/lib/keyinvoiceApi'
+import { sondarTipo } from '@/lib/keyinvoiceApi'
 
-// Diagnóstico (só-leitura, admin/financeiro): sonda os tipos de documento (DocType)
+// Diagnóstico (só-leitura, admin/financeiro): sonda tipos de documento (DocType)
 // do Keyinvoice para descobrir qual corresponde às "Fatura Pró-forma".
-// Para cada código no intervalo, lista as séries (nome) e uma amostra de documentos.
-// Não grava nada — serve para acrescentar o DocType certo à sincronização.
+// Usa a sonda "soft" (rápida, sem re-auth) e um conjunto dirigido de códigos.
+// Não grava nada.
 
 export const runtime = 'nodejs'
-export const maxDuration = 300
+export const maxDuration = 120
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
-
-type Achado = {
-  code: number
-  series: string[]
-  nAmostra: number
-  amostra: { num: string; data: string; cliente: string; total: string }[]
-  erro?: string
-}
+// Candidatos por defeito: os de venda de baixo número (onde deve estar a pró-forma)
+// + os já conhecidos (13 Encomendas, 32 Simplificada, 34 Fatura-Recibo) como controlo.
+const DEFEITO = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 32, 34]
 
 export async function POST(req: Request) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -36,39 +30,17 @@ export async function POST(req: Request) {
   const role = (perfil as { role?: string } | null)?.role
   if (role !== 'admin' && role !== 'financeiro') return Response.json({ ok: false, erro: 'Sem permissão.' }, { status: 403 })
 
-  // Intervalo de códigos a sondar (por defeito 1..40, cobre os tipos de venda).
-  const u = new URL(req.url)
-  const de = Math.max(1, Number(u.searchParams.get('de') ?? '1') || 1)
-  const ate = Math.min(60, Number(u.searchParams.get('ate') ?? '40') || 40)
+  // Códigos a sondar: ?codes=1,2,3 (senão o conjunto por defeito).
+  const codesParam = new URL(req.url).searchParams.get('codes')
+  const codes = codesParam
+    ? codesParam.split(',').map((s) => Number(s.trim())).filter((n) => Number.isInteger(n) && n > 0)
+    : DEFEITO
 
   try {
-    const achados: Achado[] = []
-    for (let code = de; code <= ate; code++) {
-      const ach: Achado = { code, series: [], nAmostra: 0, amostra: [] }
-      try {
-        const series = await listarSeries(code)
-        ach.series = series.map((s) => String(s.Name ?? s.Ref ?? s.IdSerie ?? '').trim()).filter(Boolean)
-      } catch (e) {
-        ach.erro = e instanceof Error ? e.message : String(e)
-      }
-      await sleep(40)
-      try {
-        const docs = await listarDocumentos(code, 0)
-        ach.nAmostra = docs.length
-        ach.amostra = docs.slice(0, 3).map((d) => ({
-          num: String(d.DocNum ?? ''),
-          data: String(d.Date ?? ''),
-          cliente: String(d.ClientName ?? '').trim(),
-          total: String(d.GrossTotal ?? ''),
-        }))
-      } catch (e) {
-        if (!ach.erro) ach.erro = e instanceof Error ? e.message : String(e)
-      }
-      await sleep(40)
-      // Só reporta códigos com sinal (séries ou documentos) — omite os vazios/inválidos.
-      if (ach.series.length > 0 || ach.nAmostra > 0) achados.push(ach)
-    }
-    return Response.json({ ok: true, intervalo: { de, ate }, achados })
+    // Em paralelo (a sonda é curta e tolerante). Só reporta os que têm sinal.
+    const todos = await Promise.all(codes.map((c) => sondarTipo(c)))
+    const achados = todos.filter((t) => t.temSinal)
+    return Response.json({ ok: true, sondados: codes, achados })
   } catch (e) {
     return Response.json({ ok: false, erro: e instanceof Error ? e.message : 'Erro desconhecido.' })
   }
