@@ -40,7 +40,7 @@ const NAV: Seccao[] = [
         ],
       },
       { href: '/financeiro', label: 'Financeiro', icon: '💶', requer: 'financeiro' },
-      { href: '/contas-correntes', label: 'Contas Correntes', icon: '📒', exato: false },
+      { href: '/contas-correntes', label: 'Contas Correntes', icon: '📒', exato: false, requer: 'financeiro' },
       { href: '/pedidos-fatura', label: 'Pedidos de Fatura', icon: '🧾' },
       {
         href: '/comercial', label: 'Comercial', icon: '🤝',
