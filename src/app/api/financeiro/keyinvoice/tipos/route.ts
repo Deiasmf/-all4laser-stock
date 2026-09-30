@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { sondarTipo } from '@/lib/keyinvoiceApi'
+import { sondarTipo, listarSeries, listarDocumentos } from '@/lib/keyinvoiceApi'
 
 // Diagnóstico (só-leitura, admin/financeiro): sonda tipos de documento (DocType)
 // do Keyinvoice para descobrir qual corresponde às "Fatura Pró-forma".
@@ -30,8 +30,39 @@ export async function POST(req: Request) {
   const role = (perfil as { role?: string } | null)?.role
   if (role !== 'admin' && role !== 'financeiro') return Response.json({ ok: false, erro: 'Sem permissão.' }, { status: 403 })
 
+  const params = new URL(req.url).searchParams
+
+  // Modo "detalhe de um tipo": ?code=4 → todas as séries (IdSerie+Nome) desse
+  // tipo + amostra de documentos por série. Serve para achar a série da pró-forma.
+  const codeUnico = params.get('code')
+  if (codeUnico) {
+    const code = Number(codeUnico)
+    const serieFiltro = params.get('series')
+    try {
+      const series = await listarSeries(code)
+      const porSerie = []
+      const alvo = series.length ? series : [{ IdSerie: undefined, Name: '(default)' }]
+      for (const s of alvo) {
+        if (serieFiltro && String(s.IdSerie) !== serieFiltro) continue
+        const docs = await listarDocumentos(code, 0, s.IdSerie)
+        porSerie.push({
+          idSerie: s.IdSerie ?? null, nome: s.Name ?? null, nDocs: docs.length,
+          amostra: docs.slice(0, 3).map((d) => ({ num: String(d.DocNum ?? ''), data: String(d.Date ?? ''), cliente: String(d.ClientName ?? '').trim().slice(0, 30), total: String(d.GrossTotal ?? '') })),
+        })
+      }
+      // Se pediram uma série específica que não veio na lista de séries, tenta-a direto.
+      if (serieFiltro && porSerie.length === 0) {
+        const docs = await listarDocumentos(code, 0, serieFiltro)
+        porSerie.push({ idSerie: serieFiltro, nome: '(direto)', nDocs: docs.length, amostra: docs.slice(0, 3).map((d) => ({ num: String(d.DocNum ?? ''), data: String(d.Date ?? ''), cliente: String(d.ClientName ?? '').trim().slice(0, 30), total: String(d.GrossTotal ?? '') })) })
+      }
+      return Response.json({ ok: true, code, seriesTodas: series.map((s) => ({ id: s.IdSerie, nome: s.Name })), porSerie })
+    } catch (e) {
+      return Response.json({ ok: false, erro: e instanceof Error ? e.message : String(e) })
+    }
+  }
+
   // Códigos a sondar: ?codes=1,2,3 (senão o conjunto por defeito).
-  const codesParam = new URL(req.url).searchParams.get('codes')
+  const codesParam = params.get('codes')
   const codes = codesParam
     ? codesParam.split(',').map((s) => Number(s.trim())).filter((n) => Number.isInteger(n) && n > 0)
     : DEFEITO
