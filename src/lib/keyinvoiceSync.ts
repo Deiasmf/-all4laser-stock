@@ -152,6 +152,9 @@ export function parseCsv(texto: string): { docs: DocKeyinvoice[]; erros: string[
   if (linhas.length === 0) return { docs: [], erros: ['Ficheiro vazio.'] }
   const delim = detetarDelim(linhas[0])
   const header = celulas(linhas[0], delim).map(normHeader)
+  // Export de Orçamentos / "Fatura Proforma" do Keyinvoice (tem coluna "Faturada?"):
+  // todas as linhas são pró-forma, independentemente do prefixo da referência.
+  if (header.includes('faturada')) return parseOrcamentos(linhas, delim, header)
   const ehKeyinvoice = ['refdoc', 'contribuinte', 'valorpendente'].some((k) => header.includes(k))
   return ehKeyinvoice ? parseKeyinvoice(linhas, delim, header) : parseModelo(linhas, delim)
 }
@@ -195,6 +198,56 @@ function parseKeyinvoice(linhas: string[], delim: string | RegExp, header: strin
       numero: ref,
       data_documento: data,
       data_vencimento: iVenc >= 0 ? parseData(cols[iVenc] ?? '') : null,
+      valor,
+    })
+  }
+  return { docs, erros }
+}
+
+// Export de Orçamentos do Keyinvoice (as "Fatura Proforma" da All4laser). Colunas:
+// Data ; Série ; Nº ; Refª Docº ; Cliente ; NIF ; Valor s/IVA ; Valor IVA ; Valor Total ; Faturada?
+// Todas as linhas são pró-formas (não fiscais → não afetam o saldo). A referência
+// da pró-forma começa por "Fatura Proforma …", pelo que o tipo é FORÇADO (não
+// adivinhado pelo prefixo, que daria "fatura").
+function parseOrcamentos(linhas: string[], delim: string | RegExp, header: string[]): { docs: DocKeyinvoice[]; erros: string[] } {
+  const idx = (...keys: string[]) => { for (const k of keys) { const i = header.indexOf(k); if (i >= 0) return i } return -1 }
+  const iData = idx('data', 'datadoc', 'datadocumento')
+  const iSerie = idx('serie')
+  const iNum = idx('numero', 'ndoc', 'no', 'n')
+  const iRef = idx('refdoc', 'refadoc', 'referencia', 'documento')
+  const iNome = idx('cliente', 'nome', 'entidade')
+  const iNif = idx('nif', 'contribuinte', 'niffiscal')
+  const iTotal = idx('valortotal', 'total', 'valorciva', 'valorcimposto')
+  const iSiva = idx('valorsiva', 'valorsimposto')
+
+  const docs: DocKeyinvoice[] = []
+  const erros: string[] = []
+  for (let i = 1; i < linhas.length; i++) {
+    const cols = celulas(linhas[i], delim)
+    const serie = (iSerie >= 0 ? cols[iSerie] ?? '' : '').trim()
+    const num = (iNum >= 0 ? cols[iNum] ?? '' : '').trim()
+    const refRaw = (iRef >= 0 ? cols[iRef] ?? '' : '').trim()
+    // Referência estável e única: Refª Docº se existir, senão "Série/Nº".
+    const ref = refRaw || (serie && num ? `${serie}/${num}` : num || serie)
+    if (!ref && !(iNome >= 0 && (cols[iNome] ?? '').trim())) continue
+    const data = parseData(cols[iData] ?? '')
+    if (!data) { erros.push(`Linha ${i + 1}: data inválida ("${cols[iData] ?? ''}").`); continue }
+    // Valor: Total (c/IVA); se faltar, cai no s/IVA.
+    let valor = parseValor(iTotal >= 0 ? cols[iTotal] ?? '' : '')
+    if (isNaN(valor) && iSiva >= 0) valor = parseValor(cols[iSiva] ?? '')
+    if (isNaN(valor) || valor <= 0) { erros.push(`Linha ${i + 1}: valor inválido.`); continue }
+    docs.push({
+      keyinvoice_doc_id: `pro_forma|${ref}`,
+      descricao: null,
+      categoria: null,
+      subcategoria_id: null,
+      entidade_tipo: 'cliente',
+      nome: (iNome >= 0 ? cols[iNome] ?? '' : '').trim() || '—',
+      nif: normalizarNif(iNif >= 0 ? cols[iNif] : null) || null,
+      tipo_documento: 'pro_forma',
+      numero: ref,
+      data_documento: data,
+      data_vencimento: null,
       valor,
     })
   }
