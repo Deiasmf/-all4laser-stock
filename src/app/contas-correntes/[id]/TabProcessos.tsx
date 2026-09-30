@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { formatarMoeda, formatarData, type ContaComSaldo } from '@/lib/cc'
 import {
   listarProcessos, totaisProcessos, estadoProcessoInfo, ESTADOS_PROCESSO,
   type Processo, type EstadoProcesso,
 } from '@/lib/ccProcessos'
+import DossieProcesso from './DossieProcesso'
 
 // Vista "por processo" (um por equipamento consignado): progresso do pagamento,
 // próximo recebimento e finalização estimada. Só leitura sobre o cc_* existente.
@@ -15,15 +16,13 @@ export default function TabProcessos({ conta }: { conta: ContaComSaldo }) {
   const [busca, setBusca] = useState('')
   const [filtroEstado, setFiltroEstado] = useState<'' | EstadoProcesso>('')
 
-  useEffect(() => {
-    let vivo = true
-    listarProcessos(conta.id).then((ps) => {
-      if (!vivo) return
-      setProcessos(ps)
-      setCarregando(false)
-    })
-    return () => { vivo = false }
+  const recarregar = useCallback(async () => {
+    setProcessos(await listarProcessos(conta.id))
+    setCarregando(false)
   }, [conta.id])
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { recarregar() }, [recarregar])
 
   const filtrados = useMemo(() => {
     const q = busca.trim().toLowerCase()
@@ -119,7 +118,7 @@ export default function TabProcessos({ conta }: { conta: ContaComSaldo }) {
         <p style={c.estado}>Nenhum processo corresponde aos filtros.</p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {filtrados.map((p) => <CartaoProcesso key={p.consignacaoId} p={p} />)}
+          {filtrados.map((p) => <CartaoProcesso key={p.consignacaoId} p={p} onMudou={recarregar} />)}
         </div>
       )}
     </div>
@@ -128,16 +127,20 @@ export default function TabProcessos({ conta }: { conta: ContaComSaldo }) {
 
 // ─── Cartão de um processo ───────────────────────────────────────────────────
 
-function CartaoProcesso({ p }: { p: Processo }) {
+function CartaoProcesso({ p, onMudou }: { p: Processo; onMudou: () => void }) {
+  const [dossieAberto, setDossieAberto] = useState(false)
   const info = estadoProcessoInfo(p.estado)
   const titulo = [p.marca, p.modelo].filter(Boolean).join(' ') || 'Equipamento'
   const liquidado = p.estado === 'liquidado'
 
   return (
-    <div style={{ ...c.cartao, ...(liquidado ? c.cartaoPago : {}) }}>
+    <div style={{ ...c.cartao, ...(liquidado ? c.cartaoPago : {}), ...(p.temIncidenciaAberta ? c.cartaoInc : {}) }}>
       <div style={c.cartaoTopo}>
         <div style={{ minWidth: 0 }}>
-          <div style={c.cartaoTitulo}>{titulo}</div>
+          <div style={c.cartaoTitulo}>
+            {titulo}
+            {p.temIncidenciaAberta && <span style={c.badgeInc}>⚠ incidência</span>}
+          </div>
           <div style={c.cartaoMeta}>
             {p.numeroSerie && <span>SN: <strong>{p.numeroSerie}</strong></span>}
             {p.ano && <span> · {p.ano}</span>}
@@ -190,6 +193,18 @@ function CartaoProcesso({ p }: { p: Processo }) {
             ? ` · primeiro: ${formatarData(p.primeiroPagamento)}` : ''}
         </div>
       )}
+
+      <button style={c.dossieToggle} onClick={() => setDossieAberto((v) => !v)}>
+        {dossieAberto ? '▾ Ocultar dossiê' : '▸ Ver dossiê (incidências, documentos, folhas de obra, envios)'}
+      </button>
+      {dossieAberto && (
+        <DossieProcesso
+          consignacaoId={p.consignacaoId}
+          numeroSerie={p.numeroSerie}
+          equipamentoId={p.equipamentoId}
+          onMudouIncidencias={onMudou}
+        />
+      )}
     </div>
   )
 }
@@ -220,6 +235,9 @@ const c: Record<string, React.CSSProperties> = {
   filtroBtnAtivo: { background: 'var(--primary)', color: '#fff', borderColor: 'var(--primary)' },
   cartao: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 },
   cartaoPago: { border: '1px solid #6EE7B7', background: '#F0FDF4' },
+  cartaoInc: { border: '1px solid #FCA5A5' },
+  badgeInc: { display: 'inline-block', fontSize: 11, fontWeight: 800, borderRadius: 999, padding: '1px 8px', color: '#B91C1C', background: '#FEE2E2', marginLeft: 8, verticalAlign: 'middle' },
+  dossieToggle: { alignSelf: 'flex-start', background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 600, fontSize: 12.5, cursor: 'pointer', padding: '4px 0' },
   cartaoTopo: { display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' },
   cartaoTitulo: { fontSize: 15, fontWeight: 700, color: 'var(--foreground)' },
   cartaoMeta: { fontSize: 12.5, color: 'var(--muted)', marginTop: 2 },

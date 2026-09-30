@@ -4,6 +4,7 @@
 // de pagamento e as previsões. Só leitura — RLS has_financeiro_access().
 
 import { supabase } from './supabase'
+import { incidenciasAbertasPorConsignacao } from './ccDossie'
 
 export type EstadoProcesso = 'enviado' | 'em_pagamento' | 'liquidado' | 'com_incidencia' | 'devolvido'
 
@@ -119,8 +120,8 @@ export async function listarProcessos(contaId: string): Promise<Processo[]> {
     if (!cur || p.data_vencimento < cur) proxPlanoPorEquip.set(eq, p.data_vencimento)
   }
 
-  // Incidências (estado "com incidência") entram na Fase 2 (tabela cc_incidencias).
-  const incAbertas = new Set<string>()
+  // Consignações com incidência aberta → estado "com incidência" (Fase 2).
+  const incAbertas = await incidenciasAbertasPorConsignacao(consIds)
 
   const hoje = new Date().toISOString().slice(0, 10)
 
