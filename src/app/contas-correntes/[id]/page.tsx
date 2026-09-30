@@ -11,13 +11,15 @@ import {
   type ContaComSaldo, type MovimentoLedger, type TipoMovimento,
 } from '@/lib/cc'
 import TabConsignacao from './TabConsignacao'
+import TabProcessos from './TabProcessos'
 import TabPlanos from './TabPlanos'
 import TabReconciliacao from './TabReconciliacao'
 import TabAcessos from './TabAcessos'
 
-type Tab = 'extrato' | 'consignacao' | 'planos' | 'reconciliacao' | 'acessos'
+type Tab = 'extrato' | 'consignacao' | 'processos' | 'planos' | 'reconciliacao' | 'acessos'
 
 const TABS: { id: Tab; label: string; pronto: boolean }[] = [
+  { id: 'processos', label: 'Processos', pronto: true },
   { id: 'consignacao', label: 'Consignação', pronto: true },
   { id: 'planos', label: 'Planos', pronto: true },
   { id: 'extrato', label: 'Extrato', pronto: true },
@@ -31,7 +33,7 @@ export default function DetalheContaPage() {
   const [conta, setConta] = useState<ContaComSaldo | null>(null)
   const [movs, setMovs] = useState<MovimentoLedger[]>([])
   const [carregando, setCarregando] = useState(true)
-  const [tab, setTab] = useState<Tab>('extrato')
+  const [tab, setTab] = useState<Tab>('processos')
 
   const recarregar = useCallback(async () => {
     const [ct, ms] = await Promise.all([obterConta(id), movimentosDaConta(id)])
@@ -111,6 +113,8 @@ export default function DetalheContaPage() {
         ? <TabExtrato conta={conta} movs={movs} onMudou={recarregar} />
         : tab === 'consignacao'
         ? <TabConsignacao conta={conta} onMudou={recarregar} />
+        : tab === 'processos'
+        ? <TabProcessos conta={conta} />
         : tab === 'planos'
         ? <TabPlanos conta={conta} onMudou={recarregar} />
         : tab === 'reconciliacao'
