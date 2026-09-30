@@ -232,10 +232,11 @@ function parseOrcamentos(linhas: string[], delim: string | RegExp, header: strin
     if (!ref && !(iNome >= 0 && (cols[iNome] ?? '').trim())) continue
     const data = parseData(cols[iData] ?? '')
     if (!data) { erros.push(`Linha ${i + 1}: data inválida ("${cols[iData] ?? ''}").`); continue }
-    // Valor: Total (c/IVA); se faltar, cai no s/IVA.
+    // Valor: Total (c/IVA); se faltar, cai no s/IVA. Uma pró-forma pode não ter
+    // valor (proposta em branco) — importa-se com 0 (não é fiscal, não afeta saldo).
     let valor = parseValor(iTotal >= 0 ? cols[iTotal] ?? '' : '')
     if (isNaN(valor) && iSiva >= 0) valor = parseValor(cols[iSiva] ?? '')
-    if (isNaN(valor) || valor <= 0) { erros.push(`Linha ${i + 1}: valor inválido.`); continue }
+    if (isNaN(valor)) valor = 0
     docs.push({
       keyinvoice_doc_id: `pro_forma|${ref}`,
       descricao: null,
