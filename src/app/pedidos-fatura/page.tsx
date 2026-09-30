@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import LinkCliente from '@/components/LinkCliente'
 import { useAuth } from '@/lib/auth'
 import {
   listarPedidosFatura, criarPedidoFatura, listarClientesPedido,
@@ -301,7 +302,7 @@ export default function PedidosFaturaPage() {
                 {p.pago && <span style={c.pagoTag}>💶 Pago</span>}
                 <EstadoBadge estado={p.estado} />
               </div>
-              <div style={c.cartaoCliente}>{p.cliente_nome}</div>
+              <div style={c.cartaoCliente}><LinkCliente clienteId={p.cliente_id} nome={p.cliente_nome} /></div>
               <div style={c.cartaoDesc}>{p.descricao}</div>
               <div style={c.meta}>
                 {p.valor != null && <span><strong>{formatarEuro(p.valor)}</strong></span>}

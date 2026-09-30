@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import LinkCliente from '@/components/LinkCliente'
 import {
   listarMovimentos, resumoEntidades, aging, indicadores, hojeISO, formatarEuro,
   type MovimentoCC, type EntidadeTipo, type ResumoEntidade,
@@ -121,7 +122,9 @@ function AgingCel({ rotulo, valor, alerta }: { rotulo: string; valor: number; al
 function LinhaEntidade({ r, onClick }: { r: ResumoEntidade; onClick: () => void }) {
   return (
     <div style={{ ...c.linha, ...c.clicavel }} onClick={onClick}>
-      <span style={{ fontWeight: 600 }}>{r.nome}</span>
+      {r.tipo === 'cliente'
+        ? <LinkCliente clienteId={r.id} nome={r.nome} style={{ fontWeight: 600 }} />
+        : <span style={{ fontWeight: 600 }}>{r.nome}</span>}
       <span style={{ textAlign: 'right', fontWeight: 700, color: r.saldo < 0 ? '#B45309' : 'var(--foreground)' }}>{formatarEuro(r.saldo)}</span>
       <span style={{ textAlign: 'right', color: r.vencido > 0 ? '#B91C1C' : 'var(--muted)' }}>{formatarEuro(r.vencido)}</span>
       <span style={{ textAlign: 'center' }}>{r.pendentes > 0 ? <span style={c.pendPill}>{r.pendentes}</span> : <span style={c.muted}>—</span>}</span>
