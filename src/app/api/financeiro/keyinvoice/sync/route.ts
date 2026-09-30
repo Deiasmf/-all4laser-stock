@@ -26,7 +26,10 @@ const TIPOS: { code: number; tipo: TipoDocumento; settle: 'check' | 'paid' | 'no
   { code: 7,  tipo: 'nota_credito', settle: 'none'  }, // Nota de Crédito
   { code: 6,  tipo: 'nota_credito', settle: 'none'  }, // Devolução
   { code: 13, tipo: 'pro_forma',    settle: 'none'  }, // Encomendas de Clientes → pró-forma
-  { code: 26, tipo: 'pro_forma',    settle: 'none'  }, // Orçamento → "Fatura Proforma" (não fiscal, não afeta saldo)
+  // NOTA: As "Fatura Proforma" da All4laser são Orçamentos (DocType 26, série 75,
+  // "Orçamento(CRM)"). NÃO são buscáveis por aqui: o documentsList do Keyinvoice
+  // devolve "Tipo de documento inválido"/vazio para os orçamentos (CRM) — precisam
+  // de um método de API CRM diferente, não disponível na integração atual.
 ]
 
 const MAX_PAGINAS_TIPO = 100 // 100 docs/página → até 10 000 por tipo
