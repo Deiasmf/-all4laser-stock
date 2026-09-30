@@ -76,6 +76,51 @@ export async function chamar<T = unknown>(method: string, params: Record<string,
   return j.Data as T
 }
 
+// ─── Sonda (diagnóstico) ─────────────────────────────────────────────────────
+// Chamada "soft": UMA tentativa, timeout curto, sem re-autenticar em Status!=1
+// (um DocType inválido devolve Status!=1 e NÃO deve disparar re-auth nem retries).
+async function postSoft(headers: Record<string, string>, body: unknown, timeoutMs = 8000): Promise<Resposta | null> {
+  try {
+    const res = await fetch(ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    })
+    const texto = await res.text()
+    try { return JSON.parse(texto) as Resposta } catch { return null }
+  } catch { return null }
+}
+
+export type TipoSondado = {
+  code: number
+  series: string[]
+  amostra: { num: string; data: string; cliente: string; total: string }[]
+  temSinal: boolean
+}
+
+// Sonda um DocType: séries (nome) + amostra de documentos. Rápido e tolerante.
+export async function sondarTipo(code: number): Promise<TipoSondado> {
+  let sid: string
+  try { sid = await autenticar() } catch { return { code, series: [], amostra: [], temSinal: false } }
+  const series: string[] = []
+  const s = await postSoft({ Sid: sid }, { method: 'listDocumentSeries', DocType: code })
+  if (s?.Status === 1) {
+    const arr = ((s.Data as { Series?: SerieDoc[] } | undefined)?.Series) ?? []
+    for (const x of arr) { const n = String(x.Name ?? x.Ref ?? x.IdSerie ?? '').trim(); if (n) series.push(n) }
+  }
+  const amostra: TipoSondado['amostra'] = []
+  const d = await postSoft({ Sid: sid }, { method: 'documentsList', DocType: String(code), Offset: '0' })
+  if (d?.Status === 1) {
+    const docs = ((d.Data as { Documents?: DocListItem[] } | undefined)?.Documents) ?? []
+    for (const it of docs.slice(0, 3)) amostra.push({
+      num: String(it.DocNum ?? ''), data: String(it.Date ?? ''),
+      cliente: String(it.ClientName ?? '').trim(), total: String(it.GrossTotal ?? ''),
+    })
+  }
+  return { code, series, amostra, temSinal: series.length > 0 || amostra.length > 0 }
+}
+
 // ─── Métodos usados ────────────────────────────────────────────────────────────
 
 export type EmpresaKI = {
