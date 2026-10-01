@@ -14,11 +14,13 @@ export { formatarMoeda, formatarData, hojeISO } from './cc'
 export type Mes = string // 'YYYY-MM'
 export type Grupo = 'entrada' | 'saida'
 
+export type DetalheItem = { label: string; valor: number; href?: string }
 export type FonteLinha = {
   chave: string
   label: string
   grupo: Grupo
   porMes: Record<Mes, number>
+  detalhe: Record<Mes, DetalheItem[]>   // itens que compõem cada célula (drill-down)
   total: number
   provavel?: boolean   // entrada não confirmada (distinção visual + toggle)
   estimado?: boolean   // valor estimado (faturas sem vencimento, média de despesas)
@@ -83,8 +85,15 @@ function somaPorMes(linhas: FonteLinha[], meses: Mes[]): Record<Mes, number> {
 }
 function novaLinha(chave: string, label: string, grupo: Grupo, meses: Mes[], extra?: Partial<FonteLinha>): FonteLinha {
   const porMes: Record<Mes, number> = {}
-  for (const m of meses) porMes[m] = 0
-  return { chave, label, grupo, porMes, total: 0, ...extra }
+  const detalhe: Record<Mes, DetalheItem[]> = {}
+  for (const m of meses) { porMes[m] = 0; detalhe[m] = [] }
+  return { chave, label, grupo, porMes, detalhe, total: 0, ...extra }
+}
+// Soma a uma célula e regista o item no detalhe (para drill-down).
+function addCell(l: FonteLinha, m: Mes, valor: number, label: string, href?: string) {
+  if (!(m in l.porMes)) return
+  l.porMes[m] += valor
+  l.detalhe[m].push({ label, valor, href })
 }
 function fechar(l: FonteLinha): FonteLinha { l.total = Object.values(l.porMes).reduce((s, v) => s + v, 0); return l }
 
@@ -111,7 +120,7 @@ export async function construirMapa(opts: OpcoesMapa = {}): Promise<MapaCashflow
   const [processosPorConta, prestCC, situacao, planosPrest, faturas, recorrentes, cats, pontuais, despVar] = await Promise.all([
     Promise.all(contas.map((ct) => listarProcessos(ct.id))),
     supabase.from('cc_prestacoes').select('data_vencimento, valor, estado, plano:cc_planos_pagamento(conta_id)').in('estado', ['pendente', 'atrasada', 'parcial']),
-    supabase.from('aluguer_situacao').select('valor_mensal, data_inicio, data_fim_prevista, equipamentos(status)'),
+    supabase.from('aluguer_situacao').select('valor_mensal, data_inicio, data_fim_prevista, equipamentos(status, serial_number)'),
     supabase.from('cashflow_payment_plan_prest').select('data_prevista, valor, valor_recebido, estado, cashflow_payment_plans(descricao, cliente_nome, estado)').neq('estado', 'recebido'),
     incluirFaturas ? carregarFaturasEmDivida() : Promise.resolve([]),
     supabase.from('cashflow_recurring_expenses').select('*').eq('ativo', true),
@@ -142,11 +151,12 @@ export async function construirMapa(opts: OpcoesMapa = {}): Promise<MapaCashflow
       const nFalta = medioEur > 0 ? Math.max(1, Math.ceil(emFaltaEur / medioEur)) : 1
       let ini = mesDe(p.proximoPagamento) ?? meses[0]
       if (ini < meses[0]) ini = meses[0]
+      const etiqueta = [p.marca, p.modelo, p.numeroSerie].filter(Boolean).join(' · ') || 'Equipamento'
       let restante = emFaltaEur
       for (let i = 0; i < nFalta && restante > 0.01; i++) {
         const m = mesAdd(ini, i)
         const parcela = Math.min(medioEur, restante)
-        if (dentro(m)) lLaserix.porMes[m] += parcela
+        if (dentro(m)) addCell(lLaserix, m, parcela, etiqueta, `/contas-correntes/${ct.id}`)
         restante -= parcela
       }
     }
@@ -154,7 +164,7 @@ export async function construirMapa(opts: OpcoesMapa = {}): Promise<MapaCashflow
   for (const pr of (prestCC.data ?? []) as unknown as { data_vencimento: string; valor: number | null }[]) {
     let m = mesDe(pr.data_vencimento)
     if (m && m < meses[0]) m = meses[0]   // vencidas → mês corrente
-    if (dentro(m)) lLaserix.porMes[m] += pr.valor ?? 0
+    if (dentro(m)) addCell(lLaserix, m, pr.valor ?? 0, 'Prestação de plano')
   }
   entradas.push(fechar(lLaserix))
 
@@ -172,10 +182,11 @@ export async function construirMapa(opts: OpcoesMapa = {}): Promise<MapaCashflow
     }
     const inicio = mesDe(s.data_inicio)
     const fim = mesDe(s.data_fim_prevista)
+    const etiqueta = s.equipamentos?.serial_number ? `SN ${s.equipamentos.serial_number}` : 'Equipamento'
     for (const m of meses) {
       if (inicio && m < inicio) continue
       if (fim && m > fim) continue
-      alvo.porMes[m] += s.valor_mensal
+      addCell(alvo, m, s.valor_mensal, etiqueta, '/alugueres/situacao')
     }
   }
   entradas.push(fechar(lNac), fechar(lInt))
@@ -187,7 +198,9 @@ export async function construirMapa(opts: OpcoesMapa = {}): Promise<MapaCashflow
   for (const p of (planosPrest.data ?? []) as unknown as PlanoPrestRow[]) {
     if (p.cashflow_payment_plans?.estado && p.cashflow_payment_plans.estado !== 'ativo') continue
     const m = mesDe(p.data_prevista); if (!dentro(m)) continue
-    lPlanos.porMes[m] += Math.max(0, (p.valor ?? 0) - (p.valor_recebido ?? 0))
+    const valor = Math.max(0, (p.valor ?? 0) - (p.valor_recebido ?? 0))
+    const et = [p.cashflow_payment_plans?.cliente_nome, p.cashflow_payment_plans?.descricao].filter(Boolean).join(' · ') || 'Plano'
+    addCell(lPlanos, m, valor, et)
   }
   entradas.push(fechar(lPlanos))
 
@@ -198,7 +211,7 @@ export async function construirMapa(opts: OpcoesMapa = {}): Promise<MapaCashflow
       const base = f.data_vencimento ?? f.data_documento
       let m = mesDe(base ? addDias(base, f.data_vencimento ? 0 : cfg.prazo_fatura_dias) : null)
       if (m && m < meses[0]) m = meses[0]               // vencidas → mês corrente
-      if (dentro(m)) lFaturas.porMes[m] += f.porLiquidar
+      if (dentro(m)) addCell(lFaturas, m, f.porLiquidar, `${f.documento_ref || 'fatura'} · ${f.cliente_nome}`)
     }
     entradas.push(fechar(lFaturas))
   }
@@ -208,7 +221,8 @@ export async function construirMapa(opts: OpcoesMapa = {}): Promise<MapaCashflow
   for (const e of (pontuais.data ?? []) as ManualRow[]) {
     if (e.tipo !== 'entrada') continue
     if (!incluirProvaveis && e.confianca === 'provavel') continue
-    const m = mesDe(e.data_prevista); if (dentro(m)) lPontEnt.porMes[m] += e.valor
+    const m = mesDe(e.data_prevista)
+    if (dentro(m)) addCell(lPontEnt, m, e.valor, e.descricao + (e.confianca === 'provavel' ? ' (provável)' : ''))
     if (e.confianca === 'provavel') lPontEnt.provavel = true
   }
   entradas.push(fechar(lPontEnt))
@@ -228,7 +242,7 @@ export async function construirMapa(opts: OpcoesMapa = {}): Promise<MapaCashflow
       if (ini && m < ini) continue
       if (fim && m > fim) continue
       if (!ocorreNoMes(d.periodicidade, ini ?? meses[0], m)) continue
-      linha.porMes[m] += d.valor
+      addCell(linha, m, d.valor, d.descricao)
     }
   }
   for (const l of porCat.values()) saidas.push(fechar(l))
@@ -236,7 +250,7 @@ export async function construirMapa(opts: OpcoesMapa = {}): Promise<MapaCashflow
   // 7) Despesas variáveis de alugueres (média 3 meses, estimativa)
   if (despVar > 0) {
     const lVar = novaLinha('desp_var', 'Despesas de alugueres (estimativa)', 'saida', meses, { estimado: true })
-    for (const m of meses) lVar.porMes[m] = despVar
+    for (const m of meses) addCell(lVar, m, despVar, 'Média dos últimos 3 meses')
     saidas.push(fechar(lVar))
   }
 
@@ -244,7 +258,7 @@ export async function construirMapa(opts: OpcoesMapa = {}): Promise<MapaCashflow
   const lPontSai = novaLinha('pont_sai', 'Pontuais', 'saida', meses)
   for (const e of (pontuais.data ?? []) as ManualRow[]) {
     if (e.tipo !== 'saida') continue
-    const m = mesDe(e.data_prevista); if (dentro(m)) lPontSai.porMes[m] += e.valor
+    const m = mesDe(e.data_prevista); if (dentro(m)) addCell(lPontSai, m, e.valor, e.descricao)
   }
   saidas.push(fechar(lPontSai))
 
@@ -300,10 +314,10 @@ async function despesasVariaveisMedia3m(): Promise<number> {
 }
 
 // ─── Tipos internos das queries ────────────────────────────────────────────────
-type AluguerSit = { valor_mensal: number | null; data_inicio: string | null; data_fim_prevista: string | null; equipamentos: { status: string | null } | null }
-type PlanoPrestRow = { data_prevista: string; valor: number | null; valor_recebido: number | null; estado: string; cashflow_payment_plans: { estado: string | null } | null }
-type RecurringRow = { categoria_id: string | null; valor: number; periodicidade: string; data_inicio: string; data_fim: string | null }
-type ManualRow = { tipo: string; valor: number; data_prevista: string; confianca: string }
+type AluguerSit = { valor_mensal: number | null; data_inicio: string | null; data_fim_prevista: string | null; equipamentos: { status: string | null; serial_number: string | null } | null }
+type PlanoPrestRow = { data_prevista: string; valor: number | null; valor_recebido: number | null; estado: string; cashflow_payment_plans: { estado: string | null; cliente_nome: string | null; descricao: string | null } | null }
+type RecurringRow = { descricao: string; categoria_id: string | null; valor: number; periodicidade: string; data_inicio: string; data_fim: string | null }
+type ManualRow = { tipo: string; descricao: string; valor: number; data_prevista: string; confianca: string }
 
 // ─── CRUD: Despesas fixas ────────────────────────────────────────────────────────
 export type Categoria = { id: string; nome: string; ordem: number; ativo: boolean }

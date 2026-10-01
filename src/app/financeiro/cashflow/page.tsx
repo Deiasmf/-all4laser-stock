@@ -10,8 +10,9 @@ import {
   listarPontuais, guardarPontual, eliminarPontual, marcarPontualRealizado,
   listarPlanos, criarPlano, eliminarPlano, gerarPrestacoesPlano, marcarPrestPlanoRecebida,
   type MapaCashflow, type CashflowConfig, type Categoria, type RecurringExpense,
-  type ManualEntry, type PaymentPlan, type PlanoPrest,
+  type ManualEntry, type PaymentPlan, type PlanoPrest, type FonteLinha, type Mes, type DetalheItem,
 } from '@/lib/cashflow'
+import { exportarExcel } from '@/lib/exportar'
 
 type Vista = 'mapa' | 'planos' | 'despesas' | 'pontuais' | 'definicoes'
 const VISTAS: { id: Vista; label: string }[] = [
@@ -73,6 +74,30 @@ function Mapa() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { carregar() }, [carregar])
 
+  const [drill, setDrill] = useState<{ linha: FonteLinha; mes: Mes } | null>(null)
+
+  function abrirDrill(linha: FonteLinha, mes: Mes) {
+    if ((linha.porMes[mes] ?? 0) !== 0) setDrill({ linha, mes })
+  }
+  async function exportar() {
+    if (!mapa) return
+    type Lin = { label: string; valores: Record<string, number> }
+    const linhas: Lin[] = []
+    linhas.push({ label: 'ENTRADAS', valores: {} })
+    mapa.entradas.forEach((l) => linhas.push({ label: '  ' + l.label, valores: l.porMes }))
+    linhas.push({ label: 'Total entradas', valores: mapa.totalEntradas })
+    linhas.push({ label: 'SAÍDAS', valores: {} })
+    mapa.saidas.forEach((l) => linhas.push({ label: '  ' + l.label, valores: l.porMes }))
+    linhas.push({ label: 'Total saídas', valores: mapa.totalSaidas })
+    linhas.push({ label: 'Saldo do mês', valores: mapa.saldoMes })
+    linhas.push({ label: 'Saldo acumulado', valores: mapa.saldoAcumulado })
+    const colunas = [
+      { cabecalho: 'Linha', valor: (r: Lin) => r.label },
+      ...mapa.meses.map((m) => ({ cabecalho: rotuloMes(m), valor: (r: Lin) => (m in r.valores ? Math.round(r.valores[m]) : '') })),
+    ]
+    await exportarExcel('cashflow', colunas, linhas)
+  }
+
   if (carregando || !mapa) return <p style={c.estado}>A calcular o mapa…</p>
   const { meses } = mapa
 
@@ -87,7 +112,10 @@ function Mapa() {
           <input type="checkbox" checked={incluirFaturas} onChange={(e) => setIncluirFaturas(e.target.checked)} />
           incluir faturas pendentes
         </label>
+        <button style={{ ...c.btnPrimSm, marginLeft: 'auto' }} onClick={exportar}>⬇ Exportar Excel</button>
       </div>
+
+      <GraficoCashflow mapa={mapa} />
 
       {mapa.avisos.length > 0 && (
         <div style={c.qualidade}>
@@ -113,7 +141,9 @@ function Mapa() {
             {mapa.entradas.map((l) => (
               <tr key={l.chave}>
                 <td style={c.tdFonte}>{l.label}{l.estimado && <span style={c.tag}>est.</span>}{l.provavel && <span style={c.tagProv}>prov.</span>}</td>
-                {meses.map((m) => <td key={m} style={c.td}>{cell(l.porMes[m])}</td>)}
+                {meses.map((m) => (
+                  <td key={m} style={{ ...c.td, ...(l.porMes[m] ? c.clicavel : {}) }} onClick={() => abrirDrill(l, m)}>{cell(l.porMes[m])}</td>
+                ))}
               </tr>
             ))}
             <tr style={c.totalTr}>
@@ -125,7 +155,9 @@ function Mapa() {
             {mapa.saidas.map((l) => (
               <tr key={l.chave}>
                 <td style={c.tdFonte}>{l.label}{l.estimado && <span style={c.tag}>est.</span>}</td>
-                {meses.map((m) => <td key={m} style={{ ...c.td, color: l.porMes[m] ? '#9A3412' : 'var(--muted)' }}>{l.porMes[m] ? `(${cell(l.porMes[m])})` : '—'}</td>)}
+                {meses.map((m) => (
+                  <td key={m} style={{ ...c.td, color: l.porMes[m] ? '#9A3412' : 'var(--muted)', ...(l.porMes[m] ? c.clicavel : {}) }} onClick={() => abrirDrill(l, m)}>{l.porMes[m] ? `(${cell(l.porMes[m])})` : '—'}</td>
+                ))}
               </tr>
             ))}
             <tr style={c.totalTr}>
@@ -146,7 +178,90 @@ function Mapa() {
           </tbody>
         </table>
       </div>
-      <p style={c.nota}>Caixa inicial: <strong>{formatarMoeda(mapa.saldoInicial, 'EUR')}</strong> · ajusta em Definições. Meses a vermelho = saldo acumulado negativo.</p>
+      <p style={c.nota}>Caixa inicial: <strong>{formatarMoeda(mapa.saldoInicial, 'EUR')}</strong> · ajusta em Definições. Meses a vermelho = saldo acumulado negativo. Clica numa célula para ver o detalhe.</p>
+
+      {drill && (
+        <DrillModal
+          titulo={`${drill.linha.label} · ${rotuloMes(drill.mes)}`}
+          total={drill.linha.porMes[drill.mes]}
+          itens={drill.linha.detalhe[drill.mes] ?? []}
+          onFechar={() => setDrill(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── Gráfico: barras entradas/saídas + linha do saldo acumulado ───────────────
+function GraficoCashflow({ mapa }: { mapa: MapaCashflow }) {
+  const W = 760, H = 200, padL = 8, padR = 8, padT = 14, padB = 22
+  const meses = mapa.meses
+  const n = meses.length
+  const maxBar = Math.max(1, ...meses.map((m) => Math.max(mapa.totalEntradas[m] ?? 0, mapa.totalSaidas[m] ?? 0)))
+  const acums = meses.map((m) => mapa.saldoAcumulado[m] ?? 0)
+  const accMin = Math.min(0, ...acums), accMax = Math.max(1, ...acums)
+  const innerW = W - padL - padR, innerH = H - padT - padB
+  const slot = innerW / n
+  const barW = Math.min(18, slot * 0.3)
+  const yBar = (v: number) => innerH - (v / maxBar) * innerH
+  const yAcc = (v: number) => padT + (innerH - ((v - accMin) / (accMax - accMin || 1)) * innerH)
+  const pts = meses.map((m, i) => `${padL + slot * (i + 0.5)},${yAcc(acums[i])}`).join(' ')
+
+  return (
+    <div style={c.graficoWrap}>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto' }} preserveAspectRatio="xMidYMid meet">
+        <line x1={padL} y1={padT + innerH} x2={W - padR} y2={padT + innerH} stroke="var(--border)" />
+        {meses.map((m, i) => {
+          const cx = padL + slot * (i + 0.5)
+          const e = mapa.totalEntradas[m] ?? 0, s = mapa.totalSaidas[m] ?? 0
+          return (
+            <g key={m}>
+              <rect x={cx - barW - 1} y={padT + yBar(e)} width={barW} height={Math.max(0, innerH - yBar(e))} fill="#10B981" rx="2" />
+              <rect x={cx + 1} y={padT + yBar(s)} width={barW} height={Math.max(0, innerH - yBar(s))} fill="#F87171" rx="2" />
+              <text x={cx} y={H - 6} textAnchor="middle" fontSize="10" fill="var(--muted)">{rotuloMes(m)}</text>
+            </g>
+          )
+        })}
+        <polyline points={pts} fill="none" stroke="#2563EB" strokeWidth="2" />
+        {meses.map((m, i) => <circle key={m} cx={padL + slot * (i + 0.5)} cy={yAcc(acums[i])} r="3" fill="#2563EB" />)}
+      </svg>
+      <div style={c.legenda}>
+        <span><span style={{ ...c.legDot, background: '#10B981' }} /> Entradas</span>
+        <span><span style={{ ...c.legDot, background: '#F87171' }} /> Saídas</span>
+        <span><span style={{ ...c.legDot, background: '#2563EB' }} /> Saldo acumulado</span>
+      </div>
+    </div>
+  )
+}
+
+// ─── Modal de drill-down de uma célula ────────────────────────────────────────
+function DrillModal({ titulo, total, itens, onFechar }: { titulo: string; total: number; itens: DetalheItem[]; onFechar: () => void }) {
+  // Agrupa itens iguais (mesmo label) somando valores.
+  const agrupados = new Map<string, { label: string; valor: number; href?: string }>()
+  for (const it of itens) {
+    const cur = agrupados.get(it.label)
+    if (cur) cur.valor += it.valor
+    else agrupados.set(it.label, { ...it })
+  }
+  const lista = [...agrupados.values()].sort((a, b) => b.valor - a.valor)
+  return (
+    <div style={c.modalFundo} onClick={onFechar}>
+      <div style={c.modal} onClick={(e) => e.stopPropagation()}>
+        <div style={c.modalTopo}>
+          <strong>{titulo}</strong>
+          <button style={c.fechar} onClick={onFechar}>✕</button>
+        </div>
+        <div style={c.modalTotal}>Total: {formatarMoeda(total, 'EUR')} · {lista.length} item(s)</div>
+        <div style={c.modalLista}>
+          {lista.map((it, i) => (
+            <div key={i} style={c.modalLinha}>
+              {it.href ? <Link href={it.href} style={c.modalLink}>{it.label}</Link> : <span>{it.label}</span>}
+              <span style={{ fontWeight: 700 }}>{formatarMoeda(it.valor, 'EUR')}</span>
+            </div>
+          ))}
+          {lista.length === 0 && <p style={c.estado}>Sem detalhe.</p>}
+        </div>
+      </div>
     </div>
   )
 }
@@ -430,7 +545,19 @@ const c: Record<string, React.CSSProperties> = {
   saldoTr: { background: '#F0F9FF' },
   acumTr: { background: '#EFF6FF', fontWeight: 800 },
   negativo: { color: '#B91C1C', background: '#FEE2E2' },
+  clicavel: { cursor: 'pointer' },
   nota: { fontSize: 12, color: 'var(--muted)', marginTop: 8 },
+  graficoWrap: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 12, marginBottom: 14 },
+  legenda: { display: 'flex', gap: 16, justifyContent: 'center', fontSize: 12, color: 'var(--muted)', marginTop: 4 },
+  legDot: { display: 'inline-block', width: 10, height: 10, borderRadius: 3, marginRight: 5, verticalAlign: 'middle' },
+  modalFundo: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 16 },
+  modal: { background: '#fff', borderRadius: 14, padding: 18, width: 'min(560px, 96vw)', maxHeight: '82vh', display: 'flex', flexDirection: 'column', gap: 10 },
+  modalTopo: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
+  fechar: { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: 'var(--muted)' },
+  modalTotal: { fontSize: 13, color: 'var(--muted)' },
+  modalLista: { overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 },
+  modalLinha: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, fontSize: 13.5, padding: '7px 10px', background: '#F9FAFB', border: '1px solid var(--border)', borderRadius: 8 },
+  modalLink: { color: 'var(--primary)', textDecoration: 'none', fontWeight: 600 },
   card: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 12 },
   ok: { background: '#e6f7f1', color: '#00875f', border: '1px solid #00A87A', borderRadius: 8, padding: '8px 10px', fontSize: 13, fontWeight: 600 },
   grelha3: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 },
