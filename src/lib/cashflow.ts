@@ -443,3 +443,45 @@ export async function marcarPrestPlanoRecebida(prestId: string, recebida: boolea
     data_recebimento: recebida ? new Date().toISOString().slice(0, 10) : null,
   }).eq('id', prestId)
 }
+
+// ─── Conciliação bancária ↔ prestações de planos manuais ─────────────────────────
+export type PrestPlanoAberta = {
+  id: string; plan_id: string; numero: number; data_prevista: string; valor: number
+  valor_recebido: number; cliente_nome: string | null; descricao: string | null
+}
+// Prestações em aberto (previsto/parcial) de planos ativos — alvos da conciliação.
+export async function prestacoesPlanoAbertas(): Promise<PrestPlanoAberta[]> {
+  const { data } = await supabase
+    .from('cashflow_payment_plan_prest')
+    .select('id, plan_id, numero, data_prevista, valor, valor_recebido, cashflow_payment_plans!inner(cliente_nome, descricao, estado)')
+    .in('estado', ['previsto', 'parcial'])
+    .eq('cashflow_payment_plans.estado', 'ativo')
+    .order('data_prevista', { ascending: true })
+  return (data ?? []).map((r: Record<string, unknown>) => {
+    const pl = r.cashflow_payment_plans as { cliente_nome?: string | null; descricao?: string | null } | null
+    return {
+      id: r.id as string, plan_id: r.plan_id as string, numero: r.numero as number,
+      data_prevista: r.data_prevista as string, valor: r.valor as number, valor_recebido: (r.valor_recebido as number) ?? 0,
+      cliente_nome: pl?.cliente_nome ?? null, descricao: pl?.descricao ?? null,
+    }
+  })
+}
+
+export type AlocacaoPlano = { prest_id: string; valor: number }
+export async function conciliarPlano(bankMovementId: string, alocacoes: AlocacaoPlano[], data: string, autorNome: string | null) {
+  return supabase.rpc('cashflow_conciliar_plano', { p_bank_movement: bankMovementId, p_alocacoes: alocacoes, p_data: data, p_autor_nome: autorNome })
+}
+export async function desconciliarPlano(bankMovementId: string) {
+  return supabase.rpc('cashflow_desconciliar_plano', { p_bank_movement: bankMovementId })
+}
+export type PrestDoBanco = { id: string; numero: number; valor_recebido: number; cliente_nome: string | null }
+export async function prestacoesDoBanco(bankMovementId: string): Promise<PrestDoBanco[]> {
+  const { data } = await supabase
+    .from('cashflow_payment_plan_prest')
+    .select('id, numero, valor_recebido, cashflow_payment_plans(cliente_nome)')
+    .eq('bank_movement_id', bankMovementId)
+  return (data ?? []).map((r: Record<string, unknown>) => ({
+    id: r.id as string, numero: r.numero as number, valor_recebido: (r.valor_recebido as number) ?? 0,
+    cliente_nome: (r.cashflow_payment_plans as { cliente_nome?: string } | null)?.cliente_nome ?? null,
+  }))
+}

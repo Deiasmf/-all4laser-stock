@@ -16,6 +16,10 @@ import {
 import { listarContas as listarContasCC, formatarMoeda, type ContaComSaldo } from '@/lib/cc'
 import { listarProcessos, type Processo } from '@/lib/ccProcessos'
 import { conciliarBankCC, desconciliarBankCC, ccMovimentosDoBanco, type AlocacaoCC, type CCMovimentoDoBanco } from '@/lib/ccConciliacao'
+import {
+  prestacoesPlanoAbertas, conciliarPlano, desconciliarPlano, prestacoesDoBanco,
+  type PrestPlanoAberta, type AlocacaoPlano, type PrestDoBanco,
+} from '@/lib/cashflow'
 
 const ESTADOS: { valor: EstadoMov; label: string }[] = [
   { valor: 'por_conciliar', label: 'Por conciliar' },
@@ -38,6 +42,8 @@ export default function FilaConciliacaoPage() {
   const [picker, setPicker] = useState<BankMovimento | null>(null)         // modal de escolha de fatura
   const [pickerCC, setPickerCC] = useState<BankMovimento | null>(null)     // modal de casar com conta corrente
   const [contasCC, setContasCC] = useState<ContaComSaldo[]>([])
+  const [pickerPlano, setPickerPlano] = useState<BankMovimento | null>(null) // modal de casar com plano de cashflow
+  const [prestPlano, setPrestPlano] = useState<PrestPlanoAberta[]>([])
 
   const carregar = useCallback(async () => {
     setACarregar(true)
@@ -48,6 +54,7 @@ export default function FilaConciliacaoPage() {
 
   useEffect(() => { listarContas().then(setContas) }, [])
   useEffect(() => { listarContasCC().then((cs) => setContasCC(cs.filter((x) => x.ativa))) }, [])
+  useEffect(() => { prestacoesPlanoAbertas().then(setPrestPlano) }, [])
   useEffect(() => { Promise.all([carregarFaturasEmDivida(), carregarClientesIndex()]).then(([f, c]) => { setFaturas(f); setClientes(c) }) }, [])
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { carregar() }, [carregar])
@@ -65,9 +72,9 @@ export default function FilaConciliacaoPage() {
     setOcupado(id)
     const r = (await fn()) as { error?: unknown }
     if (r?.error) { alert('Erro: ' + JSON.stringify(r.error)); setOcupado(null); return }
-    // Recarrega tudo (faturas em dívida mudaram).
-    const [f] = await Promise.all([carregarFaturasEmDivida()])
-    setFaturas(f)
+    // Recarrega tudo (faturas em dívida e prestações de planos mudaram).
+    const [f, pp] = await Promise.all([carregarFaturasEmDivida(), prestacoesPlanoAbertas()])
+    setFaturas(f); setPrestPlano(pp)
     setOverride((o) => { const n = { ...o }; delete n[id]; return n })
     await carregar()
     setOcupado(null)
@@ -139,9 +146,11 @@ export default function FilaConciliacaoPage() {
             onIgnorar={(cat) => acao(m.id, () => ignorarMovimento(m.id, cat))}
             onEscolher={() => setPicker(m)}
             onContaCorrente={() => setPickerCC(m)}
+            onPlano={() => setPickerPlano(m)}
             onIA={() => correrIA(m)}
             onDesfazer={() => acao(m.id, () => desfazerMatch(m.id))}
             onDesfazerCC={() => acao(m.id, () => desconciliarBankCC(m.id))}
+            onDesfazerPlano={() => acao(m.id, () => desconciliarPlano(m.id))}
             onReabrir={() => acao(m.id, () => reabrirMovimento(m.id))}
           />
         ))}
@@ -152,6 +161,14 @@ export default function FilaConciliacaoPage() {
           mov={picker} faturas={faturas} sugeridoIds={(sugestoes[picker.id]?.clienteIds) ?? []}
           onFechar={() => setPicker(null)}
           onConfirmar={(faturaId, valor) => { const mv = picker; setPicker(null); acao(mv.id, () => confirmarMatch(mv.id, [{ movimento_id: faturaId, valor }], mv.data, perfil?.nome ?? null)) }}
+        />
+      )}
+
+      {pickerPlano && (
+        <PickerPlano
+          mov={pickerPlano} prestacoes={prestPlano}
+          onFechar={() => setPickerPlano(null)}
+          onConfirmar={(alocacoes) => { const mv = pickerPlano; setPickerPlano(null); acao(mv.id, () => conciliarPlano(mv.id, alocacoes, mv.data, perfil?.nome ?? null)) }}
         />
       )}
 
@@ -188,14 +205,15 @@ function ConfBadge({ conf }: { conf: Sugestao['confianca'] }) {
   return <span style={{ ...c.badge, color: k.cor, background: k.bg }}>{k.t}</span>
 }
 
-function MovimentoCard({ m, estado, sugestao, ocupado, onConfirmar, onIgnorar, onEscolher, onContaCorrente, onIA, onDesfazer, onDesfazerCC, onReabrir }: {
+function MovimentoCard({ m, estado, sugestao, ocupado, onConfirmar, onIgnorar, onEscolher, onContaCorrente, onPlano, onIA, onDesfazer, onDesfazerCC, onDesfazerPlano, onReabrir }: {
   m: BankMovimento; estado: EstadoMov; sugestao?: Sugestao; ocupado: boolean
   onConfirmar: () => void; onIgnorar: (c: IgnorarCategoria) => void; onEscolher: () => void
-  onContaCorrente: () => void; onIA: () => void; onDesfazer: () => void; onDesfazerCC: () => void; onReabrir: () => void
+  onContaCorrente: () => void; onPlano: () => void; onIA: () => void; onDesfazer: () => void; onDesfazerCC: () => void; onDesfazerPlano: () => void; onReabrir: () => void
 }) {
   const [feitas, setFeitas] = useState<AlocacaoFeita[] | null>(null)
   const [ccFeitas, setCcFeitas] = useState<CCMovimentoDoBanco[] | null>(null)
-  useEffect(() => { if (estado === 'conciliado') { alocacoesDoMovimento(m.id).then(setFeitas); ccMovimentosDoBanco(m.id).then(setCcFeitas) } }, [estado, m.id])
+  const [planoFeitas, setPlanoFeitas] = useState<PrestDoBanco[] | null>(null)
+  useEffect(() => { if (estado === 'conciliado') { alocacoesDoMovimento(m.id).then(setFeitas); ccMovimentosDoBanco(m.id).then(setCcFeitas); prestacoesDoBanco(m.id).then(setPlanoFeitas) } }, [estado, m.id])
 
   return (
     <div style={c.card}>
@@ -230,6 +248,7 @@ function MovimentoCard({ m, estado, sugestao, ocupado, onConfirmar, onIgnorar, o
               )}
               <button style={c.btnSec} disabled={ocupado} onClick={onEscolher}>Escolher fatura…</button>
               <button style={c.btnSec} disabled={ocupado} onClick={onContaCorrente} title="Casar com uma venda da conta corrente (parceria)">🤝 Conta Corrente…</button>
+              <button style={c.btnSec} disabled={ocupado} onClick={onPlano} title="Casar com uma prestação de plano de cashflow">🗓 Plano…</button>
               <button style={c.btnSec} disabled={ocupado} onClick={onIA} title="Interpretar o descritivo com IA">✨ IA</button>
               <IgnorarMenu disabled={ocupado} onIgnorar={onIgnorar} />
             </div>
@@ -265,7 +284,20 @@ function MovimentoCard({ m, estado, sugestao, ocupado, onConfirmar, onIgnorar, o
                 <button style={c.btnSec} disabled={ocupado} onClick={onDesfazerCC}>↩ Desfazer (conta corrente)</button>
               </>
             )}
-            {(feitas ?? []).length === 0 && (ccFeitas ?? []).length === 0 && (
+            {(planoFeitas ?? []).length > 0 && (
+              <>
+                <div style={c.faturas}>
+                  {(planoFeitas ?? []).map((f) => (
+                    <div key={f.id} style={c.faturaLinha}>
+                      <span>🗓 Plano · <strong>{f.cliente_nome ?? '—'}</strong> · #{f.numero}</span>
+                      <span style={c.muted}>{formatarMoeda(f.valor_recebido, m.conta_moeda)}</span>
+                    </div>
+                  ))}
+                </div>
+                <button style={c.btnSec} disabled={ocupado} onClick={onDesfazerPlano}>↩ Desfazer (plano)</button>
+              </>
+            )}
+            {(feitas ?? []).length === 0 && (ccFeitas ?? []).length === 0 && (planoFeitas ?? []).length === 0 && (
               <button style={c.btnSec} disabled={ocupado} onClick={onDesfazer}>↩ Desfazer</button>
             )}
           </>
@@ -454,6 +486,69 @@ function PickerContaCorrente({ mov, contas, onFechar, onConfirmar }: {
             {excede && ' — excede o valor do banco'}
           </span>
           <button style={{ ...c.btnPrim, opacity: (!algumValor || excede) ? 0.5 : 1 }} disabled={!algumValor || excede} onClick={confirmar}>✓ Confirmar</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Picker: casa o movimento bancário (crédito, EUR) com prestações de planos
+// manuais de cashflow. As prestações são em EUR → sem conversão.
+function PickerPlano({ mov, prestacoes, onFechar, onConfirmar }: {
+  mov: BankMovimento; prestacoes: PrestPlanoAberta[]
+  onFechar: () => void; onConfirmar: (alocacoes: AlocacaoPlano[]) => void
+}) {
+  const [q, setQ] = useState('')
+  const [valores, setValores] = useState<Record<string, string>>({})
+  const filtradas = useMemo(() => {
+    const t = q.trim().toLowerCase()
+    return prestacoes.filter((p) => !t || (p.cliente_nome ?? '').toLowerCase().includes(t) || (p.descricao ?? '').toLowerCase().includes(t))
+  }, [q, prestacoes])
+
+  const totalAloc = useMemo(() => Object.values(valores).reduce((s, v) => s + parseNum(v), 0), [valores])
+  const excede = totalAloc > mov.valor + 0.01
+  const algum = totalAloc > 0.009
+
+  function confirmar() {
+    if (excede || !algum) return
+    const alocacoes: AlocacaoPlano[] = prestacoes
+      .filter((p) => parseNum(valores[p.id]) > 0)
+      .map((p) => ({ prest_id: p.id, valor: parseNum(valores[p.id]) }))
+    if (alocacoes.length) onConfirmar(alocacoes)
+  }
+
+  return (
+    <div style={c.modalFundo} onClick={onFechar}>
+      <div style={c.modal} onClick={(e) => e.stopPropagation()}>
+        <div style={c.modalTopo}>
+          <strong>Casar {formatarValor(mov.valor, mov.conta_moeda)} com plano de cashflow</strong>
+          <button style={c.fechar} onClick={onFechar}>✕</button>
+        </div>
+        <div style={c.movDesc}>{mov.descritivo}</div>
+        <input autoFocus placeholder="Procurar por cliente ou descrição…" value={q} onChange={(e) => setQ(e.target.value)} style={c.input} />
+        <div style={c.pickerLista}>
+          {filtradas.map((p) => {
+            const emAberto = Math.max(0, p.valor - p.valor_recebido)
+            return (
+              <div key={p.id} style={c.pickerLinha}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div><strong>{p.cliente_nome || 'Plano'}</strong> <span style={c.muted}>#{p.numero}</span></div>
+                  <div style={c.muted}>{p.descricao ? p.descricao + ' · ' : ''}{p.data_prevista} · em aberto {formatarValor(emAberto, mov.conta_moeda)}</div>
+                </div>
+                <div style={c.pickerAcoes}>
+                  <button style={c.btnMini} onClick={() => setValores((v) => ({ ...v, [p.id]: String(Math.min(emAberto, mov.valor)) }))}>Pagar {formatarValor(Math.min(emAberto, mov.valor), mov.conta_moeda)}</button>
+                  <input placeholder="parcial" value={valores[p.id] ?? ''} onChange={(e) => setValores((v) => ({ ...v, [p.id]: e.target.value }))} style={c.inputMini} />
+                </div>
+              </div>
+            )
+          })}
+          {filtradas.length === 0 && <p style={c.muted}>Sem prestações de planos em aberto.</p>}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', borderTop: '1px solid #eee', paddingTop: 10 }}>
+          <span style={{ fontSize: 13, color: excede ? '#B91C1C' : 'var(--foreground)', fontWeight: 600 }}>
+            Total: {formatarValor(totalAloc, mov.conta_moeda)} de {formatarValor(mov.valor, mov.conta_moeda)}{excede && ' — excede o valor do banco'}
+          </span>
+          <button style={{ ...c.btnPrim, opacity: (!algum || excede) ? 0.5 : 1 }} disabled={!algum || excede} onClick={confirmar}>✓ Confirmar</button>
         </div>
       </div>
     </div>
