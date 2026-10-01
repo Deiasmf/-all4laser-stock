@@ -62,13 +62,14 @@ export default function CashflowPage() {
 function Mapa() {
   const [mapa, setMapa] = useState<MapaCashflow | null>(null)
   const [incluirProvaveis, setIncluirProvaveis] = useState(true)
+  const [incluirFaturas, setIncluirFaturas] = useState(false)
   const [carregando, setCarregando] = useState(true)
 
   const carregar = useCallback(async () => {
     setCarregando(true)
-    setMapa(await construirMapa(incluirProvaveis))
+    setMapa(await construirMapa({ incluirProvaveis, incluirFaturas }))
     setCarregando(false)
-  }, [incluirProvaveis])
+  }, [incluirProvaveis, incluirFaturas])
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { carregar() }, [carregar])
 
@@ -81,6 +82,10 @@ function Mapa() {
         <label style={c.toggle}>
           <input type="checkbox" checked={incluirProvaveis} onChange={(e) => setIncluirProvaveis(e.target.checked)} />
           incluir entradas prováveis
+        </label>
+        <label style={c.toggle}>
+          <input type="checkbox" checked={incluirFaturas} onChange={(e) => setIncluirFaturas(e.target.checked)} />
+          incluir faturas pendentes
         </label>
       </div>
 
