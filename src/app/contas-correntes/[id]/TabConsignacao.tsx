@@ -7,7 +7,7 @@ import {
   criarConsignacao, registarVenda, confirmarVenda, eliminarVendaRegistada, marcarDevolucao,
   estadoConsignacaoInfo, estadoVendaInfo, vendaPaga, ORIGENS_CONSIGNACAO,
   ESTADOS_CONSIGNACAO, MOEDAS,
-  formatarMoeda, formatarData, hojeISO,
+  formatarMoeda, formatarDual, formatarData, hojeISO,
   type ContaComSaldo, type ConsignacaoRow, type EquipamentoPicker,
   type Venda, type OrigemConsignacao, type EntidadeFaturada, type EstadoConsignacao,
 } from '@/lib/cc'
@@ -294,7 +294,7 @@ function CartaoConsignacao({ conta, cg, onMudou }: {
         </div>
         <div style={{ textAlign: 'right' }}>
           <span style={{ ...c.estadoPill, color: info.cor, background: info.bg }}>{info.label}</span>
-          <div style={c.custo}>custo declarado: <strong>{formatarMoeda(cg.custo_declarado, cg.moeda_custo)}</strong></div>
+          <div style={c.custo}>custo declarado: <strong>{formatarDual(cg.custo_declarado, cg.moeda_custo, cg.taxa_cambio_custo)}</strong></div>
         </div>
       </div>
 
@@ -317,10 +317,10 @@ function CartaoConsignacao({ conta, cg, onMudou }: {
             <span style={{ ...c.estadoPillSm, ...estadoVendaCores(venda.estado) }}>{estadoVendaInfo(venda.estado).label}</span>
           </div>
           <div style={c.vendaNums}>
-            <Num rotulo="Preço" valor={formatarMoeda(venda.preco_venda, venda.moeda_venda)} />
-            <Num rotulo="Custo conv." valor={formatarMoeda(venda.custo_convertido, venda.moeda_venda)} />
-            <Num rotulo="Margem" valor={formatarMoeda(venda.margem, venda.moeda_venda)} alerta={venda.margem_negativa} />
-            <Num rotulo="Valor devido" valor={formatarMoeda(venda.valor_devido, venda.moeda_venda)} destaque />
+            <Num rotulo="Preço" valor={formatarDual(venda.preco_venda, venda.moeda_venda, cg.taxa_cambio_custo)} />
+            <Num rotulo="Custo conv." valor={formatarDual(venda.custo_convertido, venda.moeda_venda, cg.taxa_cambio_custo)} />
+            <Num rotulo="Margem" valor={formatarDual(venda.margem, venda.moeda_venda, cg.taxa_cambio_custo)} alerta={venda.margem_negativa} />
+            <Num rotulo="Valor devido" valor={formatarDual(venda.valor_devido, venda.moeda_venda, cg.taxa_cambio_custo)} destaque />
           </div>
           {venda.estado === 'registada' && (
             <div style={c.vendaAcoes}>

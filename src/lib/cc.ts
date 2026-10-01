@@ -111,6 +111,14 @@ export function formatarMoeda(v: number | null | undefined, moeda = 'EUR'): stri
   }
 }
 
+// Valor na moeda da conta + contravalor em EUR (ex.: "267 261 AED · 61 046 €").
+// Se a moeda já for EUR (ou sem taxa), devolve só o valor único.
+export function formatarDual(v: number | null | undefined, moeda: string, taxa: number | null | undefined): string {
+  if (v == null) return '—'
+  if (moeda === 'EUR' || !taxa || taxa <= 0) return formatarMoeda(v, moeda)
+  return `${formatarMoeda(v, moeda)} · ${formatarMoeda(v / taxa, 'EUR')}`
+}
+
 export function formatarData(d: string | null | undefined): string {
   if (!d) return '—'
   const dt = new Date(d)
