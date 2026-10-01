@@ -76,13 +76,6 @@ function mesAdd(m: Mes, meses: number): Mes {
   const d = new Date(a, mm - 1 + meses, 1)
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`
 }
-// Lista de meses de `a` até `b` inclusive (b >= a). Limitada a 36 por segurança.
-function rangeMeses(a: Mes, b: Mes): Mes[] {
-  const out: Mes[] = []
-  let cur = a
-  for (let i = 0; i < 36 && cur <= b; i++) { out.push(cur); cur = mesAdd(cur, 1) }
-  return out.length ? out : [a]
-}
 function somaPorMes(linhas: FonteLinha[], meses: Mes[]): Record<Mes, number> {
   const r: Record<Mes, number> = {}
   for (const mes of meses) r[mes] = linhas.reduce((s, l) => s + (l.porMes[mes] ?? 0), 0)
@@ -130,20 +123,29 @@ export async function construirMapa(opts: OpcoesMapa = {}): Promise<MapaCashflow
   const entradas: FonteLinha[] = []
   const saidas: FonteLinha[] = []
 
-  // 1) Laserix / parceria — em falta FASEADO: consignações (processos, espalhadas
-  //    do próximo pagamento até à liquidação estimada) + prestações de planos cc.
+  // 1) Laserix / parceria — em falta FASEADO (em EUR): para cada processo, uma
+  //    mensalidade típica (média dos pagamentos) a partir do próximo pagamento,
+  //    até consumir o em falta. Converte da moeda da venda (ex.: AED) para EUR.
+  //    + prestações pendentes dos planos cc (datas reais, já em EUR).
   const lLaserix = novaLinha('laserix', 'Laserix (processos)', 'entrada', meses)
-  for (const processos of processosPorConta) {
-    for (const p of processos) {
+  contas.forEach((ct, idx) => {
+    for (const p of processosPorConta[idx]) {
       if (p.emFalta <= 0.01) continue
+      const taxa = p.moeda === 'EUR' ? 1 : (p.taxaCusto || ct.taxa_contratual || 1)
+      const emFaltaEur = p.emFalta / taxa
+      const medioEur = p.nPagamentos > 0 ? (p.pago / p.nPagamentos) / taxa : emFaltaEur
+      const nFalta = medioEur > 0 ? Math.max(1, Math.ceil(emFaltaEur / medioEur)) : 1
       let ini = mesDe(p.proximoPagamento) ?? meses[0]
       if (ini < meses[0]) ini = meses[0]
-      const fim = mesDe(p.finalizacaoEstimada)
-      const range = fim && fim > ini ? rangeMeses(ini, fim) : [ini]
-      const perMes = p.emFalta / range.length
-      for (const m of range) if (dentro(m)) lLaserix.porMes[m] += perMes
+      let restante = emFaltaEur
+      for (let i = 0; i < nFalta && restante > 0.01; i++) {
+        const m = mesAdd(ini, i)
+        const parcela = Math.min(medioEur, restante)
+        if (dentro(m)) lLaserix.porMes[m] += parcela
+        restante -= parcela
+      }
     }
-  }
+  })
   for (const pr of (prestCC.data ?? []) as unknown as { data_vencimento: string; valor: number | null }[]) {
     let m = mesDe(pr.data_vencimento)
     if (m && m < meses[0]) m = meses[0]   // vencidas → mês corrente
