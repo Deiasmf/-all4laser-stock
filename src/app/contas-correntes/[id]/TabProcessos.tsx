@@ -37,7 +37,9 @@ export default function TabProcessos({ conta }: { conta: ContaComSaldo }) {
   }, [processos, filtroEstado, busca])
 
   const totais = useMemo(() => totaisProcessos(filtrados), [filtrados])
-  const moeda = processos[0]?.moeda ?? conta.moeda
+  // Moeda dos totais = a das vendas (processos com valor); evita apanhar a moeda
+  // de custo de um processo só "enviado" (ex.: EUR) e etiquetar mal os totais AED.
+  const moeda = processos.find((p) => p.valorDevido > 0)?.moeda ?? conta.moeda
 
   // Contagem por estado (para os chips de filtro).
   const porEstado = useMemo(() => {
