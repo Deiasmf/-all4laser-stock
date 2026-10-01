@@ -151,7 +151,7 @@ export async function construirMapa(opts: OpcoesMapa = {}): Promise<MapaCashflow
   const [processosPorConta, prestCC, situacao, planosPrest, faturas, recorrentes, cats, pontuais, despVar] = await Promise.all([
     Promise.all(contas.map((ct) => listarProcessos(ct.id))),
     supabase.from('cc_prestacoes').select('data_vencimento, valor, estado, plano:cc_planos_pagamento(conta_id)').in('estado', ['pendente', 'atrasada', 'parcial']),
-    supabase.from('aluguer_situacao').select('valor_mensal, data_inicio, data_fim_prevista, equipamentos(status, serial_number)'),
+    supabase.from('aluguer_situacao').select('valor_mensal, data_inicio, data_fim_prevista, equipamentos(status, serial_number, modelo, marca)'),
     supabase.from('cashflow_payment_plan_prest').select('data_prevista, valor, valor_recebido, estado, cashflow_payment_plans(descricao, cliente_nome, estado)').neq('estado', 'recebido'),
     incluirFaturas ? carregarFaturasEmDivida() : Promise.resolve([]),
     supabase.from('cashflow_recurring_expenses').select('*').eq('ativo', true),
@@ -204,6 +204,9 @@ export async function construirMapa(opts: OpcoesMapa = {}): Promise<MapaCashflow
   const lInt = novaLinha('alug_int', 'Alugueres Internacionais', 'entrada', meses)
   let semValorNac = 0, semValorInt = 0
   for (const s of (situacao.data ?? []) as unknown as AluguerSit[]) {
+    // Zimmer não é unidade faturável isolada — o valor é do conjunto (Laser + Zimmer),
+    // contabilizado no laser. Nunca entra sozinho na previsão nem no painel de qualidade.
+    if (ehZimmer(s.equipamentos?.modelo, s.equipamentos?.marca)) continue
     const status = s.equipamentos?.status
     const alvo = status === 'Aluguer internacional' ? lInt : status === 'Aluguer nacional' ? lNac : null
     if (!alvo) continue
@@ -345,7 +348,12 @@ async function despesasVariaveisMedia3m(): Promise<number> {
 }
 
 // ─── Tipos internos das queries ────────────────────────────────────────────────
-type AluguerSit = { valor_mensal: number | null; data_inicio: string | null; data_fim_prevista: string | null; equipamentos: { status: string | null; serial_number: string | null } | null }
+type AluguerSit = { valor_mensal: number | null; data_inicio: string | null; data_fim_prevista: string | null; equipamentos: { status: string | null; serial_number: string | null; modelo: string | null; marca: string | null } | null }
+// Um equipamento é um Zimmer (acessório do conjunto, sem valor próprio)?
+function ehZimmer(modelo: string | null | undefined, marca: string | null | undefined): boolean {
+  const s = `${modelo ?? ''} ${marca ?? ''}`.toLowerCase()
+  return s.includes('zimmer') || s.includes('cryo')
+}
 type PlanoPrestRow = { data_prevista: string; valor: number | null; valor_recebido: number | null; estado: string; cashflow_payment_plans: { estado: string | null; cliente_nome: string | null; descricao: string | null } | null }
 type RecurringRow = { descricao: string; categoria_id: string | null; valor: number; periodicidade: string; data_inicio: string; data_fim: string | null }
 type ManualRow = { tipo: string; descricao: string; valor: number; data_prevista: string; confianca: string }
