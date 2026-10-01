@@ -71,6 +71,16 @@ drop policy if exists cc_processo_documentos_staff on public.cc_processo_documen
 create policy cc_processo_documentos_staff on public.cc_processo_documentos
   for all to authenticated using (public.is_staff()) with check (public.is_staff());
 
+-- GRANTs ao papel authenticated (sem isto, a RLS não chega: "permission denied")
+do $$
+declare t text;
+begin
+  foreach t in array array['cc_incidencias','cc_incidencia_fotos','cc_processo_documentos'] loop
+    execute format('grant select, insert, update, delete on public.%I to authenticated', t);
+    execute format('grant all on public.%I to service_role', t);
+  end loop;
+end $$;
+
 -- updated_at automático nas incidências (reutiliza o trigger genérico se existir)
 create or replace function public.cc_incidencias_touch() returns trigger as $$
 begin new.updated_at := now(); return new; end $$ language plpgsql;
