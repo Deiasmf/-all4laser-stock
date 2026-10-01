@@ -14,7 +14,7 @@ import {
   type TimelineEvento, type TimelineTipo,
 } from '@/lib/cliente360'
 import { historicoCliente } from '@/lib/clientes'
-import { listarContas as listarContasCC, formatarMoeda, type ContaComSaldo } from '@/lib/cc'
+import { listarContas as listarContasCC, formatarMoeda, formatarDual, type ContaComSaldo } from '@/lib/cc'
 import { listarProcessos, totaisProcessos, estadoProcessoInfo, type Processo } from '@/lib/ccProcessos'
 import type { Cliente, HistoricoItem } from '@/types/cliente'
 
@@ -185,9 +185,9 @@ export default function Cliente360({ cliente }: { cliente: Cliente }) {
         <Seccao titulo="Processos (consignação)" acao={{ label: 'Ver processos →', href: `/contas-correntes/${ccConta.id}` }}>
           <div style={c.miniIndics}>
             <span>Processos <strong>{ccProcessos.length}</strong></span>
-            <span>Devido <strong>{formatarMoeda(ccTotais.devido, ccConta.moeda)}</strong></span>
-            <span>Recebido <strong>{formatarMoeda(ccTotais.pago, ccConta.moeda)}</strong></span>
-            <span>Em falta <strong style={{ color: ccTotais.emFalta > 0 ? '#B45309' : 'inherit' }}>{formatarMoeda(ccTotais.emFalta, ccConta.moeda)}</strong></span>
+            <span>Devido <strong>{formatarMoeda(ccTotais.devido, ccConta.moeda)}</strong>{ccConta.moeda !== 'EUR' && <span style={{ color: 'var(--muted)' }}> · {formatarMoeda(ccTotais.devidoEur, 'EUR')}</span>}</span>
+            <span>Recebido <strong>{formatarMoeda(ccTotais.pago, ccConta.moeda)}</strong>{ccConta.moeda !== 'EUR' && <span style={{ color: 'var(--muted)' }}> · {formatarMoeda(ccTotais.pagoEur, 'EUR')}</span>}</span>
+            <span>Em falta <strong style={{ color: ccTotais.emFalta > 0 ? '#B45309' : 'inherit' }}>{formatarMoeda(ccTotais.emFalta, ccConta.moeda)}</strong>{ccConta.moeda !== 'EUR' && <span style={{ color: 'var(--muted)' }}> · {formatarMoeda(ccTotais.emFaltaEur, 'EUR')}</span>}</span>
             {ccIncidencias > 0 && <span style={{ color: '#B91C1C', fontWeight: 700 }}>⚠ {ccIncidencias} com incidência</span>}
           </div>
           {ccEmDivida.length === 0 ? <Vazio texto="Sem processos em dívida." /> : (
@@ -199,7 +199,7 @@ export default function Cliente360({ cliente }: { cliente: Cliente }) {
                   <div key={p.consignacaoId} style={c.linha}>
                     <span style={c.linhaPrincipal}>{titulo}{p.numeroSerie ? ` · ${p.numeroSerie}` : ''}</span>
                     <span style={c.linhaSec}>
-                      em falta {formatarMoeda(p.emFalta, p.moeda)}
+                      em falta {formatarDual(p.emFalta, p.moeda, p.taxaCusto)}
                       <span style={{ ...c.pill, color: info.cor, background: info.bg }}>{info.label}</span>
                     </span>
                   </div>

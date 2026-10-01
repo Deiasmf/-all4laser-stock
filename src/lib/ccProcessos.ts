@@ -201,7 +201,18 @@ export async function listarProcessos(contaId: string): Promise<Processo[]> {
   })
 }
 
-export type TotaisProcessos = { devido: number; pago: number; emFalta: number; n: number }
+export type TotaisProcessos = {
+  devido: number; pago: number; emFalta: number; n: number
+  devidoEur: number; pagoEur: number; emFaltaEur: number   // contravalor em EUR (por processo)
+}
+// Converte um valor do processo para EUR (AED/moeda ÷ taxa; EUR fica igual).
+function eur(valor: number, p: Processo): number {
+  if (p.moeda === 'EUR' || !p.taxaCusto || p.taxaCusto <= 0) return valor
+  return valor / p.taxaCusto
+}
 export function totaisProcessos(ps: Processo[]): TotaisProcessos {
-  return ps.reduce((t, p) => ({ devido: t.devido + p.valorDevido, pago: t.pago + p.pago, emFalta: t.emFalta + p.emFalta, n: t.n + 1 }), { devido: 0, pago: 0, emFalta: 0, n: 0 })
+  return ps.reduce((t, p) => ({
+    devido: t.devido + p.valorDevido, pago: t.pago + p.pago, emFalta: t.emFalta + p.emFalta, n: t.n + 1,
+    devidoEur: t.devidoEur + eur(p.valorDevido, p), pagoEur: t.pagoEur + eur(p.pago, p), emFaltaEur: t.emFaltaEur + eur(p.emFalta, p),
+  }), { devido: 0, pago: 0, emFalta: 0, n: 0, devidoEur: 0, pagoEur: 0, emFaltaEur: 0 })
 }

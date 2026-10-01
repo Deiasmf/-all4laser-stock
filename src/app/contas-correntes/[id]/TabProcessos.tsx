@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { formatarMoeda, formatarData, type ContaComSaldo } from '@/lib/cc'
+import { formatarMoeda, formatarDual, formatarData, type ContaComSaldo } from '@/lib/cc'
 import {
   listarProcessos, totaisProcessos, estadoProcessoInfo, ESTADOS_PROCESSO,
   type Processo, type EstadoProcesso,
@@ -62,16 +62,19 @@ export default function TabProcessos({ conta }: { conta: ContaComSaldo }) {
           <div style={c.tCard}>
             <span style={c.tTitulo}>Valor devido</span>
             <span style={c.tValor}>{formatarMoeda(totais.devido, moeda)}</span>
+            {moeda !== 'EUR' && <span style={c.tEur}>{formatarMoeda(totais.devidoEur, 'EUR')}</span>}
           </div>
           <div style={c.tCard}>
             <span style={c.tTitulo}>Recebido</span>
             <span style={{ ...c.tValor, color: '#065F46' }}>{formatarMoeda(totais.pago, moeda)}</span>
+            {moeda !== 'EUR' && <span style={c.tEur}>{formatarMoeda(totais.pagoEur, 'EUR')}</span>}
           </div>
           <div style={c.tCard}>
             <span style={c.tTitulo}>Em falta</span>
             <span style={{ ...c.tValor, color: totais.emFalta > 0 ? '#B45309' : 'var(--foreground)' }}>
               {formatarMoeda(totais.emFalta, moeda)}
             </span>
+            {moeda !== 'EUR' && <span style={c.tEur}>{formatarMoeda(totais.emFaltaEur, 'EUR')}</span>}
           </div>
         </div>
       )}
@@ -156,7 +159,7 @@ function CartaoProcesso({ p, onMudou }: { p: Processo; onMudou: () => void }) {
         <div style={c.progresso}>
           <div style={c.progressoTopo}>
             <span style={c.progressoLabel}>
-              {formatarMoeda(p.pago, p.moeda)} de {formatarMoeda(p.valorDevido, p.moeda)}
+              {formatarMoeda(p.pago, p.moeda)} de {formatarDual(p.valorDevido, p.moeda, p.taxaCusto)}
             </span>
             <span style={{ ...c.progressoPct, color: info.cor }}>{p.pctPago}%</span>
           </div>
@@ -170,9 +173,9 @@ function CartaoProcesso({ p, onMudou }: { p: Processo; onMudou: () => void }) {
 
       {/* Números */}
       <div style={c.detalhes}>
-        <Num rotulo="Devido" valor={p.valorDevido > 0 ? formatarMoeda(p.valorDevido, p.moeda) : '—'} />
-        <Num rotulo="Recebido" valor={formatarMoeda(p.pago, p.moeda)} />
-        <Num rotulo="Em falta" valor={p.emFalta > 0 ? formatarMoeda(p.emFalta, p.moeda) : '—'} destaque={p.emFalta > 0} />
+        <Num rotulo="Devido" valor={p.valorDevido > 0 ? formatarDual(p.valorDevido, p.moeda, p.taxaCusto) : '—'} />
+        <Num rotulo="Recebido" valor={formatarDual(p.pago, p.moeda, p.taxaCusto)} />
+        <Num rotulo="Em falta" valor={p.emFalta > 0 ? formatarDual(p.emFalta, p.moeda, p.taxaCusto) : '—'} destaque={p.emFalta > 0} />
         <Num rotulo="Pagamentos" valor={String(p.nPagamentos)} />
         <Num
           rotulo="Próximo pagamento"
@@ -227,6 +230,7 @@ const c: Record<string, React.CSSProperties> = {
   tCard: { background: '#fff', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 2 },
   tTitulo: { fontSize: 12, color: 'var(--muted)' },
   tValor: { fontSize: 17, fontWeight: 800, color: 'var(--foreground)' },
+  tEur: { fontSize: 12.5, color: 'var(--muted)', fontWeight: 600 },
   filtroBar: { display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' },
   filtroBusca: { flex: '1 1 220px', minWidth: 160, padding: '9px 12px', border: '1px solid var(--border)', borderRadius: 8, font: 'inherit', boxSizing: 'border-box' },
   filtroLimpar: { background: '#fff', color: 'var(--muted)', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 14px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' },
