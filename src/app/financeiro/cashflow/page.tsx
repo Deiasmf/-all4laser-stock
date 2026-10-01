@@ -9,8 +9,9 @@ import {
   listarCategorias, listarDespesasFixas, guardarDespesaFixa, eliminarDespesaFixa,
   listarPontuais, guardarPontual, eliminarPontual, marcarPontualRealizado,
   listarPlanos, criarPlano, eliminarPlano, gerarPrestacoesPlano, marcarPrestPlanoRecebida,
+  realizadoRecente,
   type MapaCashflow, type CashflowConfig, type Categoria, type RecurringExpense,
-  type ManualEntry, type PaymentPlan, type PlanoPrest, type FonteLinha, type Mes, type DetalheItem,
+  type ManualEntry, type PaymentPlan, type PlanoPrest, type FonteLinha, type Mes, type DetalheItem, type RealizadoMes,
 } from '@/lib/cashflow'
 import { exportarExcel } from '@/lib/exportar'
 
@@ -62,13 +63,15 @@ export default function CashflowPage() {
 // ─── Vista: Mapa ─────────────────────────────────────────────────────────────
 function Mapa() {
   const [mapa, setMapa] = useState<MapaCashflow | null>(null)
+  const [realizado, setRealizado] = useState<RealizadoMes[]>([])
   const [incluirProvaveis, setIncluirProvaveis] = useState(true)
   const [incluirFaturas, setIncluirFaturas] = useState(false)
   const [carregando, setCarregando] = useState(true)
 
   const carregar = useCallback(async () => {
     setCarregando(true)
-    setMapa(await construirMapa({ incluirProvaveis, incluirFaturas }))
+    const [m, r] = await Promise.all([construirMapa({ incluirProvaveis, incluirFaturas }), realizadoRecente(3)])
+    setMapa(m); setRealizado(r)
     setCarregando(false)
   }, [incluirProvaveis, incluirFaturas])
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -180,6 +183,8 @@ function Mapa() {
       </div>
       <p style={c.nota}>Caixa inicial: <strong>{formatarMoeda(mapa.saldoInicial, 'EUR')}</strong> · ajusta em Definições. Meses a vermelho = saldo acumulado negativo. Clica numa célula para ver o detalhe.</p>
 
+      <RealizadoVsPrevisto realizado={realizado} mapa={mapa} />
+
       {drill && (
         <DrillModal
           titulo={`${drill.linha.label} · ${rotuloMes(drill.mes)}`}
@@ -189,6 +194,54 @@ function Mapa() {
         />
       )}
     </div>
+  )
+}
+
+// ─── Realizado (histórico) vs Previsto ────────────────────────────────────────
+function RealizadoVsPrevisto({ realizado, mapa }: { realizado: RealizadoMes[]; mapa: MapaCashflow }) {
+  if (realizado.length === 0) return null
+  const mesCorrente = mapa.meses[0]
+  return (
+    <section style={c.realWrap}>
+      <div style={c.realTitulo}>📒 Realizado (histórico) <span style={c.muted}>— o que entrou/saiu mesmo, dos livros</span></div>
+      <div style={c.grelhaWrap}>
+        <table style={c.grelha}>
+          <thead>
+            <tr>
+              <th style={{ ...c.th, ...c.thFonte }}>Linha</th>
+              {realizado.map((r) => <th key={r.mes} style={c.th}>{rotuloMes(r.mes)}{r.mes === mesCorrente ? ' *' : ''}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style={c.tdFonte}>Entradas realizadas</td>
+              {realizado.map((r) => <td key={r.mes} style={{ ...c.td, color: '#065F46' }}>{cell(r.entradas)}</td>)}
+            </tr>
+            <tr>
+              <td style={c.tdFonte}>Saídas realizadas</td>
+              {realizado.map((r) => <td key={r.mes} style={{ ...c.td, color: '#9A3412' }}>{r.saidas ? `(${cell(r.saidas)})` : '—'}</td>)}
+            </tr>
+            <tr style={c.totalTr}>
+              <td style={c.tdFonteTotal}>Saldo realizado</td>
+              {realizado.map((r) => <td key={r.mes} style={{ ...c.tdTotal, color: r.saldo < 0 ? '#B91C1C' : '#065F46' }}>{cell(r.saldo)}</td>)}
+            </tr>
+            <tr>
+              <td style={c.tdFonte}>Previsto (entradas)</td>
+              {realizado.map((r) => <td key={r.mes} style={c.td}>{r.mes === mesCorrente ? cell(mapa.totalEntradas[mesCorrente]) : '—'}</td>)}
+            </tr>
+            <tr>
+              <td style={c.tdFonte}>Desvio (mês corrente)</td>
+              {realizado.map((r) => {
+                if (r.mes !== mesCorrente) return <td key={r.mes} style={c.td}>—</td>
+                const desvio = r.entradas - (mapa.totalEntradas[mesCorrente] ?? 0)
+                return <td key={r.mes} style={{ ...c.td, fontWeight: 700, color: desvio < 0 ? '#B45309' : '#065F46' }}>{desvio >= 0 ? '+' : ''}{cell(desvio)}</td>
+              })}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p style={c.nota}>* mês corrente (ainda a decorrer — realizado é parcial). O desvio compara as entradas realizadas até agora com o previsto do mês. O histórico de meses passados não tem previsão guardada, por isso mostra só o realizado.</p>
+    </section>
   )
 }
 
@@ -548,6 +601,8 @@ const c: Record<string, React.CSSProperties> = {
   clicavel: { cursor: 'pointer' },
   nota: { fontSize: 12, color: 'var(--muted)', marginTop: 8 },
   graficoWrap: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 12, marginBottom: 14 },
+  realWrap: { marginTop: 18 },
+  realTitulo: { fontSize: 14, fontWeight: 800, color: 'var(--foreground)', marginBottom: 8 },
   legenda: { display: 'flex', gap: 16, justifyContent: 'center', fontSize: 12, color: 'var(--muted)', marginTop: 4 },
   legDot: { display: 'inline-block', width: 10, height: 10, borderRadius: 3, marginRight: 5, verticalAlign: 'middle' },
   modalFundo: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 16 },
