@@ -14,6 +14,8 @@ import {
   type TimelineEvento, type TimelineTipo,
 } from '@/lib/cliente360'
 import { historicoCliente } from '@/lib/clientes'
+import { listarContas as listarContasCC, formatarMoeda, type ContaComSaldo } from '@/lib/cc'
+import { listarProcessos, totaisProcessos, estadoProcessoInfo, type Processo } from '@/lib/ccProcessos'
 import type { Cliente, HistoricoItem } from '@/types/cliente'
 
 // Vista 360º agregada por cliente. Só lê dos módulos existentes; a única secção
@@ -30,6 +32,8 @@ export default function Cliente360({ cliente }: { cliente: Cliente }) {
   const [historico, setHistorico] = useState<HistoricoItem[]>([])
   const [fichas, setFichas] = useState<DocItem[]>([])
   const [avisos, setAvisos] = useState<DocItem[]>([])
+  const [ccConta, setCcConta] = useState<ContaComSaldo | null>(null)
+  const [ccProcessos, setCcProcessos] = useState<Processo[]>([])
   const [carregando, setCarregando] = useState(true)
   const [novaNota, setNovaNota] = useState('')
   const [aGuardarNota, setAGuardarNota] = useState(false)
@@ -39,7 +43,7 @@ export default function Cliente360({ cliente }: { cliente: Cliente }) {
   const clienteNome = cliente.nome
   const carregar = useCallback(async () => {
     setCarregando(true)
-    const [en, tr, al, eq, pc, no, hi, fi, f, av] = await Promise.all([
+    const [en, tr, al, eq, pc, no, hi, fi, f, av, cc] = await Promise.all([
       carregarEnvios(clienteId),
       carregarTracking(clienteId),
       carregarAlugueres(clienteId),
@@ -50,15 +54,30 @@ export default function Cliente360({ cliente }: { cliente: Cliente }) {
       carregarFichasEnviadas(clienteId),
       isFinanceiro ? carregarFinanceiroCliente(clienteId) : Promise.resolve(null),
       isFinanceiro ? carregarAvisosPagamento(clienteId) : Promise.resolve([] as DocItem[]),
+      // Conta corrente da parceria (consignação) ligada a este cliente, se houver.
+      isFinanceiro ? (async () => {
+        const contas = await listarContasCC()
+        const conta = contas.find((x) => x.cliente_id === clienteId && x.ativa)
+          ?? contas.find((x) => x.cliente_id === clienteId) ?? null
+        if (!conta) return null
+        return { conta, processos: await listarProcessos(conta.id) }
+      })() : Promise.resolve(null),
     ])
     setEnvios(en); setTracking(tr); setAlugueres(al); setEquipamentos(eq); setPecas(pc)
     setNotas(no); setHistorico(hi); setFichas(fi); setFin(f); setAvisos(av)
+    setCcConta(cc?.conta ?? null); setCcProcessos(cc?.processos ?? [])
     setCarregando(false)
   }, [clienteId, clienteNome, isFinanceiro])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { carregar() }, [carregar])
 
+  const ccTotais = useMemo(() => totaisProcessos(ccProcessos), [ccProcessos])
+  const ccIncidencias = useMemo(() => ccProcessos.filter((p) => p.temIncidenciaAberta).length, [ccProcessos])
+  const ccEmDivida = useMemo(
+    () => ccProcessos.filter((p) => p.emFalta > 0.01).sort((a, b) => b.emFalta - a.emFalta).slice(0, 5),
+    [ccProcessos],
+  )
   const emTransitoLista = useMemo(() => tracking.filter(emTransito), [tracking])
   const alugueresAtivos = useMemo(
     () => new Set(alugueres.filter((a) => !a.data_recolha && a.data_entrega).map((a) => a.serial_number)).size,
@@ -157,6 +176,36 @@ export default function Cliente360({ cliente }: { cliente: Cliente }) {
                 ))}
               </div>
             </>
+          )}
+        </Seccao>
+      )}
+
+      {/* Processos (consignação) — parceria tipo Laserix; só financeiro, só se existir conta */}
+      {ccConta && (
+        <Seccao titulo="Processos (consignação)" acao={{ label: 'Ver processos →', href: `/contas-correntes/${ccConta.id}` }}>
+          <div style={c.miniIndics}>
+            <span>Processos <strong>{ccProcessos.length}</strong></span>
+            <span>Devido <strong>{formatarMoeda(ccTotais.devido, ccConta.moeda)}</strong></span>
+            <span>Recebido <strong>{formatarMoeda(ccTotais.pago, ccConta.moeda)}</strong></span>
+            <span>Em falta <strong style={{ color: ccTotais.emFalta > 0 ? '#B45309' : 'inherit' }}>{formatarMoeda(ccTotais.emFalta, ccConta.moeda)}</strong></span>
+            {ccIncidencias > 0 && <span style={{ color: '#B91C1C', fontWeight: 700 }}>⚠ {ccIncidencias} com incidência</span>}
+          </div>
+          {ccEmDivida.length === 0 ? <Vazio texto="Sem processos em dívida." /> : (
+            <div style={c.lista}>
+              {ccEmDivida.map((p) => {
+                const info = estadoProcessoInfo(p.estado)
+                const titulo = [p.marca, p.modelo].filter(Boolean).join(' ') || 'Equipamento'
+                return (
+                  <div key={p.consignacaoId} style={c.linha}>
+                    <span style={c.linhaPrincipal}>{titulo}{p.numeroSerie ? ` · ${p.numeroSerie}` : ''}</span>
+                    <span style={c.linhaSec}>
+                      em falta {formatarMoeda(p.emFalta, p.moeda)}
+                      <span style={{ ...c.pill, color: info.cor, background: info.bg }}>{info.label}</span>
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
           )}
         </Seccao>
       )}
