@@ -371,9 +371,14 @@ function PickerContaCorrente({ mov, contas, onFechar, onConfirmar }: {
     if (!contaId) { setProcessos([]); return }
     setACarregar(true); setValores({})
     const c0 = contas.find((x) => x.id === contaId)
-    setTaxa(c0?.taxa_contratual ? String(c0.taxa_contratual) : '1')
     const ps = await listarProcessos(contaId)
-    setProcessos(ps.filter((p) => p.vendaId && p.emFalta > 0.01)); setACarregar(false)
+    const filtrados = ps.filter((p) => p.vendaId && p.emFalta > 0.01)
+    // Taxa por defeito: contratual da conta, senão a taxa das consignações (ex.:
+    // Laserix usa taxa por máquina, não na conta), senão 1.
+    const taxaCons = filtrados.find((p) => p.taxaCusto && p.taxaCusto > 0)?.taxaCusto
+    const taxaDefault = c0?.taxa_contratual || taxaCons || (c0 && c0.moeda === 'EUR' ? 1 : null)
+    setTaxa(taxaDefault ? String(taxaDefault) : '1')
+    setProcessos(filtrados); setACarregar(false)
   }, [contaId, contas])
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { carregarVendas() }, [carregarVendas])
