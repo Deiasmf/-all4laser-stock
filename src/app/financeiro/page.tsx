@@ -11,6 +11,7 @@ import { resumoRecolhas, type ResumoRecolhas } from '@/lib/recolhas'
 type Cartao = { href: string; titulo: string; icon: string; descricao: string }
 
 const CARTOES: Cartao[] = [
+  { href: '/financeiro/cashflow', titulo: 'Mapa de Cashflow', icon: '📊', descricao: 'Previsão mensal de entradas e saídas, saldo acumulado e cenários.' },
   { href: '/pedidos-fatura', titulo: 'Pedidos de Fatura', icon: '🧾', descricao: 'Emitir faturas e pró-formas pedidas pela equipa e enviar ao cliente.' },
   { href: '/financeiro/tabelas', titulo: 'Folhas de Cálculo', icon: '📊', descricao: 'Criar tabelas do zero, guardar, exportar (Excel/PDF), anexar e enviar.' },
   { href: '/financeiro/contas-correntes', titulo: 'Contas Correntes', icon: '📈', descricao: 'Saldos por cliente e fornecedor.' },
