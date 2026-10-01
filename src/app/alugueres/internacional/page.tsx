@@ -8,6 +8,7 @@ import AlugueresNav from '@/components/AlugueresNav'
 import BotaoExportar from '@/components/BotaoExportar'
 import type { ColunaExport } from '@/lib/exportar'
 import { formatarEuro, nomeMes, parseNumeroPt } from '@/lib/alugueres'
+import { ehZimmer } from '@/lib/zimmer'
 import {
   carregarContratosIntl, guardarContratoIntl, apagarContratoIntl, atualizarFaturacaoContrato,
   mesesInclusive,
@@ -41,6 +42,17 @@ function diasAte(iso: string): number {
 
 function equipTexto(e: ContratoEquip) {
   return `${[e.marca, e.modelo].filter(Boolean).join(' ') || '—'} · ${e.serial_number ?? '—'}`
+}
+// Agrupa os equipamentos de um contrato em conjuntos Laser + Zimmer (o Zimmer
+// não é unidade isolada; o valor do contrato é do conjunto). Pareia por ordem;
+// Zimmers sem laser correspondente ficam sozinhos (raro).
+function conjuntosDoContrato(equipamentos: ContratoEquip[]): { laser: ContratoEquip | null; zimmers: ContratoEquip[] }[] {
+  const lasers = equipamentos.filter((e) => !ehZimmer(e))
+  const zimmers = equipamentos.filter((e) => ehZimmer(e))
+  if (!lasers.length) return zimmers.map((z) => ({ laser: null, zimmers: [z] }))
+  const conj = lasers.map((laser) => ({ laser, zimmers: [] as ContratoEquip[] }))
+  zimmers.forEach((z, i) => conj[Math.min(i, conj.length - 1)].zimmers.push(z))
+  return conj
 }
 function seriaisTexto(ct: ContratoIntl) {
   return ct.equipamentos.map((e) => e.serial_number ?? '—').join(' + ') || '—'
@@ -216,10 +228,20 @@ export default function AlugueresInternacional() {
                 {aberto && (
                   <div style={c.corpo}>
                     <div style={c.equipBox}>
-                      <span style={c.equipTitulo}>Equipamentos ({ct.equipamentos.length}):</span>
-                      {ct.equipamentos.length
-                        ? ct.equipamentos.map((e, i) => <span key={e.id ?? i} style={c.equipChip}>{equipTexto(e)}</span>)
-                        : <span style={c.semDef}>—</span>}
+                      {(() => {
+                        const conjuntos = conjuntosDoContrato(ct.equipamentos)
+                        return <>
+                          <span style={c.equipTitulo}>Conjuntos ({conjuntos.length}):</span>
+                          {conjuntos.length
+                            ? conjuntos.map((cj, i) => (
+                                <span key={cj.laser?.id ?? i} style={c.equipChip}>
+                                  {cj.laser ? equipTexto(cj.laser) : 'Zimmer'}
+                                  {cj.zimmers.map((z) => ` + ${[z.marca, z.modelo].filter(Boolean).join(' ') || 'Zimmer'} · ${z.serial_number ?? '—'}`).join('')}
+                                </span>
+                              ))
+                            : <span style={c.semDef}>—</span>}
+                        </>
+                      })()}
                     </div>
                     {ct.observacoes && <div style={c.obs}><strong>Observações:</strong> {ct.observacoes}</div>}
 
