@@ -29,6 +29,7 @@ export type Processo = {
   dataEnvio: string | null
   estadoConsignacao: string
   moeda: string
+  taxaCusto: number | null   // taxa_cambio_custo da consignação (unidades/EUR)
   // Conta (na moeda da venda; devido/pago vêm da venda + movimentos)
   vendaId: string | null
   dataVenda: string | null
@@ -48,7 +49,7 @@ export type Processo = {
 
 type ConsRow = {
   id: string; equipamento_id: string | null; numero_serie: string | null
-  custo_declarado: number; moeda_custo: string; data_envio: string | null; estado: string
+  custo_declarado: number; moeda_custo: string; taxa_cambio_custo: number | null; data_envio: string | null; estado: string
   equipamentos: { marca: string | null; modelo: string | null; ano: string | null; serial_number: string | null } | null
 }
 type VendaRow = { id: string; consignacao_id: string; data_venda: string | null; valor_devido: number | null; moeda_venda: string | null; estado: string }
@@ -79,7 +80,7 @@ function addDias(iso: string, dias: number): string {
 export async function listarProcessos(contaId: string): Promise<Processo[]> {
   const consRes = await supabase
     .from('cc_consignacoes')
-    .select('id, equipamento_id, numero_serie, custo_declarado, moeda_custo, data_envio, estado, equipamentos(marca, modelo, ano, serial_number)')
+    .select('id, equipamento_id, numero_serie, custo_declarado, moeda_custo, taxa_cambio_custo, data_envio, estado, equipamentos(marca, modelo, ano, serial_number)')
     .eq('conta_id', contaId)
     .order('data_envio', { ascending: false })
   const cons = (consRes.data ?? []) as unknown as ConsRow[]
@@ -173,6 +174,7 @@ export async function listarProcessos(contaId: string): Promise<Processo[]> {
       dataEnvio: c.data_envio,
       estadoConsignacao: c.estado,
       moeda: v?.moeda_venda ?? c.moeda_custo ?? 'EUR',
+      taxaCusto: c.taxa_cambio_custo ?? null,
       vendaId: v?.id ?? null,
       dataVenda: v?.data_venda ?? null,
       valorDevido: devido,
