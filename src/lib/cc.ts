@@ -10,6 +10,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { supabase } from './supabase'
+import { seriesEmPlanos, normalizarSerie } from './ccPlanoEquip'
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -338,7 +339,7 @@ export type EquipamentoPicker = {
 // Consignações da conta, com o equipamento e as vendas embutidos. Cada venda
 // leva o nº de meses já pagos (meses distintos com recebimento ligado à venda).
 export async function listarConsignacoes(contaId: string): Promise<ConsignacaoRow[]> {
-  const [consRes, payRes] = await Promise.all([
+  const [consRes, payRes, series] = await Promise.all([
     supabase
       .from('cc_consignacoes')
       .select('*, equipamentos(modelo,marca,ano,serial_number,status), cc_vendas(*)')
@@ -348,6 +349,7 @@ export async function listarConsignacoes(contaId: string): Promise<ConsignacaoRo
       .from('cc_movimentos')
       .select('origem_id, data, valor')
       .eq('conta_id', contaId).eq('tipo', 'recebido').eq('origem_tipo', 'venda'),
+    seriesEmPlanos(contaId),
   ])
   // meses distintos pagos e total recebido por venda
   const mesesPorVenda = new Map<string, Set<string>>()
@@ -359,7 +361,14 @@ export async function listarConsignacoes(contaId: string): Promise<ConsignacaoRo
     mesesPorVenda.set(p.origem_id, set)
     totalPorVenda.set(p.origem_id, (totalPorVenda.get(p.origem_id) ?? 0) + (p.valor ?? 0))
   }
-  return (consRes.data ?? []).map((r) => {
+  // Exclui máquinas já cobertas por um plano (por nº de série) — sem dupla contagem.
+  const linhas = (consRes.data ?? []).filter((r) => {
+    const row = r as Record<string, unknown>
+    const eq = row.equipamentos as { serial_number?: string | null } | null
+    const serie = normalizarSerie(eq?.serial_number ?? (row.numero_serie as string | null))
+    return !serie || !series.has(serie)
+  })
+  return linhas.map((r) => {
     const row = r as Record<string, unknown>
     const acessorios = Array.isArray(row.acessorios) ? (row.acessorios as string[]) : []
     const vendas = ((row.cc_vendas ?? []) as Venda[]).map((v) => ({

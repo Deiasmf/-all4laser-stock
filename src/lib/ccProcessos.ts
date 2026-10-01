@@ -5,6 +5,7 @@
 
 import { supabase } from './supabase'
 import { incidenciasAbertasPorConsignacao } from './ccDossie'
+import { seriesEmPlanos, normalizarSerie } from './ccPlanoEquip'
 
 export type EstadoProcesso = 'enviado' | 'em_pagamento' | 'liquidado' | 'com_incidencia' | 'devolvido'
 
@@ -78,12 +79,19 @@ function addDias(iso: string, dias: number): string {
 
 // Lista os processos (um por consignação) de uma conta, com contas e previsões.
 export async function listarProcessos(contaId: string): Promise<Processo[]> {
-  const consRes = await supabase
-    .from('cc_consignacoes')
-    .select('id, equipamento_id, numero_serie, custo_declarado, moeda_custo, taxa_cambio_custo, data_envio, estado, equipamentos(marca, modelo, ano, serial_number)')
-    .eq('conta_id', contaId)
-    .order('data_envio', { ascending: false })
-  const cons = (consRes.data ?? []) as unknown as ConsRow[]
+  const [consRes, series] = await Promise.all([
+    supabase
+      .from('cc_consignacoes')
+      .select('id, equipamento_id, numero_serie, custo_declarado, moeda_custo, taxa_cambio_custo, data_envio, estado, equipamentos(marca, modelo, ano, serial_number)')
+      .eq('conta_id', contaId)
+      .order('data_envio', { ascending: false }),
+    seriesEmPlanos(contaId),
+  ])
+  // Exclui máquinas já cobertas por um plano (por nº de série) — sem dupla contagem.
+  const cons = ((consRes.data ?? []) as unknown as ConsRow[]).filter((c) => {
+    const serie = normalizarSerie(c.equipamentos?.serial_number ?? c.numero_serie)
+    return !serie || !series.has(serie)
+  })
   const consIds = cons.map((c) => c.id)
 
   const [vendasRes, movRes, prestRes] = await Promise.all([
