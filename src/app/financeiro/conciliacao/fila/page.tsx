@@ -13,6 +13,9 @@ import {
   carregarFaturasEmDivida, carregarClientesIndex, sugerir, clientesPorNome,
   type FaturaDivida, type ClienteIdx, type Sugestao,
 } from '@/lib/matchBancario'
+import { listarContas as listarContasCC, formatarMoeda, type ContaComSaldo } from '@/lib/cc'
+import { listarProcessos, type Processo } from '@/lib/ccProcessos'
+import { conciliarBankCC, desconciliarBankCC, ccMovimentosDoBanco, type AlocacaoCC, type CCMovimentoDoBanco } from '@/lib/ccConciliacao'
 
 const ESTADOS: { valor: EstadoMov; label: string }[] = [
   { valor: 'por_conciliar', label: 'Por conciliar' },
@@ -33,6 +36,8 @@ export default function FilaConciliacaoPage() {
   const [ocupado, setOcupado] = useState<string | null>(null)   // id do movimento em processamento
   const [override, setOverride] = useState<Record<string, Sugestao>>({})  // sugestão da IA/escolha manual
   const [picker, setPicker] = useState<BankMovimento | null>(null)         // modal de escolha de fatura
+  const [pickerCC, setPickerCC] = useState<BankMovimento | null>(null)     // modal de casar com conta corrente
+  const [contasCC, setContasCC] = useState<ContaComSaldo[]>([])
 
   const carregar = useCallback(async () => {
     setACarregar(true)
@@ -42,6 +47,7 @@ export default function FilaConciliacaoPage() {
   }, [contaId, estado])
 
   useEffect(() => { listarContas().then(setContas) }, [])
+  useEffect(() => { listarContasCC().then((cs) => setContasCC(cs.filter((x) => x.ativa))) }, [])
   useEffect(() => { Promise.all([carregarFaturasEmDivida(), carregarClientesIndex()]).then(([f, c]) => { setFaturas(f); setClientes(c) }) }, [])
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { carregar() }, [carregar])
@@ -132,8 +138,10 @@ export default function FilaConciliacaoPage() {
             onConfirmar={() => { const s = sugestoes[m.id]; if (s) confirmarSugestao(m, s) }}
             onIgnorar={(cat) => acao(m.id, () => ignorarMovimento(m.id, cat))}
             onEscolher={() => setPicker(m)}
+            onContaCorrente={() => setPickerCC(m)}
             onIA={() => correrIA(m)}
             onDesfazer={() => acao(m.id, () => desfazerMatch(m.id))}
+            onDesfazerCC={() => acao(m.id, () => desconciliarBankCC(m.id))}
             onReabrir={() => acao(m.id, () => reabrirMovimento(m.id))}
           />
         ))}
@@ -144,6 +152,14 @@ export default function FilaConciliacaoPage() {
           mov={picker} faturas={faturas} sugeridoIds={(sugestoes[picker.id]?.clienteIds) ?? []}
           onFechar={() => setPicker(null)}
           onConfirmar={(faturaId, valor) => { const mv = picker; setPicker(null); acao(mv.id, () => confirmarMatch(mv.id, [{ movimento_id: faturaId, valor }], mv.data, perfil?.nome ?? null)) }}
+        />
+      )}
+
+      {pickerCC && (
+        <PickerContaCorrente
+          mov={pickerCC} contas={contasCC}
+          onFechar={() => setPickerCC(null)}
+          onConfirmar={(contaId, alocacoes) => { const mv = pickerCC; setPickerCC(null); acao(mv.id, () => conciliarBankCC(mv.id, contaId, alocacoes, mv.data, perfil?.nome ?? null)) }}
         />
       )}
     </main>
@@ -172,13 +188,14 @@ function ConfBadge({ conf }: { conf: Sugestao['confianca'] }) {
   return <span style={{ ...c.badge, color: k.cor, background: k.bg }}>{k.t}</span>
 }
 
-function MovimentoCard({ m, estado, sugestao, ocupado, onConfirmar, onIgnorar, onEscolher, onIA, onDesfazer, onReabrir }: {
+function MovimentoCard({ m, estado, sugestao, ocupado, onConfirmar, onIgnorar, onEscolher, onContaCorrente, onIA, onDesfazer, onDesfazerCC, onReabrir }: {
   m: BankMovimento; estado: EstadoMov; sugestao?: Sugestao; ocupado: boolean
   onConfirmar: () => void; onIgnorar: (c: IgnorarCategoria) => void; onEscolher: () => void
-  onIA: () => void; onDesfazer: () => void; onReabrir: () => void
+  onContaCorrente: () => void; onIA: () => void; onDesfazer: () => void; onDesfazerCC: () => void; onReabrir: () => void
 }) {
   const [feitas, setFeitas] = useState<AlocacaoFeita[] | null>(null)
-  useEffect(() => { if (estado === 'conciliado') alocacoesDoMovimento(m.id).then(setFeitas) }, [estado, m.id])
+  const [ccFeitas, setCcFeitas] = useState<CCMovimentoDoBanco[] | null>(null)
+  useEffect(() => { if (estado === 'conciliado') { alocacoesDoMovimento(m.id).then(setFeitas); ccMovimentosDoBanco(m.id).then(setCcFeitas) } }, [estado, m.id])
 
   return (
     <div style={c.card}>
@@ -212,6 +229,7 @@ function MovimentoCard({ m, estado, sugestao, ocupado, onConfirmar, onIgnorar, o
                 <button style={c.btnPrim} disabled={ocupado} onClick={onConfirmar}>{ocupado ? '…' : '✓ Confirmar'}</button>
               )}
               <button style={c.btnSec} disabled={ocupado} onClick={onEscolher}>Escolher fatura…</button>
+              <button style={c.btnSec} disabled={ocupado} onClick={onContaCorrente} title="Casar com uma venda da conta corrente (parceria)">🤝 Conta Corrente…</button>
               <button style={c.btnSec} disabled={ocupado} onClick={onIA} title="Interpretar o descritivo com IA">✨ IA</button>
               <IgnorarMenu disabled={ocupado} onIgnorar={onIgnorar} />
             </div>
@@ -221,15 +239,35 @@ function MovimentoCard({ m, estado, sugestao, ocupado, onConfirmar, onIgnorar, o
         {estado === 'conciliado' && (
           <>
             <span style={{ ...c.badge, color: '#065F46', background: '#D1FAE5' }}>conciliado</span>
-            <div style={c.faturas}>
-              {(feitas ?? []).map((f, i) => (
-                <div key={i} style={c.faturaLinha}>
-                  <span>{f.fatura_ref ?? 'fatura'} · <strong>{f.cliente_nome ?? '—'}</strong></span>
-                  <span style={c.muted}>{formatarValor(f.valor_aplicado, m.conta_moeda)}</span>
+            {(feitas ?? []).length > 0 && (
+              <>
+                <div style={c.faturas}>
+                  {(feitas ?? []).map((f, i) => (
+                    <div key={i} style={c.faturaLinha}>
+                      <span>{f.fatura_ref ?? 'fatura'} · <strong>{f.cliente_nome ?? '—'}</strong></span>
+                      <span style={c.muted}>{formatarValor(f.valor_aplicado, m.conta_moeda)}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            <button style={c.btnSec} disabled={ocupado} onClick={onDesfazer}>↩ Desfazer</button>
+                <button style={c.btnSec} disabled={ocupado} onClick={onDesfazer}>↩ Desfazer</button>
+              </>
+            )}
+            {(ccFeitas ?? []).length > 0 && (
+              <>
+                <div style={c.faturas}>
+                  {(ccFeitas ?? []).map((f) => (
+                    <div key={f.id} style={c.faturaLinha}>
+                      <span>🤝 Conta corrente · <strong>{f.conta_nome ?? '—'}</strong></span>
+                      <span style={c.muted}>{formatarMoeda(f.valor, f.moeda)}</span>
+                    </div>
+                  ))}
+                </div>
+                <button style={c.btnSec} disabled={ocupado} onClick={onDesfazerCC}>↩ Desfazer (conta corrente)</button>
+              </>
+            )}
+            {(feitas ?? []).length === 0 && (ccFeitas ?? []).length === 0 && (
+              <button style={c.btnSec} disabled={ocupado} onClick={onDesfazer}>↩ Desfazer</button>
+            )}
           </>
         )}
 
@@ -303,6 +341,114 @@ function PickerFatura({ mov, faturas, sugeridoIds, onFechar, onConfirmar }: {
             )
           })}
           {filtradas.length === 0 && <p style={c.muted}>Sem faturas em dívida que correspondam.</p>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function parseNum(v: string): number {
+  const n = Number((v ?? '').replace(',', '.'))
+  return isNaN(n) || n < 0 ? 0 : n
+}
+
+// Picker: casa o movimento bancário (crédito, em EUR) com vendas em dívida de uma
+// conta corrente. O valor é introduzido na moeda da conta (ex.: AED); o
+// contravalor em EUR (valor ÷ taxa) não pode exceder o valor do banco.
+function PickerContaCorrente({ mov, contas, onFechar, onConfirmar }: {
+  mov: BankMovimento; contas: ContaComSaldo[]
+  onFechar: () => void; onConfirmar: (contaId: string, alocacoes: AlocacaoCC[]) => void
+}) {
+  const [contaId, setContaId] = useState('')
+  const [processos, setProcessos] = useState<Processo[]>([])
+  const [aCarregar, setACarregar] = useState(false)
+  const [taxa, setTaxa] = useState('1')
+  const [valores, setValores] = useState<Record<string, string>>({})
+
+  const conta = contas.find((x) => x.id === contaId) ?? null
+
+  const carregarVendas = useCallback(async () => {
+    if (!contaId) { setProcessos([]); return }
+    setACarregar(true); setValores({})
+    const c0 = contas.find((x) => x.id === contaId)
+    setTaxa(c0?.taxa_contratual ? String(c0.taxa_contratual) : '1')
+    const ps = await listarProcessos(contaId)
+    setProcessos(ps.filter((p) => p.vendaId && p.emFalta > 0.01)); setACarregar(false)
+  }, [contaId, contas])
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { carregarVendas() }, [carregarVendas])
+
+  const taxaNum = parseNum(taxa) || 1
+  // Total alocado (na moeda da conta) e o seu contravalor em EUR.
+  const totalConta = useMemo(() => Object.values(valores).reduce((s, v) => s + parseNum(v), 0), [valores])
+  const totalEur = totalConta / taxaNum
+  const excede = totalEur > mov.valor + 0.01
+  const algumValor = totalConta > 0.009
+
+  function alocar(vendaId: string, valorConta: number) {
+    setValores((v) => ({ ...v, [vendaId]: String(Math.round(valorConta * 100) / 100) }))
+  }
+
+  function confirmar() {
+    if (!conta || excede || !algumValor) return
+    const alocacoes: AlocacaoCC[] = processos
+      .filter((p) => parseNum(valores[p.vendaId!]) > 0)
+      .map((p) => ({ origem_tipo: 'venda' as const, origem_id: p.vendaId, valor: parseNum(valores[p.vendaId!]), moeda: conta.moeda, taxa: taxaNum }))
+    if (alocacoes.length) onConfirmar(conta.id, alocacoes)
+  }
+
+  return (
+    <div style={c.modalFundo} onClick={onFechar}>
+      <div style={c.modal} onClick={(e) => e.stopPropagation()}>
+        <div style={c.modalTopo}>
+          <strong>Casar {formatarValor(mov.valor, mov.conta_moeda)} com conta corrente</strong>
+          <button style={c.fechar} onClick={onFechar}>✕</button>
+        </div>
+        <div style={c.movDesc}>{mov.descritivo}</div>
+
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <select value={contaId} onChange={(e) => setContaId(e.target.value)} style={{ ...c.input, flex: '1 1 220px' }}>
+            <option value="">— escolher conta corrente —</option>
+            {contas.map((x) => <option key={x.id} value={x.id}>{x.nome} ({x.moeda})</option>)}
+          </select>
+          {conta && conta.moeda !== 'EUR' && (
+            <label style={{ fontSize: 12.5, color: 'var(--muted)', display: 'flex', gap: 6, alignItems: 'center' }}>
+              Taxa ({conta.moeda}/EUR)
+              <input value={taxa} onChange={(e) => setTaxa(e.target.value)} style={{ ...c.inputMini, width: 90 }} />
+            </label>
+          )}
+        </div>
+
+        {aCarregar && <p style={c.muted}>A carregar vendas…</p>}
+        {!aCarregar && contaId && processos.length === 0 && <p style={c.muted}>Sem vendas em dívida nesta conta.</p>}
+
+        <div style={c.pickerLista}>
+          {processos.map((p) => {
+            const emFaltaEur = p.emFalta / taxaNum
+            const restaBancoEur = Math.max(0, mov.valor - (totalEur - parseNum(valores[p.vendaId!]) / taxaNum))
+            const maxConta = Math.min(p.emFalta, restaBancoEur * taxaNum)
+            const titulo = [p.marca, p.modelo].filter(Boolean).join(' ') || 'Equipamento'
+            return (
+              <div key={p.consignacaoId} style={c.pickerLinha}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div><strong>{titulo}</strong>{p.numeroSerie ? <span style={c.muted}> · SN {p.numeroSerie}</span> : null}</div>
+                  <div style={c.muted}>em dívida {formatarMoeda(p.emFalta, p.moeda)} ≈ {formatarValor(emFaltaEur, 'EUR')}</div>
+                </div>
+                <div style={c.pickerAcoes}>
+                  <button style={c.btnMini} disabled={maxConta <= 0} onClick={() => alocar(p.vendaId!, maxConta)} title="Alocar o máximo possível">Máx.</button>
+                  <input placeholder={`valor (${p.moeda})`} value={valores[p.vendaId!] ?? ''} onChange={(e) => setValores((v) => ({ ...v, [p.vendaId!]: e.target.value }))} style={{ ...c.inputMini, width: 90 }} />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', borderTop: '1px solid #eee', paddingTop: 10 }}>
+          <span style={{ fontSize: 13, color: excede ? '#B91C1C' : 'var(--foreground)', fontWeight: 600 }}>
+            Total: {conta ? formatarMoeda(totalConta, conta.moeda) : '—'} ≈ {formatarValor(totalEur, 'EUR')} de {formatarValor(mov.valor, mov.conta_moeda)}
+            {excede && ' — excede o valor do banco'}
+          </span>
+          <button style={{ ...c.btnPrim, opacity: (!algumValor || excede) ? 0.5 : 1 }} disabled={!algumValor || excede} onClick={confirmar}>✓ Confirmar</button>
         </div>
       </div>
     </div>
