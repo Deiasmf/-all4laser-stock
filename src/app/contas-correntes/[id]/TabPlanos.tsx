@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '@/lib/auth'
 import {
   listarPlanos, criarPlano, gerarPrestacoes, editarPrestacao,
@@ -9,6 +9,10 @@ import {
   formatarMoeda, formatarData, hojeISO,
   type ContaComSaldo, type PlanoRow, type Prestacao, type Periodicidade,
 } from '@/lib/cc'
+import {
+  listarEquipamentosPlano, adicionarEquipamentoPlano, removerEquipamentoPlano,
+  type PlanoEquipamento,
+} from '@/lib/ccPlanoEquip'
 
 function parseNum(v: string): number {
   const n = Number(v.replace(',', '.'))
@@ -103,6 +107,8 @@ function CartaoPlano({ conta, plano, onMudou }: {
         </div>
       </div>
 
+      {aberto && <EquipamentosDoPlano plano={plano} />}
+
       {aberto && (
         <div style={c.tabela}>
           <div style={{ ...c.linha, ...c.cab }}>
@@ -152,6 +158,80 @@ function LinhaPrestacao({ conta, pr, onMudou }: {
         <FormEditarPrestacao pr={pr} onCancelar={() => setModo('ver')} onGuardado={() => { setModo('ver'); onMudou() }} />
       )}
     </>
+  )
+}
+
+// ─── Equipamentos enviados cobertos pelo plano ───────────────────────────────
+
+function EquipamentosDoPlano({ plano }: { plano: PlanoRow }) {
+  const { perfil } = useAuth()
+  const [equipamentos, setEquipamentos] = useState<PlanoEquipamento[]>([])
+  const [carregando, setCarregando] = useState(true)
+  const [addOpen, setAddOpen] = useState(false)
+  const [serie, setSerie] = useState('')
+  const [modelo, setModelo] = useState('')
+  const [dataEnvio, setDataEnvio] = useState(plano.data_inicio || hojeISO())
+  const [aGuardar, setAGuardar] = useState(false)
+  const montado = useRef(true)
+
+  async function recarregar() {
+    const eqs = await listarEquipamentosPlano(plano.id)
+    if (montado.current) { setEquipamentos(eqs); setCarregando(false) }
+  }
+  useEffect(() => { montado.current = true; recarregar(); return () => { montado.current = false } }, [plano.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function adicionar() {
+    if (!serie.trim() && !modelo.trim()) return
+    setAGuardar(true)
+    await adicionarEquipamentoPlano(
+      { plano_id: plano.id, numero_serie: serie, modelo, data_envio: dataEnvio },
+      { id: perfil?.id ?? null, nome: perfil?.nome ?? null },
+    )
+    setSerie(''); setModelo(''); setDataEnvio(plano.data_inicio || hojeISO())
+    setAGuardar(false); setAddOpen(false)
+    recarregar()
+  }
+  async function remover(id: string) {
+    if (!window.confirm('Remover este equipamento do plano?')) return
+    await removerEquipamentoPlano(id)
+    recarregar()
+  }
+
+  return (
+    <div style={c.equipBloco}>
+      <div style={c.equipTopo}>
+        <span style={c.equipTitulo}>📦 Equipamentos enviados ({equipamentos.length})</span>
+        <button style={c.acaoBtnGhost} onClick={() => setAddOpen((v) => !v)}>{addOpen ? '× Fechar' : '+ Adicionar'}</button>
+      </div>
+      <p style={c.equipNota}>Estas máquinas são pagas por este plano e não aparecem nas Consignações/Processos (evita duplicação).</p>
+
+      {addOpen && (
+        <div style={c.equipForm}>
+          <input value={serie} onChange={(e) => setSerie(e.target.value)} placeholder="Nº de série" style={c.input} />
+          <input value={modelo} onChange={(e) => setModelo(e.target.value)} placeholder="Modelo" style={c.input} />
+          <input type="date" value={dataEnvio} onChange={(e) => setDataEnvio(e.target.value)} style={c.input} />
+          <button style={c.acaoBtn} disabled={aGuardar} onClick={adicionar}>{aGuardar ? '…' : 'Adicionar'}</button>
+        </div>
+      )}
+
+      {carregando ? (
+        <p style={c.equipVazio}>A carregar…</p>
+      ) : equipamentos.length === 0 ? (
+        <p style={c.equipVazio}>Sem equipamentos associados a este plano.</p>
+      ) : (
+        <div style={c.equipLista}>
+          {equipamentos.map((eq) => (
+            <div key={eq.id} style={c.equipLinha}>
+              <span style={c.equipPrincipal}>{eq.modelo || 'Equipamento'}{eq.numero_serie ? ` · ${eq.numero_serie}` : ''}</span>
+              <span style={c.equipMeta}>
+                {eq.data_envio ? `enviado ${formatarData(eq.data_envio)}` : 'sem data'}
+                <button style={c.equipX} title="Remover" onClick={() => remover(eq.id)}>×</button>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -409,4 +489,15 @@ const c: Record<string, React.CSSProperties> = {
   btnPrimarioSm: { background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' },
   btnSecundarioSm: { background: '#fff', color: 'var(--muted)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 14px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' },
   previa: { fontSize: 13, color: 'var(--muted)' },
+  equipBloco: { background: '#F9FAFB', border: '1px solid var(--border)', borderRadius: 10, padding: 10, display: 'flex', flexDirection: 'column', gap: 6 },
+  equipTopo: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+  equipTitulo: { fontSize: 13, fontWeight: 800, color: 'var(--foreground)' },
+  equipNota: { fontSize: 11.5, color: 'var(--muted)', margin: 0 },
+  equipForm: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, alignItems: 'center' },
+  equipLista: { display: 'flex', flexDirection: 'column', gap: 4, marginTop: 2 },
+  equipLinha: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, fontSize: 13, background: '#fff', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 10px' },
+  equipPrincipal: { fontWeight: 600, color: 'var(--foreground)' },
+  equipMeta: { color: 'var(--muted)', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' },
+  equipX: { background: 'none', border: 'none', color: '#B91C1C', fontSize: 16, cursor: 'pointer', lineHeight: 1, padding: 0 },
+  equipVazio: { fontSize: 12.5, color: 'var(--muted)', fontStyle: 'italic', margin: 0 },
 }
