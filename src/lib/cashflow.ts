@@ -6,6 +6,8 @@
 
 import { supabase } from './supabase'
 import { carregarFaturasEmDivida } from './matchBancario'
+import { listarContas } from './cc'
+import { listarProcessos } from './ccProcessos'
 
 export { formatarMoeda, formatarData, hojeISO } from './cc'
 
@@ -74,6 +76,13 @@ function mesAdd(m: Mes, meses: number): Mes {
   const d = new Date(a, mm - 1 + meses, 1)
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`
 }
+// Lista de meses de `a` até `b` inclusive (b >= a). Limitada a 36 por segurança.
+function rangeMeses(a: Mes, b: Mes): Mes[] {
+  const out: Mes[] = []
+  let cur = a
+  for (let i = 0; i < 36 && cur <= b; i++) { out.push(cur); cur = mesAdd(cur, 1) }
+  return out.length ? out : [a]
+}
 function somaPorMes(linhas: FonteLinha[], meses: Mes[]): Record<Mes, number> {
   const r: Record<Mes, number> = {}
   for (const mes of meses) r[mes] = linhas.reduce((s, l) => s + (l.porMes[mes] ?? 0), 0)
@@ -96,18 +105,22 @@ export async function guardarConfig(patch: Partial<CashflowConfig>, autorNome: s
 }
 
 // ─── Motor: construir o mapa ────────────────────────────────────────────────────
-export async function construirMapa(incluirProvaveis = true): Promise<MapaCashflow> {
+export type OpcoesMapa = { incluirProvaveis?: boolean; incluirFaturas?: boolean }
+export async function construirMapa(opts: OpcoesMapa = {}): Promise<MapaCashflow> {
+  const incluirProvaveis = opts.incluirProvaveis ?? true
+  const incluirFaturas = opts.incluirFaturas ?? false
   const cfg = await obterConfig()
   const meses = listaMeses(mesAtual(), cfg.horizonte_meses)
   const dentro = (m: Mes | null): m is Mes => !!m && meses.includes(m)
-  const mFim = meses[meses.length - 1]
   const avisos: AvisoQualidade[] = []
 
-  const [mov, situacao, planosPrest, faturas, recorrentes, cats, pontuais, despVar] = await Promise.all([
-    supabase.from('cc_movimentos').select('data, valor_eur, tipo').eq('tipo', 'esperado').gte('data', meses[0] + '-01'),
+  const contas = await listarContas()
+  const [processosPorConta, prestCC, situacao, planosPrest, faturas, recorrentes, cats, pontuais, despVar] = await Promise.all([
+    Promise.all(contas.map((ct) => listarProcessos(ct.id))),
+    supabase.from('cc_prestacoes').select('data_vencimento, valor, estado, plano:cc_planos_pagamento(conta_id)').in('estado', ['pendente', 'atrasada', 'parcial']),
     supabase.from('aluguer_situacao').select('valor_mensal, data_inicio, data_fim_prevista, equipamentos(status)'),
     supabase.from('cashflow_payment_plan_prest').select('data_prevista, valor, valor_recebido, estado, cashflow_payment_plans(descricao, cliente_nome, estado)').neq('estado', 'recebido'),
-    carregarFaturasEmDivida(),
+    incluirFaturas ? carregarFaturasEmDivida() : Promise.resolve([]),
     supabase.from('cashflow_recurring_expenses').select('*').eq('ativo', true),
     supabase.from('cashflow_expense_categories').select('id, nome, ordem'),
     supabase.from('cashflow_manual_entries').select('*').eq('estado', 'previsto'),
@@ -117,10 +130,24 @@ export async function construirMapa(incluirProvaveis = true): Promise<MapaCashfl
   const entradas: FonteLinha[] = []
   const saidas: FonteLinha[] = []
 
-  // 1) Laserix (processos/planos) — cc_movimentos esperado futuro
+  // 1) Laserix / parceria — em falta FASEADO: consignações (processos, espalhadas
+  //    do próximo pagamento até à liquidação estimada) + prestações de planos cc.
   const lLaserix = novaLinha('laserix', 'Laserix (processos)', 'entrada', meses)
-  for (const r of (mov.data ?? []) as { data: string; valor_eur: number | null }[]) {
-    const m = mesDe(r.data); if (dentro(m)) lLaserix.porMes[m] += r.valor_eur ?? 0
+  for (const processos of processosPorConta) {
+    for (const p of processos) {
+      if (p.emFalta <= 0.01) continue
+      let ini = mesDe(p.proximoPagamento) ?? meses[0]
+      if (ini < meses[0]) ini = meses[0]
+      const fim = mesDe(p.finalizacaoEstimada)
+      const range = fim && fim > ini ? rangeMeses(ini, fim) : [ini]
+      const perMes = p.emFalta / range.length
+      for (const m of range) if (dentro(m)) lLaserix.porMes[m] += perMes
+    }
+  }
+  for (const pr of (prestCC.data ?? []) as unknown as { data_vencimento: string; valor: number | null }[]) {
+    let m = mesDe(pr.data_vencimento)
+    if (m && m < meses[0]) m = meses[0]   // vencidas → mês corrente
+    if (dentro(m)) lLaserix.porMes[m] += pr.valor ?? 0
   }
   entradas.push(fechar(lLaserix))
 
@@ -157,15 +184,17 @@ export async function construirMapa(incluirProvaveis = true): Promise<MapaCashfl
   }
   entradas.push(fechar(lPlanos))
 
-  // 4) Faturas pendentes — mês = emissão + prazo; vencidas no mês corrente
-  const lFaturas = novaLinha('faturas', 'Faturas pendentes', 'entrada', meses, { estimado: true })
-  for (const f of faturas) {
-    const base = f.data_vencimento ?? f.data_documento
-    let m = mesDe(base ? addDias(base, f.data_vencimento ? 0 : cfg.prazo_fatura_dias) : null)
-    if (m && m < meses[0]) m = meses[0]               // vencidas → mês corrente
-    if (dentro(m)) lFaturas.porMes[m] += f.porLiquidar
+  // 4) Faturas pendentes (opcional) — mês = emissão + prazo; vencidas no mês corrente
+  if (incluirFaturas) {
+    const lFaturas = novaLinha('faturas', 'Faturas pendentes', 'entrada', meses, { estimado: true })
+    for (const f of faturas) {
+      const base = f.data_vencimento ?? f.data_documento
+      let m = mesDe(base ? addDias(base, f.data_vencimento ? 0 : cfg.prazo_fatura_dias) : null)
+      if (m && m < meses[0]) m = meses[0]               // vencidas → mês corrente
+      if (dentro(m)) lFaturas.porMes[m] += f.porLiquidar
+    }
+    entradas.push(fechar(lFaturas))
   }
-  entradas.push(fechar(lFaturas))
 
   // 5) Pontuais (entrada)
   const lPontEnt = novaLinha('pont_ent', 'Pontuais', 'entrada', meses)
@@ -228,13 +257,12 @@ export async function construirMapa(incluirProvaveis = true): Promise<MapaCashfl
   }
 
   // Avisos de qualidade adicionais
-  if (!faturas.some((f) => f.data_vencimento)) {
+  if (!incluirFaturas) {
+    avisos.push({ chave: 'faturas_excluidas', mensagem: 'Faturas pendentes excluídas por defeito (sem vencimento/liquidação fiáveis). Ativa o toggle para as incluir.', href: '/financeiro/contas-correntes' })
+  } else if (!faturas.some((f) => f.data_vencimento)) {
     avisos.push({ chave: 'faturas_sem_venc', mensagem: 'As faturas pendentes não têm data de vencimento — colocadas por prazo estimado (editável em Definições).', href: '/financeiro/contas-correntes' })
   }
   if (despVar === 0) avisos.push({ chave: 'sem_desp_var', mensagem: 'Sem histórico de despesas de alugueres nos últimos 3 meses — estimativa a 0.' })
-
-  // void para evitar unused
-  void mFim
 
   return { meses, entradas, saidas, totalEntradas, totalSaidas, saldoMes, saldoAcumulado, saldoInicial: cfg.saldo_inicial, avisos }
 }
