@@ -9,6 +9,7 @@ import LinkCliente from '@/components/LinkCliente'
 import BotaoExportar from '@/components/BotaoExportar'
 import type { ColunaExport } from '@/lib/exportar'
 import { formatarEuro, mesAtual, nomeMes, somar, parseNumeroPt } from '@/lib/alugueres'
+import { ehZimmer } from '@/lib/zimmer'
 import {
   render, periodoDoMes, nFaturaDoNome, formatarValor, formatarDataFatura, criticosEmFalta,
   type FaturaEmailTemplate, type FaturaEmailVars,
@@ -40,8 +41,26 @@ type Fat = {
   created_at: string | null
 }
 
-// Linha da lista = um aluguer ativo num mês + a faturação desse mês
-type LinhaMes = { aluguer: Aluguer; fat: Fat }
+// Linha da lista = um aluguer ativo num mês + a faturação desse mês.
+// `extras` = equipamentos do mesmo conjunto (Zimmer) agrupados nesta linha.
+type LinhaMes = { aluguer: Aluguer; fat: Fat; extras?: Aluguer[] }
+
+// Agrupa o Zimmer no laser do mesmo conjunto (cliente + data de entrega), para
+// não aparecer como aluguer/linha separada. Zimmer órfão (sem laser) fica sozinho.
+function agruparZimmer(linhas: LinhaMes[]): LinhaMes[] {
+  const lasers = linhas.filter((l) => !ehZimmer(l.aluguer))
+  const zimmers = linhas.filter((l) => ehZimmer(l.aluguer))
+  const sobra: LinhaMes[] = []
+  for (const z of zimmers) {
+    const alvo = lasers.find((l) =>
+      !l.extras?.length &&
+      (l.aluguer.cliente_id ?? '') === (z.aluguer.cliente_id ?? '') &&
+      (l.aluguer.data_entrega ?? '') === (z.aluguer.data_entrega ?? ''))
+    if (alvo) (alvo.extras ??= []).push(z.aluguer)
+    else sobra.push(z)
+  }
+  return [...lasers, ...sobra]
+}
 
 // Faturação vazia (mês ainda por definir)
 function fatVazia(aluguerId: string, mes: string): Fat {
@@ -159,13 +178,15 @@ export default function ListaAlugueres() {
   // selecionado; em período, o mês a que cada aluguer pertence).
   const linhasMes = useMemo<LinhaMes[]>(() => {
     const q = pesquisa.trim().toLowerCase()
-    return alugueres
+    const base = alugueres
       .filter((a) => dentroDaSelecao((a.data_entrega ?? '').slice(0, 7)))
       .filter((a) => !q || (a.cliente_nome ?? '').toLowerCase().includes(q))
       .map((a) => {
         const em = (a.data_entrega ?? '').slice(0, 7)
         return { aluguer: a, fat: faturacao.get(`${a.id}|${em}`) ?? fatVazia(a.id, em) }
       })
+    // Junta o Zimmer ao laser do conjunto (1 aluguer = Laser + Zimmer).
+    return agruparZimmer(base)
   }, [alugueres, faturacao, dentroDaSelecao, pesquisa])
 
   // Lista mostrada = mês + filtro de pagamento + ordenação
@@ -296,6 +317,9 @@ export default function ListaAlugueres() {
         <div style={c.cartaoEquip}>
           <span style={c.equipSn}>{a.serial_number ?? '—'}</span>
           <span style={c.equipMarca}>{[a.marca, a.modelo].filter(Boolean).join(' ') || '—'}</span>
+          {l.extras?.map((z) => (
+            <span key={z.id} style={c.extraZimmer}>+ {[z.marca, z.modelo].filter(Boolean).join(' ') || 'Zimmer'}{z.serial_number ? ` · ${z.serial_number}` : ''}</span>
+          ))}
         </div>
         <div style={c.cartaoLinha}>
           <span style={c.cartaoLabel}>Entrega</span>
@@ -352,6 +376,9 @@ export default function ListaAlugueres() {
         <span style={c.equip}>
           <span style={c.equipSn}>{a.serial_number ?? '—'}</span>
           <span style={c.equipMarca}>{[a.marca, a.modelo].filter(Boolean).join(' ') || '—'}</span>
+          {l.extras?.map((z) => (
+            <span key={z.id} style={c.extraZimmer}>+ {[z.marca, z.modelo].filter(Boolean).join(' ') || 'Zimmer'}{z.serial_number ? ` · ${z.serial_number}` : ''}</span>
+          ))}
         </span>
         <span>{formatarData(a.data_entrega)}</span>
         <span style={{ textAlign: 'right', fontWeight: 700 }}>{formatarEuro(a.valor || 0)}</span>
@@ -1232,6 +1259,7 @@ const c: Record<string, React.CSSProperties> = {
   equip: { display: 'flex', flexDirection: 'column', minWidth: 0 },
   equipSn: { fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   equipMarca: { color: 'var(--muted)', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  extraZimmer: { color: 'var(--muted)', fontSize: 11.5, fontStyle: 'italic' },
 
   // Célula "Visto" (validado)
   vistoVerde: { width: 26, height: 26, borderRadius: 999, border: 'none', background: '#1b873f', color: '#fff', fontSize: 14, lineHeight: 1, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },

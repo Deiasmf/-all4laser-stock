@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import AlugueresNav from '@/components/AlugueresNav'
 import { formatarEuro, mesAtual, nomeMes, ultimosMeses, somar } from '@/lib/alugueres'
+import { ehZimmer } from '@/lib/zimmer'
 import type { Aluguer } from '@/types/aluguer'
 
 function agrupar(lista: Aluguer[], chave: (a: Aluguer) => string) {
@@ -43,13 +44,16 @@ export default function DashboardAlugueres() {
   const total = somar(doMes, (a) => a.valor)
   const nacional = somar(doMes.filter((a) => a.nacional), (a) => a.valor)
   const internacional = somar(doMes.filter((a) => !a.nacional), (a) => a.valor)
+  // O Zimmer é acessório do conjunto (Laser + Zimmer) — não conta como aluguer
+  // nem equipamento por devolver isolado. As contagens usam só os lasers.
+  const doMesLasers = doMes.filter((a) => !ehZimmer(a))
   // Um contrato de vários meses conta como 1 equipamento por devolver (só o mês
   // de recolha), não um por cada mês faturado.
-  const emCurso = alugueres.filter((a) => !a.data_recolha && a.recolha_aplicavel !== false).length
+  const emCurso = alugueres.filter((a) => !a.data_recolha && a.recolha_aplicavel !== false && !ehZimmer(a)).length
 
   const porMetodo = agrupar(doMes, (a) => a.metodo_pagamento ?? '—')
   const topClientes = agrupar(doMes, (a) => a.cliente_nome ?? '—').slice(0, 5)
-  const topEquip = agrupar(doMes, (a) =>
+  const topEquip = agrupar(doMesLasers, (a) =>
     [a.modelo, a.serial_number].filter(Boolean).join(' · ')
   ).slice(0, 5)
 
@@ -83,7 +87,7 @@ export default function DashboardAlugueres() {
             <Kpi rotulo="Faturado no mês" valor={formatarEuro(total)} destaque />
             <Kpi rotulo="Nacional" valor={formatarEuro(nacional)} />
             <Kpi rotulo="Internacional" valor={formatarEuro(internacional)} />
-            <Kpi rotulo="Nº de alugueres" valor={String(doMes.length)} />
+            <Kpi rotulo="Nº de alugueres" valor={String(doMesLasers.length)} />
             <Kpi rotulo="Em curso (por devolver)" valor={String(emCurso)} />
           </div>
 
