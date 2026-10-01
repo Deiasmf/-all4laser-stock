@@ -97,6 +97,37 @@ function addCell(l: FonteLinha, m: Mes, valor: number, label: string, href?: str
 }
 function fechar(l: FonteLinha): FonteLinha { l.total = Object.values(l.porMes).reduce((s, v) => s + v, 0); return l }
 
+// ─── Realizado (histórico): cash real entrado/saído por mês ──────────────────────
+export type RealizadoMes = { mes: Mes; entradas: number; saidas: number; saldo: number }
+export async function realizadoRecente(nMeses = 3): Promise<RealizadoMes[]> {
+  const inicio = mesAdd(mesAtual(), -nMeses)
+  const meses = listaMeses(inicio, nMeses + 1) // inclui o mês corrente
+  const loISO = inicio + '-01'
+  const hiISO = mesAdd(mesAtual(), 1) + '-01'  // exclusivo (início do mês seguinte)
+
+  const [recCC, planoRec, manual, despVar, alugMes, alugCon] = await Promise.all([
+    supabase.from('cc_movimentos').select('data, valor_eur').eq('tipo', 'recebido').gte('data', loISO).lt('data', hiISO),
+    supabase.from('cashflow_payment_plan_prest').select('data_recebimento, valor_recebido').eq('estado', 'recebido').gte('data_recebimento', loISO).lt('data_recebimento', hiISO),
+    supabase.from('cashflow_manual_entries').select('tipo, valor, data_realizado').eq('estado', 'realizado').gte('data_realizado', loISO).lt('data_realizado', hiISO),
+    supabase.from('despesas_alugueres').select('valor, data_despesa').gte('data_despesa', loISO).lt('data_despesa', hiISO),
+    supabase.from('alugueres_faturacao_mensal').select('mes, valor_a_faturar').eq('pago', true).gte('mes', inicio).lte('mes', mesAtual()),
+    supabase.from('alugueres_contrato_faturacao').select('mes, valor_a_faturar').eq('pago', true).gte('mes', inicio).lte('mes', mesAtual()),
+  ])
+
+  const ent: Record<Mes, number> = {}, sai: Record<Mes, number> = {}
+  for (const m of meses) { ent[m] = 0; sai[m] = 0 }
+  const addE = (m: Mes | null, v: number) => { if (m && m in ent) ent[m] += v }
+  const addS = (m: Mes | null, v: number) => { if (m && m in sai) sai[m] += v }
+  for (const r of (recCC.data ?? []) as { data: string; valor_eur: number | null }[]) addE(mesDe(r.data), r.valor_eur ?? 0)
+  for (const r of (planoRec.data ?? []) as { data_recebimento: string | null; valor_recebido: number | null }[]) addE(mesDe(r.data_recebimento), r.valor_recebido ?? 0)
+  for (const r of (manual.data ?? []) as { tipo: string; valor: number; data_realizado: string | null }[]) { const m = mesDe(r.data_realizado); if (r.tipo === 'entrada') addE(m, r.valor); else addS(m, r.valor) }
+  for (const r of (despVar.data ?? []) as { valor: number | null; data_despesa: string }[]) addS(mesDe(r.data_despesa), r.valor ?? 0)
+  for (const r of (alugMes.data ?? []) as { mes: string; valor_a_faturar: number | null }[]) addE(r.mes, r.valor_a_faturar ?? 0)
+  for (const r of (alugCon.data ?? []) as { mes: string; valor_a_faturar: number | null }[]) addE(r.mes, r.valor_a_faturar ?? 0)
+
+  return meses.map((m) => ({ mes: m, entradas: ent[m], saidas: sai[m], saldo: ent[m] - sai[m] }))
+}
+
 // ─── Configuração ──────────────────────────────────────────────────────────────
 export async function obterConfig(): Promise<CashflowConfig> {
   const { data } = await supabase.from('cashflow_config').select('*').eq('id', 1).single()
