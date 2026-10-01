@@ -128,12 +128,17 @@ export async function construirMapa(opts: OpcoesMapa = {}): Promise<MapaCashflow
   //    até consumir o em falta. Converte da moeda da venda (ex.: AED) para EUR.
   //    + prestações pendentes dos planos cc (datas reais, já em EUR).
   const lLaserix = novaLinha('laserix', 'Laserix (processos)', 'entrada', meses)
+  let semHistN = 0
+  let semHistEur = 0
   contas.forEach((ct, idx) => {
     for (const p of processosPorConta[idx]) {
       if (p.emFalta <= 0.01) continue
       const taxa = p.moeda === 'EUR' ? 1 : (p.taxaCusto || ct.taxa_contratual || 1)
       const emFaltaEur = p.emFalta / taxa
-      const medioEur = p.nPagamentos > 0 ? (p.pago / p.nPagamentos) / taxa : emFaltaEur
+      // Processos sem pagamentos iniciados: não se sabe quando pagam → não entram
+      // no mapa; ficam num aviso de qualidade (decisão do utilizador).
+      if (p.nPagamentos === 0) { semHistN++; semHistEur += emFaltaEur; continue }
+      const medioEur = (p.pago / p.nPagamentos) / taxa
       const nFalta = medioEur > 0 ? Math.max(1, Math.ceil(emFaltaEur / medioEur)) : 1
       let ini = mesDe(p.proximoPagamento) ?? meses[0]
       if (ini < meses[0]) ini = meses[0]
@@ -265,6 +270,7 @@ export async function construirMapa(opts: OpcoesMapa = {}): Promise<MapaCashflow
     avisos.push({ chave: 'faturas_sem_venc', mensagem: 'As faturas pendentes não têm data de vencimento — colocadas por prazo estimado (editável em Definições).', href: '/financeiro/contas-correntes' })
   }
   if (despVar === 0) avisos.push({ chave: 'sem_desp_var', mensagem: 'Sem histórico de despesas de alugueres nos últimos 3 meses — estimativa a 0.' })
+  if (semHistN > 0) avisos.push({ chave: 'proc_sem_hist', mensagem: `${semHistN} processo(s) Laserix sem pagamentos iniciados — ${Math.round(semHistEur).toLocaleString('pt-PT')} € por receber, não calendarizado (fora do mapa).` })
 
   return { meses, entradas, saidas, totalEntradas, totalSaidas, saldoMes, saldoAcumulado, saldoInicial: cfg.saldo_inicial, avisos }
 }
