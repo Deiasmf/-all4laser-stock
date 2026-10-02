@@ -1,0 +1,22 @@
+name: Alugueres — lembrete de fim
+
+# Avisa a Andreia por email quando um aluguer mensal (recorrente) está perto de
+# terminar (~30 dias antes da data de fim, ou ~60 dias antes de esgotar o
+# horizonte de 12 meses se for aberto). Semanal (2ª feira às 08:00 UTC) para não
+# enviar avisos repetidos — a rota é idempotente por ciclo (lembrete_fim_enviado_em).
+# Testar sem enviar: acrescentar ?dryrun=1 ao URL.
+
+on:
+  schedule:
+    - cron: '0 8 * * 1'
+  workflow_dispatch: {}
+
+jobs:
+  lembrete:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar endpoint de lembrete de fim de alugueres
+        run: |
+          curl -sS --fail-with-body --max-time 55 \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://all4laser-stock.vercel.app/api/alugueres/lembrete-fim"
