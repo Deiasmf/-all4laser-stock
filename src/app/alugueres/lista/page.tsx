@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
@@ -41,12 +41,14 @@ type Fat = {
   created_at: string | null
 }
 
-// Linha da lista = um aluguer ativo num mês + a faturação desse mês.
+// Linha da lista = um aluguer num mês + a faturação desse mês.
 // `extras` = equipamentos do mesmo conjunto (Zimmer) agrupados nesta linha.
-type LinhaMes = { aluguer: Aluguer; fat: Fat; extras?: Aluguer[] }
+// `recolhaNesteMes` = se a recolha é aplicável nesta linha (false nos meses
+// intermédios de um aluguer mensal projetado — só faturação).
+type LinhaMes = { aluguer: Aluguer; fat: Fat; extras?: Aluguer[]; recolhaNesteMes?: boolean }
 
-// Agrupa o Zimmer no laser do mesmo conjunto (cliente + data de entrega), para
-// não aparecer como aluguer/linha separada. Zimmer órfão (sem laser) fica sozinho.
+// Agrupa o Zimmer no laser do mesmo conjunto (mesmo mês + cliente + data de
+// entrega), para não aparecer como linha separada. Zimmer órfão fica sozinho.
 function agruparZimmer(linhas: LinhaMes[]): LinhaMes[] {
   const lasers = linhas.filter((l) => !ehZimmer(l.aluguer))
   const zimmers = linhas.filter((l) => ehZimmer(l.aluguer))
@@ -54,12 +56,43 @@ function agruparZimmer(linhas: LinhaMes[]): LinhaMes[] {
   for (const z of zimmers) {
     const alvo = lasers.find((l) =>
       !l.extras?.length &&
+      l.fat.mes === z.fat.mes &&
       (l.aluguer.cliente_id ?? '') === (z.aluguer.cliente_id ?? '') &&
       (l.aluguer.data_entrega ?? '') === (z.aluguer.data_entrega ?? ''))
     if (alvo) (alvo.extras ??= []).push(z.aluguer)
     else sobra.push(z)
   }
   return [...lasers, ...sobra]
+}
+
+// Soma `n` meses a um 'YYYY-MM'.
+function mesMais(ym: string, n: number): string {
+  let [y, m] = ym.split('-').map(Number)
+  m += n
+  y += Math.floor((m - 1) / 12)
+  m = ((m - 1) % 12 + 12) % 12 + 1
+  return `${y}-${String(m).padStart(2, '0')}`
+}
+// Lista de meses 'YYYY-MM' entre de..ate (inclusive).
+function mesesEntre(de: string, ate: string): string[] {
+  if (!de || !ate || de > ate) return de && (!ate || de === ate) ? [de] : []
+  const out: string[] = []
+  let cur = de
+  for (let i = 0; i < 120 && cur <= ate; i++) { out.push(cur); cur = mesMais(cur, 1) }
+  return out
+}
+// Meses em que um aluguer deve aparecer, dentro da seleção.
+// - Normal: só o mês de entrega.
+// - Mensal: do mês de entrega até ao fim (data_fim_prevista, ou +12 meses se
+//   aberto), nunca além do mês de recolha se já recolhido.
+function mesesDoAluguer(a: Aluguer, selecao: string[]): string[] {
+  const inicio = (a.data_entrega ?? '').slice(0, 7)
+  if (!inicio) return []
+  if (!a.mensal) return selecao.includes(inicio) ? [inicio] : []
+  let fim = (a.data_fim_prevista ?? '').slice(0, 7) || mesMais(inicio, 12)
+  const recolha = (a.data_recolha ?? '').slice(0, 7)
+  if (recolha && recolha < fim) fim = recolha
+  return selecao.filter((em) => em >= inicio && em <= fim)
 }
 
 // Faturação vazia (mês ainda por definir)
@@ -165,29 +198,37 @@ export default function ListaAlugueres() {
   // Limites do período (garante De ≤ Até mesmo que a utilizadora troque a ordem).
   const [periodoDe, periodoAte] = useMemo(() => (mesDe <= mesAte ? [mesDe, mesAte] : [mesAte, mesDe]), [mesDe, mesAte])
 
-  // Um mês de entrega pertence à seleção? (um único mês, ou dentro do período)
-  const dentroDaSelecao = useCallback((em: string) => {
-    if (!em) return false
-    return modo === 'mes' ? em === mes : em >= periodoDe && em <= periodoAte
-  }, [modo, mes, periodoDe, periodoAte])
+  // Meses 'YYYY-MM' da seleção: um único mês, ou todos os do período (inclusive).
+  const mesesSelecao = useMemo(
+    () => (modo === 'mes' ? [mes] : mesesEntre(periodoDe, periodoAte)),
+    [modo, mes, periodoDe, periodoAte],
+  )
 
   // Alugueres da seleção (respeita mês/período + pesquisa, mas NÃO o filtro de
   // pagamento). Serve de base às contagens do resumo, para ficarem estáveis
   // mesmo quando se está a filtrar "só não pagos" ou "só pagos".
-  // Cada linha usa a faturação do SEU mês de entrega (em modo mês, é o mês
-  // selecionado; em período, o mês a que cada aluguer pertence).
+  // Cada linha usa a faturação do SEU mês. Os alugueres MENSAIS projetam-se em
+  // todos os meses da seleção (do início ao fim); os normais só no mês de entrega.
   const linhasMes = useMemo<LinhaMes[]>(() => {
     const q = pesquisa.trim().toLowerCase()
-    const base = alugueres
-      .filter((a) => dentroDaSelecao((a.data_entrega ?? '').slice(0, 7)))
-      .filter((a) => !q || (a.cliente_nome ?? '').toLowerCase().includes(q))
-      .map((a) => {
-        const em = (a.data_entrega ?? '').slice(0, 7)
-        return { aluguer: a, fat: faturacao.get(`${a.id}|${em}`) ?? fatVazia(a.id, em) }
-      })
+    const base: LinhaMes[] = []
+    for (const a of alugueres) {
+      if (q && !(a.cliente_nome ?? '').toLowerCase().includes(q)) continue
+      const meses = mesesDoAluguer(a, mesesSelecao)
+      if (!meses.length) continue
+      // Recolha só aplicável no último mês projetado (meses intermédios = só faturação).
+      const ultimo = meses[meses.length - 1]
+      for (const em of meses) {
+        base.push({
+          aluguer: a,
+          fat: faturacao.get(`${a.id}|${em}`) ?? fatVazia(a.id, em),
+          recolhaNesteMes: a.mensal ? em === ultimo : undefined,
+        })
+      }
+    }
     // Junta o Zimmer ao laser do conjunto (1 aluguer = Laser + Zimmer).
     return agruparZimmer(base)
-  }, [alugueres, faturacao, dentroDaSelecao, pesquisa])
+  }, [alugueres, faturacao, mesesSelecao, pesquisa])
 
   // Lista mostrada = mês + filtro de pagamento + ordenação
   const linhas = useMemo<LinhaMes[]>(() => {
@@ -351,7 +392,7 @@ export default function ListaAlugueres() {
         </div>
         <div style={c.cartaoLinha} onClick={(e) => e.stopPropagation()}>
           <span style={c.cartaoLabel}>Recolha</span>
-          <CelulaRecolha aluguer={a} podeEditar={podeFaturar} onRecolher={() => setRecolher(a)} />
+          <CelulaRecolha aluguer={a} aplicavel={l.recolhaNesteMes} podeEditar={podeFaturar} onRecolher={() => setRecolher(a)} />
         </div>
       </div>
     )
@@ -400,7 +441,7 @@ export default function ListaAlugueres() {
           <EstadoPago fat={l.fat} podeEditar={podeFaturar} onChange={(patch) => atualizarFaturacao(a.id, l.fat.mes, patch)} />
         </span>
         <span style={c.celula} onClick={(e) => e.stopPropagation()}>
-          <CelulaRecolha aluguer={a} podeEditar={podeFaturar} onRecolher={() => setRecolher(a)} />
+          <CelulaRecolha aluguer={a} aplicavel={l.recolhaNesteMes} podeEditar={podeFaturar} onRecolher={() => setRecolher(a)} />
         </span>
       </div>
     )
@@ -812,13 +853,15 @@ function EstadoPago({
 
 // -------------------------------------------------------------- CÉLULA: RECOLHA
 function CelulaRecolha({
-  aluguer, podeEditar, onRecolher,
+  aluguer, aplicavel, podeEditar, onRecolher,
 }: {
   aluguer: Aluguer
+  aplicavel?: boolean
   podeEditar: boolean
   onRecolher: () => void
 }) {
-  // Meses "só faturação" (meses intermédios de um contrato) não têm recolha.
+  // Meses "só faturação" (meses intermédios de um contrato/mensal) não têm recolha.
+  if (aplicavel === false) return <span style={c.semDef}>—</span>
   if (aluguer.recolha_aplicavel === false) return <span style={c.semDef}>—</span>
   // Já recolhido.
   if (aluguer.data_recolha) {
@@ -1061,6 +1104,8 @@ function ModalEditar({
   const [metodo, setMetodo] = useState(aluguer.metodo_pagamento ?? '')
   const [dataEntrega, setDataEntrega] = useState((aluguer.data_entrega ?? '').slice(0, 10))
   const [dataRecolha, setDataRecolha] = useState((aluguer.data_recolha ?? '').slice(0, 10))
+  const [mensal, setMensal] = useState(aluguer.mensal ?? false)
+  const [dataFim, setDataFim] = useState((aluguer.data_fim_prevista ?? '').slice(0, 10))
 
   const [aGuardar, setAGuardar] = useState(false)
   const [aApagar, setAApagar] = useState(false)
@@ -1090,6 +1135,8 @@ function ModalEditar({
       metodo_pagamento: metodo || null,
       data_entrega: dataEntrega || null,
       data_recolha: dataRecolha || null,
+      mensal,
+      data_fim_prevista: mensal ? (dataFim || null) : null,
       updated_at: new Date().toISOString(),
     }
     const { data, error } = await supabase
@@ -1193,6 +1240,18 @@ function ModalEditar({
             <input style={c.input} type="date" value={dataRecolha} onChange={(e) => setDataRecolha(e.target.value)} />
           </div>
         </div>
+
+        <label style={c.checkLinha}>
+          <input type="checkbox" checked={mensal} onChange={(e) => setMensal(e.target.checked)} />
+          Aluguer mensal (recorrente) — aparece em todos os meses
+        </label>
+        {mensal && (
+          <>
+            <label style={c.label}>Data de fim prevista <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(opcional — em aberto projeta 12 meses)</span></label>
+            <input style={c.input} type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} />
+            <span style={c.envNota}>Recebes um email ~30 dias antes do fim para renovar ou recolher.</span>
+          </>
+        )}
 
         <div style={c.modalAcoes}>
           <button onClick={eliminar} disabled={aApagar} style={c.btnDanger}>

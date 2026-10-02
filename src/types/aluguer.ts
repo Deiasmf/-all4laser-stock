@@ -35,6 +35,11 @@ export type Aluguer = {
   updated_at: string
   // Visto de validação da informação do aluguer
   validado: boolean | null
+  // Aluguer mensal recorrente: a lista projeta-o em todos os meses (início →
+  // data_fim_prevista, ou +12 meses se aberto). Evita 1 linha por mês.
+  mensal: boolean | null
+  data_fim_prevista: string | null
+  lembrete_fim_enviado_em: string | null
   // Faturação (tabela mensal)
   valor_a_faturar: number | null
   nao_faturar: boolean | null
