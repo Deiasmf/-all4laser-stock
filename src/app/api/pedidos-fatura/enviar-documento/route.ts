@@ -12,11 +12,18 @@ import { EMAIL_VANESSA, EMAIL_ANDREIA } from '@/types/freight'
 export const runtime = 'nodejs'
 
 type Pedido = {
-  id: string; numero: string | null; tipo: string
+  id: string; numero: string | null; tipo: string; estado: string
   cliente_id: string | null; cliente_nome: string | null; cliente_email: string | null
   descricao: string | null; valor: number | null
   num_fatura: string | null; data_fatura: string | null; valor_total: number | null
   documento_url: string | null; canais_usados: string[] | null; financeiro_movimento_id: string | null
+  proforma_url: string | null; proforma_num: string | null; proforma_data: string | null; proforma_valor: number | null
+}
+
+// Etapa a enviar: pró-forma (1ª etapa) ou fatura fiscal (fatura direta ou final).
+function etapaDe(p: Pedido): 'proforma' | 'fatura' {
+  if (p.tipo !== 'pro_forma') return 'fatura'
+  return ['fatura_pedida', 'fatura_realizada', 'fechado'].includes(p.estado) ? 'fatura' : 'proforma'
 }
 
 async function anexoDeUrl(url: string, nomeBase: string) {
@@ -32,10 +39,11 @@ function euro(v: number | null | undefined) {
   return v == null ? '' : v.toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-// Lança a fatura na conta corrente do cliente (só faturas, não pró-formas).
-// Idempotente: se já existir um movimento com o mesmo (cliente, nº), não duplica.
+// Lança a fatura FISCAL na conta corrente do cliente. Chamada só quando se envia
+// a etapa "fatura" (fatura direta ou fatura final da pró-forma) — a pró-forma
+// NUNCA entra na conta corrente. Idempotente por (cliente, nº).
 async function lancarNaContaCorrente(db: SupabaseClient, p: Pedido): Promise<string | null> {
-  if (p.tipo !== 'fatura' || !p.cliente_id || !p.num_fatura || p.valor_total == null) return null
+  if (!p.cliente_id || !p.num_fatura || p.valor_total == null) return null
   if (p.financeiro_movimento_id) return p.financeiro_movimento_id
   const { data: existente } = await db.from('financeiro_movimentos')
     .select('id').eq('cliente_id', p.cliente_id).eq('documento_ref', p.num_fatura).eq('tipo_documento', 'fatura').maybeSingle()
@@ -75,26 +83,35 @@ export async function POST(req: Request) {
   if (!id) return Response.json({ ok: false, erro: 'Falta o id do pedido.' }, { status: 400 })
 
   const { data, error } = await db.from('pedidos_fatura')
-    .select('id, numero, tipo, cliente_id, cliente_nome, cliente_email, descricao, valor, num_fatura, data_fatura, valor_total, documento_url, canais_usados, financeiro_movimento_id')
+    .select('id, numero, tipo, estado, cliente_id, cliente_nome, cliente_email, descricao, valor, num_fatura, data_fatura, valor_total, documento_url, canais_usados, financeiro_movimento_id, proforma_url, proforma_num, proforma_data, proforma_valor')
     .eq('id', id).single()
   if (error || !data) return Response.json({ ok: false, erro: 'Pedido não encontrado.' }, { status: 404 })
   const p = data as Pedido
 
+  // Etapa a enviar e os campos do documento correspondente.
+  const etapa = etapaDe(p)
+  const docUrl = etapa === 'proforma' ? p.proforma_url : p.documento_url
+  const docNum = etapa === 'proforma' ? p.proforma_num : p.num_fatura
+  const docData = etapa === 'proforma' ? p.proforma_data : p.data_fatura
+  const docValor = etapa === 'proforma' ? p.proforma_valor : p.valor_total
+
   if (!p.cliente_email) return Response.json({ ok: false, erro: 'O cliente não tem email definido.' }, { status: 400 })
-  if (!p.documento_url) return Response.json({ ok: false, erro: 'Ainda não há documento anexado para enviar.' }, { status: 400 })
-  if (p.tipo === 'fatura' && (!p.num_fatura || p.valor_total == null || !p.data_fatura)) {
+  if (!docUrl) return Response.json({ ok: false, erro: 'Ainda não há documento anexado para enviar.' }, { status: 400 })
+  // A fatura fiscal exige nº, data e valor; a pró-forma pode seguir sem nº formal.
+  if (etapa === 'fatura' && (!docNum || docValor == null || !docData)) {
     return Response.json({ ok: false, erro: 'Preenche o nº, a data e o valor total da fatura antes de enviar.' }, { status: 400 })
   }
 
   // Assunto/corpo: os EDITADOS na pré-visualização, ou o template com substituição básica.
+  const docLabel = etapa === 'proforma' ? 'Fatura pró-forma' : 'Fatura'
   const assunto = (body.assunto && body.assunto.trim())
-    || `All4laser – Fatura ${p.num_fatura ?? ''} – ${p.cliente_nome ?? ''}`
+    || `All4laser – ${docLabel} ${docNum ?? ''} – ${p.cliente_nome ?? ''}`
   const corpo = (body.corpo && body.corpo.trim())
-    || `Exmo.(a) Sr.(a) ${p.cliente_nome ?? ''},\n\nServe o presente email para envio do documento ${p.num_fatura ?? ''}, referente a ${p.cliente_nome ?? ''}, com data de ${p.data_fatura ?? ''}, no valor total de ${euro(p.valor_total)} €.\n\nO documento segue em anexo.\n\nPara qualquer esclarecimento adicional, estamos inteiramente ao dispor.\n\nCom os melhores cumprimentos,`
+    || `Exmo.(a) Sr.(a) ${p.cliente_nome ?? ''},\n\nServe o presente email para envio do documento ${docNum ?? ''}, referente a ${p.cliente_nome ?? ''}, com data de ${docData ?? ''}, no valor total de ${euro(docValor)} €.\n\nO documento segue em anexo.\n\nPara qualquer esclarecimento adicional, estamos inteiramente ao dispor.\n\nCom os melhores cumprimentos,`
 
   const assinatura = await obterAssinaturaHtml(db, EMAIL_VANESSA)
-  const nomeDoc = p.tipo === 'pro_forma' ? 'Fatura-pro-forma' : 'Fatura'
-  const anexo = await anexoDeUrl(p.documento_url, `${nomeDoc}-${p.num_fatura ?? p.numero ?? 'documento'}`)
+  const nomeDoc = etapa === 'proforma' ? 'Fatura-pro-forma' : 'Fatura'
+  const anexo = await anexoDeUrl(docUrl, `${nomeDoc}-${docNum ?? p.numero ?? 'documento'}`)
 
   const r = await enviarGmail({
     para: [p.cliente_email],
@@ -107,16 +124,31 @@ export async function POST(req: Request) {
   })
   if (!r.ok) return Response.json({ ok: false, erro: r.erro ?? 'Falha no envio.' }, { status: 502 })
 
-  const movimentoId = await lancarNaContaCorrente(db, p)
   const canais = Array.from(new Set([...(p.canais_usados ?? []), 'email']))
   const agora = new Date().toISOString()
+
+  if (etapa === 'proforma') {
+    // Pró-forma enviada → aguarda pagamento do cliente (fora da fila da Vanessa).
+    // A pró-forma NÃO lança conta corrente. Reinicia o relógio de lembretes.
+    await db.from('pedidos_fatura').update({
+      estado: 'aguarda_pagamento', proforma_enviada_em: agora, respondido_em: agora,
+      canais_usados: canais, lembrete_ultimo: null, lembretes_count: 0,
+    }).eq('id', id)
+    try { await notificarFaturaEnviada(db, id) } catch { /* ignora */ }
+    return Response.json({ ok: true, conta_corrente: false, etapa })
+  }
+
+  // Fatura fiscal (direta ou final da pró-forma) → lança na conta corrente.
+  const movimentoId = await lancarNaContaCorrente(db, p)
+  const estadoFinal = p.tipo === 'pro_forma' ? 'fechado' : 'enviado_cliente'
   await db.from('pedidos_fatura').update({
-    estado: 'enviado_cliente', enviado_em: agora, respondido_em: agora,
+    estado: estadoFinal, enviado_em: agora, respondido_em: agora,
+    fechado_em: p.tipo === 'pro_forma' ? agora : null,
     canais_usados: canais, financeiro_movimento_id: movimentoId ?? p.financeiro_movimento_id,
   }).eq('id', id)
 
   // Avisa o colega que pediu (recado + email); best-effort, não falha o envio.
   try { await notificarFaturaEnviada(db, id) } catch { /* ignora */ }
 
-  return Response.json({ ok: true, conta_corrente: !!movimentoId })
+  return Response.json({ ok: true, conta_corrente: !!movimentoId, etapa })
 }

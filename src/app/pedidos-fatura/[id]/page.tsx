@@ -7,11 +7,13 @@ import { useAuth } from '@/lib/auth'
 import {
   obterPedidoFatura, atualizarPedidoFatura, eliminarPedidoFatura,
   alterarEstadoPedido, marcarPagoPedido, carregarDocumentoPedido, removerDocumentoPedido,
-  recusarPedidoFatura, guardarDadosFatura, extrairDadosFatura, enviarPedidoAoCliente,
+  recusarPedidoFatura, cancelarPedidoFatura, pedirFaturaFinal,
+  guardarDadosFatura, extrairDadosFatura, enviarPedidoAoCliente,
   registarEnvioWhatsapp, contactoCliente, carregarConfigPedidos,
+  type EtapaDoc,
 } from '@/lib/pedidosFatura'
 import {
-  estadoPedidoInfo, tipoPedidoLabel, formatarEuro, formatarData,
+  estadoPedidoInfo, tipoPedidoLabel, formatarEuro, formatarData, etapaDocumento, pedidoFechado,
   type PedidoFatura, type PedidoFaturaEstado, type PedidoFaturaConfig,
 } from '@/types/pedidoFatura'
 
@@ -27,14 +29,23 @@ function linkWhatsapp(telefone: string | null | undefined): string | null {
   return d.length < 8 ? null : `https://wa.me/${d}`
 }
 
-// Substitui os marcadores do template com os dados do pedido.
-function preencherTemplate(tpl: string, p: PedidoFatura, contacto: string | null): string {
+// Campos do documento na etapa (a pró-forma tem colunas próprias; a fatura fiscal
+// usa as colunas canónicas).
+function dadosEtapa(p: PedidoFatura, etapa: EtapaDoc) {
+  return etapa === 'proforma'
+    ? { url: p.proforma_url, caminho: p.proforma_caminho, num: p.proforma_num, data: p.proforma_data, valor: p.proforma_valor }
+    : { url: p.documento_url, caminho: p.documento_caminho, num: p.num_fatura, data: p.data_fatura, valor: p.valor_total }
+}
+
+// Substitui os marcadores do template com os dados do pedido na etapa certa.
+function preencherTemplate(tpl: string, p: PedidoFatura, contacto: string | null, etapa: EtapaDoc): string {
+  const d = dadosEtapa(p, etapa)
   return tpl
-    .replaceAll('{n_fatura}', p.num_fatura ?? '')
+    .replaceAll('{n_fatura}', d.num ?? '')
     .replaceAll('{nome_cliente}', p.cliente_nome ?? '')
     .replaceAll('{nome_contacto}', contacto || p.cliente_nome || '')
-    .replaceAll('{data_fatura}', formatarData(p.data_fatura))
-    .replaceAll('{valor_total}', p.valor_total != null ? p.valor_total.toLocaleString('pt-PT', { minimumFractionDigits: 2 }) : '')
+    .replaceAll('{data_fatura}', formatarData(d.data))
+    .replaceAll('{valor_total}', d.valor != null ? d.valor.toLocaleString('pt-PT', { minimumFractionDigits: 2 }) : '')
 }
 
 export default function DetalhePedidoFaturaPage() {
@@ -48,7 +59,11 @@ export default function DetalhePedidoFaturaPage() {
   const [msg, setMsg] = useState<string | null>(null)
   const [cfg, setCfg] = useState<PedidoFaturaConfig | null>(null)
   const [contacto, setContacto] = useState<{ telefone: string | null; contacto_nome: string | null }>({ telefone: null, contacto_nome: null })
-  const [preview, setPreview] = useState<{ assunto: string; corpo: string } | null>(null)
+  const [preview, setPreview] = useState<{ assunto: string; corpo: string; etapa: EtapaDoc } | null>(null)
+  // Sub-pedido "pagamento recebido → pedir fatura final"
+  const [ffAberto, setFfAberto] = useState(false)
+  const [ffComprovativo, setFfComprovativo] = useState<File | null>(null)
+  const [ffNota, setFfNota] = useState('')
 
   const recarregar = useCallback(async () => {
     const { data } = await obterPedidoFatura(id)
@@ -81,46 +96,49 @@ export default function DetalhePedidoFaturaPage() {
     setATrabalhar(false)
   }
 
-  async function upload(file: File | undefined) {
-    if (!file) return
+  async function upload(file: File | undefined, etapa: EtapaDoc) {
+    if (!file || !pedido) return
     setATrabalhar(true); setMsg(null)
-    const r = await carregarDocumentoPedido(id, file)
+    const r = await carregarDocumentoPedido(id, file, etapa, pedido.tipo)
     if (!r.ok) setMsg('Erro no upload: ' + (r.motivo ?? ''))
     await recarregar()
     setATrabalhar(false)
   }
 
-  async function removerDoc() {
+  async function removerDoc(etapa: EtapaDoc, caminho: string | null) {
     if (!pedido) return
-    if (!confirm('Remover o documento anexado? O pedido volta a "A realizar".')) return
+    if (!confirm('Remover o documento anexado?')) return
     setATrabalhar(true); setMsg(null)
-    await removerDocumentoPedido(id, pedido.documento_caminho)
+    await removerDocumentoPedido(id, caminho, etapa, pedido.tipo)
     await recarregar()
     setATrabalhar(false)
   }
 
-  // Extrai nº/data/valor do PDF anexado e pré-preenche (a Vanessa confirma).
-  async function extrairFatura() {
+  // Extrai nº/data/valor do PDF anexado na etapa e pré-preenche (a Vanessa confirma).
+  async function extrair(etapa: EtapaDoc) {
     setATrabalhar(true); setMsg(null)
-    const r = await extrairDadosFatura(id)
+    const r = await extrairDadosFatura(id, etapa)
     if (!r.ok || !r.extraido) { setMsg('⚠️ ' + (r.erro ?? 'Não consegui extrair.')); setATrabalhar(false); return }
     const e = r.extraido
+    const d = pedido ? dadosEtapa(pedido, etapa) : { num: null, data: null, valor: null }
     await guardarDadosFatura(id, {
-      num_fatura: e.num_fatura ?? pedido?.num_fatura ?? null,
-      data_fatura: e.data_fatura ?? pedido?.data_fatura ?? null,
-      valor_total: e.valor_total ?? pedido?.valor_total ?? null,
-    })
+      num_fatura: e.num_fatura ?? d.num ?? null,
+      data_fatura: e.data_fatura ?? d.data ?? null,
+      valor_total: e.valor_total ?? d.valor ?? null,
+    }, etapa)
     await recarregar()
     setMsg('✅ Dados extraídos — confirma antes de enviar.')
     setATrabalhar(false)
   }
 
-  // Abre a pré-visualização do email (assunto/corpo do template, editáveis).
+  // Abre a pré-visualização do email para a etapa ativa (assunto/corpo editáveis).
   function abrirPreview() {
     if (!pedido || !cfg) return
+    const etapa = etapaDocumento(pedido)
     setPreview({
-      assunto: preencherTemplate(cfg.assunto_template, pedido, contacto.contacto_nome),
-      corpo: preencherTemplate(cfg.corpo_template, pedido, contacto.contacto_nome),
+      etapa,
+      assunto: preencherTemplate(cfg.assunto_template, pedido, contacto.contacto_nome, etapa),
+      corpo: preencherTemplate(cfg.corpo_template, pedido, contacto.contacto_nome, etapa),
     })
   }
 
@@ -128,8 +146,13 @@ export default function DetalhePedidoFaturaPage() {
     if (!preview) return
     setATrabalhar(true); setMsg(null)
     const r = await enviarPedidoAoCliente(id, preview.assunto, preview.corpo)
+    const eraProforma = preview.etapa === 'proforma'
     setPreview(null)
-    setMsg(r.ok ? '✅ Enviado ao cliente (a partir da Vanessa, com CC à Andreia).' : '⚠️ ' + (r.erro ?? 'Não foi possível enviar.'))
+    setMsg(r.ok
+      ? (eraProforma
+          ? '✅ Pró-forma enviada ao cliente. Fica a aguardar pagamento.'
+          : '✅ Fatura enviada ao cliente (a partir da Vanessa, com CC à Andreia).')
+      : '⚠️ ' + (r.erro ?? 'Não foi possível enviar.'))
     await recarregar()
     setATrabalhar(false)
   }
@@ -139,6 +162,26 @@ export default function DetalhePedidoFaturaPage() {
     if (!motivo || !motivo.trim()) return
     setATrabalhar(true); setMsg(null)
     await recusarPedidoFatura(id, motivo.trim())
+    await recarregar()
+    setATrabalhar(false)
+  }
+
+  async function cancelar() {
+    const motivo = prompt('Motivo do cancelamento:')
+    if (!motivo || !motivo.trim()) return
+    setATrabalhar(true); setMsg(null)
+    await cancelarPedidoFatura(id, motivo.trim())
+    await recarregar()
+    setATrabalhar(false)
+  }
+
+  // Sub-pedido: pagamento recebido → pedir fatura final (criador + financeiro).
+  async function submeterFaturaFinal() {
+    setATrabalhar(true); setMsg(null)
+    const r = await pedirFaturaFinal(id, { comprovativo: ffComprovativo, nota: ffNota })
+    if (!r.ok) { setMsg('⚠️ ' + (r.motivo ?? 'Não foi possível.')); setATrabalhar(false); return }
+    setFfAberto(false); setFfComprovativo(null); setFfNota('')
+    setMsg('✅ Pagamento registado. A fatura final foi pedida à faturação.')
     await recarregar()
     setATrabalhar(false)
   }
@@ -176,8 +219,89 @@ export default function DetalhePedidoFaturaPage() {
   if (!pedido) return <main style={c.page}><p style={c.muted}>Pedido não encontrado.</p></main>
 
   const i = estadoPedidoInfo(pedido.estado)
-  // Apagar: alinha com o RLS (is_admin() OR criado_por) — role admin ou o criador.
   const podeApagar = isGestorUtilizadores || souCriador
+  const isProforma = pedido.tipo === 'pro_forma'
+  const estado = pedido.estado
+  const atingiuFF = isProforma && ['fatura_pedida', 'fatura_realizada', 'fechado'].includes(estado)
+  const fechado = pedidoFechado(pedido)
+  const terminal = fechado || estado === 'recusado' || estado === 'cancelado'
+  const podePedirFaturaFinal = estado === 'aguarda_pagamento' && (souCriador || isFinanceiro)
+
+  // Secção de documento de uma etapa (pró-forma ou fatura).
+  function SeccaoDoc(etapa: EtapaDoc, titulo: string) {
+    const p = pedido!
+    const d = dadosEtapa(p, etapa)
+    // O financeiro pode anexar/editar enquanto a etapa estiver "aberta" (antes de enviada).
+    const podeTratar = isFinanceiro && !terminal && (
+      etapa === 'proforma'
+        ? ['nao_realizado', 'a_realizar', 'realizado'].includes(estado)
+        : (isProforma ? ['fatura_pedida', 'fatura_realizada'].includes(estado) : ['nao_realizado', 'a_realizar', 'realizado'].includes(estado))
+    )
+    return (
+      <section style={c.card} key={etapa}>
+        <div style={c.cardTitulo}>{titulo}</div>
+        <div style={c.docLinha}>
+          <span>{etapa === 'proforma' ? 'Pró-forma' : 'Fatura'}</span>
+          {d.url
+            ? <a href={d.url} target="_blank" rel="noopener noreferrer" style={c.link}>Ver documento ↗</a>
+            : <span style={c.muted}>— por emitir</span>}
+        </div>
+        {podeTratar ? (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+            <label style={c.uploadLabel}>
+              {d.url ? 'Substituir documento' : 'Anexar documento emitido'}
+              <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={(e) => upload(e.target.files?.[0], etapa)} disabled={aTrabalhar} />
+            </label>
+            {d.url && <button style={c.btnGhost} disabled={aTrabalhar} onClick={() => removerDoc(etapa, d.caminho)}>Remover documento</button>}
+          </div>
+        ) : (
+          !d.url && <p style={c.ajuda}>A aguardar emissão pelo departamento financeiro.</p>
+        )}
+
+        {/* Dados do documento (nº/data/valor) — pré-extraíveis do PDF */}
+        {isFinanceiro && d.url && (
+          <div style={{ marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={c.rotulo}>Dados {etapa === 'proforma' ? 'da pró-forma' : 'da fatura'}</span>
+              {podeTratar && <button style={c.btnGhost} disabled={aTrabalhar} onClick={() => extrair(etapa)}>✨ Extrair do PDF</button>}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, marginTop: 8 }}>
+              <label style={c.campoEdit}>
+                <span style={c.rotulo}>Nº</span>
+                <input key={'nf' + etapa + (d.num ?? '')} defaultValue={d.num ?? ''} disabled={aTrabalhar || !podeTratar}
+                  onBlur={(e) => guardarCampo(etapa === 'proforma' ? { proforma_num: e.target.value.trim() || null } : { num_fatura: e.target.value.trim() || null })}
+                  style={{ ...c.input, marginTop: 4 }} />
+              </label>
+              <label style={c.campoEdit}>
+                <span style={c.rotulo}>Data</span>
+                <input key={'df' + etapa + (d.data ?? '')} type="date" defaultValue={d.data ?? ''} disabled={aTrabalhar || !podeTratar}
+                  onBlur={(e) => guardarCampo(etapa === 'proforma' ? { proforma_data: e.target.value || null } : { data_fatura: e.target.value || null })}
+                  style={{ ...c.input, marginTop: 4 }} />
+              </label>
+              <label style={c.campoEdit}>
+                <span style={c.rotulo}>Valor total (€)</span>
+                <input key={'vt' + etapa + (d.valor ?? '')} type="number" step="0.01" min="0" defaultValue={d.valor ?? ''} disabled={aTrabalhar || !podeTratar}
+                  onBlur={(e) => { const t = e.target.value.trim(); const n = t === '' ? null : Number(t.replace(',', '.')); if (n === null || (!isNaN(n) && n >= 0)) guardarCampo(etapa === 'proforma' ? { proforma_valor: n } : { valor_total: n }) }}
+                  style={{ ...c.input, marginTop: 4 }} />
+              </label>
+            </div>
+          </div>
+        )}
+      </section>
+    )
+  }
+
+  const etapaAtiva = etapaDocumento(pedido)
+  const dAtiva = dadosEtapa(pedido, etapaAtiva)
+  // Mostrar o botão "enviar" quando o documento da etapa ativa existe e ainda não foi enviado.
+  const podeEnviar = !!dAtiva.url && (
+    isProforma
+      ? (etapaAtiva === 'proforma' ? estado === 'realizado' : estado === 'fatura_realizada')
+      : estado === 'realizado'
+  )
+  const jaEnviado = isProforma
+    ? (estado === 'aguarda_pagamento' || estado === 'fechado')
+    : estado === 'enviado_cliente'
 
   return (
     <main style={c.page}>
@@ -259,60 +383,57 @@ export default function DetalhePedidoFaturaPage() {
         {pedido.notas && <Linha rotulo="Notas" valor={pedido.notas} />}
       </section>
 
-      {/* Documento emitido */}
-      <section style={c.card}>
-        <div style={c.cardTitulo}>Documento emitido</div>
-        <div style={c.docLinha}>
-          <span>{tipoPedidoLabel(pedido.tipo)}</span>
-          {pedido.documento_url
-            ? <a href={pedido.documento_url} target="_blank" rel="noopener noreferrer" style={c.link}>Ver documento ↗</a>
-            : <span style={c.muted}>— por emitir</span>}
-        </div>
-        {pedido.enviado_em && <p style={c.ajuda}>Enviado ao cliente em {formatarData(pedido.enviado_em)}.</p>}
-        {isFinanceiro ? (
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
-            <label style={c.uploadLabel}>
-              {pedido.documento_url ? 'Substituir documento' : 'Anexar documento emitido'}
-              <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={(e) => upload(e.target.files?.[0])} disabled={aTrabalhar} />
-            </label>
-            {pedido.documento_url && (
-              <button style={c.btnGhost} disabled={aTrabalhar} onClick={removerDoc}>Remover documento</button>
-            )}
-          </div>
-        ) : (
-          !pedido.documento_url && <p style={c.ajuda}>A aguardar emissão pelo departamento financeiro.</p>
-        )}
+      {/* Documentos — uma secção por etapa */}
+      {isProforma ? (
+        <>
+          {SeccaoDoc('proforma', 'Pró-forma (1ª etapa)')}
+          {pedido.proforma_enviada_em && <p style={c.ajudaSolta}>Pró-forma enviada ao cliente em {formatarData(pedido.proforma_enviada_em)}.</p>}
+          {atingiuFF && SeccaoDoc('fatura', 'Fatura final (2ª etapa)')}
+          {pedido.fatura_ajuste_nota && (
+            <p style={c.ajudaSolta}>Ajuste da fatura final: {pedido.fatura_ajuste_nota}</p>
+          )}
+        </>
+      ) : (
+        <>
+          {SeccaoDoc('fatura', 'Documento emitido')}
+          {pedido.enviado_em && <p style={c.ajudaSolta}>Enviado ao cliente em {formatarData(pedido.enviado_em)}.</p>}
+        </>
+      )}
 
-        {/* Dados da fatura emitida (financeiro) — pré-extraíveis do PDF */}
-        {isFinanceiro && pedido.documento_url && (
-          <div style={{ marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span style={c.rotulo}>Dados da fatura</span>
-              <button style={c.btnGhost} disabled={aTrabalhar} onClick={extrairFatura}>✨ Extrair do PDF</button>
+      {/* Comprovativo de pagamento (se anexado) */}
+      {pedido.comprovativo_url && (
+        <section style={c.card}>
+          <div style={c.cardTitulo}>Comprovativo de pagamento</div>
+          <a href={pedido.comprovativo_url} target="_blank" rel="noopener noreferrer" style={c.link}>Ver comprovativo ↗</a>
+        </section>
+      )}
+
+      {/* Aguarda pagamento → pedir fatura final (criador + financeiro) */}
+      {podePedirFaturaFinal && (
+        <section style={{ ...c.card, borderColor: '#9A3412' }}>
+          <div style={c.cardTitulo}>Aguarda pagamento do cliente</div>
+          <p style={c.ajuda}>Quando o cliente pagar, regista aqui para pedir a fatura final à faturação — tudo fica no mesmo pedido.</p>
+          {!ffAberto ? (
+            <button style={c.btnPrimario} disabled={aTrabalhar} onClick={() => setFfAberto(true)}>💶 Pagamento recebido → pedir fatura final</button>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
+              <label style={c.campoEdit}>
+                <span style={c.rotulo}>Comprovativo de pagamento (opcional)</span>
+                <input type="file" accept="image/*,application/pdf" onChange={(e) => setFfComprovativo(e.target.files?.[0] ?? null)} style={{ ...c.input, padding: 8, marginTop: 4 }} />
+                {ffComprovativo && <span style={{ fontSize: 12, color: 'var(--muted)' }}>{ffComprovativo.name}</span>}
+              </label>
+              <label style={c.campoEdit}>
+                <span style={c.rotulo}>Nota (se a fatura final diferir da pró-forma)</span>
+                <textarea value={ffNota} onChange={(e) => setFfNota(e.target.value)} placeholder="ex.: pagamento parcial, valor acordado alterado…" style={{ ...c.input, minHeight: 56, resize: 'vertical', marginTop: 4 }} />
+              </label>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                <button style={c.btnGhost} disabled={aTrabalhar} onClick={() => { setFfAberto(false); setFfComprovativo(null); setFfNota('') }}>Cancelar</button>
+                <button style={c.btnPrimario} disabled={aTrabalhar} onClick={submeterFaturaFinal}>{aTrabalhar ? 'A registar…' : 'Confirmar pagamento e pedir fatura'}</button>
+              </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, marginTop: 8 }}>
-              <label style={c.campoEdit}>
-                <span style={c.rotulo}>Nº da fatura</span>
-                <input key={'nf' + (pedido.num_fatura ?? '')} defaultValue={pedido.num_fatura ?? ''}
-                  onBlur={(e) => guardarCampo({ num_fatura: e.target.value.trim() || null })}
-                  disabled={aTrabalhar} style={{ ...c.input, marginTop: 4 }} />
-              </label>
-              <label style={c.campoEdit}>
-                <span style={c.rotulo}>Data da fatura</span>
-                <input key={'df' + (pedido.data_fatura ?? '')} type="date" defaultValue={pedido.data_fatura ?? ''}
-                  onBlur={(e) => guardarCampo({ data_fatura: e.target.value || null })}
-                  disabled={aTrabalhar} style={{ ...c.input, marginTop: 4 }} />
-              </label>
-              <label style={c.campoEdit}>
-                <span style={c.rotulo}>Valor total (€)</span>
-                <input key={'vt' + (pedido.valor_total ?? '')} type="number" step="0.01" min="0" defaultValue={pedido.valor_total ?? ''}
-                  onBlur={(e) => { const t = e.target.value.trim(); const n = t === '' ? null : Number(t.replace(',', '.')); if (n === null || (!isNaN(n) && n >= 0)) guardarCampo({ valor_total: n }) }}
-                  disabled={aTrabalhar} style={{ ...c.input, marginTop: 4 }} />
-              </label>
-            </div>
-          </div>
-        )}
-      </section>
+          )}
+        </section>
+      )}
 
       {/* Fluxo (financeiro) */}
       {isFinanceiro && (
@@ -321,49 +442,55 @@ export default function DetalhePedidoFaturaPage() {
 
           <div style={c.rotulo}>Estado</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
-            {pedido.estado === 'nao_realizado' && (
+            {estado === 'nao_realizado' && (
               <button style={c.btnPrimario} disabled={aTrabalhar} onClick={() => mudarEstado('a_realizar')}>Assumir (A realizar)</button>
             )}
-            {pedido.estado === 'a_realizar' && (
+            {estado === 'a_realizar' && (
               <button style={c.btnGhost} disabled={aTrabalhar} onClick={() => mudarEstado('nao_realizado')}>Voltar a Não realizado</button>
             )}
-            {pedido.documento_url && pedido.estado !== 'enviado_cliente' && (
+            {podeEnviar && !jaEnviado && (
               <button
                 style={c.btnPrimario}
                 disabled={aTrabalhar || !pedido.cliente_email}
                 onClick={abrirPreview}
                 title={pedido.cliente_email ? undefined : 'O cliente não tem email definido'}
               >
-                ✉️ Enviar ao cliente
+                ✉️ {etapaAtiva === 'proforma' ? 'Enviar pró-forma ao cliente' : 'Enviar fatura ao cliente'}
               </button>
             )}
-            {pedido.estado === 'enviado_cliente' && (
+            {jaEnviado && (
               <button style={c.btnGhost} disabled={aTrabalhar} onClick={abrirPreview} title="Reenviar o documento">Reenviar ao cliente</button>
             )}
-            {linkWhatsapp(contacto.telefone) && (
+            {linkWhatsapp(contacto.telefone) && dAtiva.url && (
               <>
-                {pedido.documento_url && (
-                  <a href={pedido.documento_url} target="_blank" rel="noopener noreferrer" download style={c.btnGhost}>1. Descarregar fatura</a>
-                )}
+                <a href={dAtiva.url} target="_blank" rel="noopener noreferrer" download style={c.btnGhost}>1. Descarregar documento</a>
                 <a href={linkWhatsapp(contacto.telefone)!} target="_blank" rel="noopener noreferrer" style={c.btnWhats} onClick={marcarWhatsapp}>
                   2. Abrir WhatsApp
                 </a>
               </>
             )}
-            {pedido.estado !== 'recusado' && pedido.estado !== 'enviado_cliente' && (
+            {!terminal && estado !== 'nao_realizado' && (
               <button style={c.btnApagar} disabled={aTrabalhar} onClick={recusar}>Recusar</button>
+            )}
+            {!terminal && (
+              <button style={c.btnApagar} disabled={aTrabalhar} onClick={cancelar}>Cancelar</button>
             )}
           </div>
           {linkWhatsapp(contacto.telefone) && (
-            <p style={c.ajuda}>WhatsApp: o link não anexa ficheiros — descarrega a fatura (1) e anexa-a na conversa depois de abrir o WhatsApp (2).</p>
+            <p style={c.ajuda}>WhatsApp: o link não anexa ficheiros — descarrega o documento (1) e anexa-o na conversa depois de abrir o WhatsApp (2).</p>
           )}
-          {pedido.estado === 'recusado' && pedido.motivo_recusa && (
-            <p style={{ ...c.ajuda, color: '#B91C1C' }}>Recusado: {pedido.motivo_recusa}</p>
+          {(estado === 'recusado' || estado === 'cancelado') && pedido.motivo_recusa && (
+            <p style={{ ...c.ajuda, color: '#B91C1C' }}>{estado === 'recusado' ? 'Recusado' : 'Cancelado'}: {pedido.motivo_recusa}</p>
           )}
-          {pedido.documento_url && !pedido.cliente_email && (
+          {estado === 'aguarda_pagamento' && (
+            <p style={c.ajuda}>Pró-forma enviada. A aguardar pagamento do cliente — fora da tua fila de trabalho até o pagamento entrar.</p>
+          )}
+          {!dAtiva.url && !terminal && estado !== 'aguarda_pagamento' && (
+            <p style={c.ajuda}>Anexa o documento emitido para o poder enviar ao cliente.</p>
+          )}
+          {dAtiva.url && !pedido.cliente_email && (
             <p style={c.ajuda}>Para enviar ao cliente é preciso um email. Pede a quem criou o pedido, ou adiciona na ficha do cliente.</p>
           )}
-          {!pedido.documento_url && <p style={c.ajuda}>Anexa o documento emitido para o marcar como “Realizado” e poder enviar ao cliente.</p>}
 
           {/* Pagamento */}
           <div style={{ marginTop: 16 }}>
@@ -401,7 +528,7 @@ export default function DetalhePedidoFaturaPage() {
         <div style={c.backdrop} onClick={() => setPreview(null)}>
           <div style={c.modal} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ fontSize: 18, fontWeight: 800 }}>Enviar ao cliente</h2>
+              <h2 style={{ fontSize: 18, fontWeight: 800 }}>{preview.etapa === 'proforma' ? 'Enviar pró-forma ao cliente' : 'Enviar fatura ao cliente'}</h2>
               <button onClick={() => setPreview(null)} style={c.fechar}>✕</button>
             </div>
             <p style={c.ajuda}>De: Vanessa · CC: Andreia · Para: {pedido.cliente_email}. A assinatura da Vanessa é acrescentada automaticamente.</p>
@@ -449,6 +576,7 @@ const c: Record<string, React.CSSProperties> = {
   link: { color: 'var(--primary)', fontWeight: 600, textDecoration: 'none' },
   muted: { color: 'var(--muted)', fontSize: 14 },
   ajuda: { color: 'var(--muted)', fontSize: 13, margin: 0 },
+  ajudaSolta: { color: 'var(--muted)', fontSize: 13, margin: '-4px 2px 0' },
   rotulo: { fontSize: 13, fontWeight: 600, color: 'var(--muted)' },
   input: { width: '100%', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8, font: 'inherit', boxSizing: 'border-box' },
   campoEdit: { display: 'flex', flexDirection: 'column' },
