@@ -62,7 +62,7 @@ export const FASE_CONFIG: Record<Fase, { label: string; area: string; emails: st
 
 // ─── Criação e leitura do fluxo ──────────────────────────────────────────────
 
-// Cria as fases ao emitir uma nota (1ª em curso, restantes pendentes).
+// Cria as fases ao emitir uma nota e arranca o fluxo (1ª fase em curso).
 // Idempotente: se já existir o fluxo, não duplica.
 // `semTecnico`: equipamento que não passa pela preparação técnica (ex.: Soprano,
 // CO2) — nesse caso a fase técnica não é criada e o fluxo salta-a.
@@ -70,12 +70,31 @@ export async function criarFluxoInicial(notaId: string, semTecnico = false) {
   const fases = semTecnico
     ? ORDEM_FASES.filter((f) => f !== 'tecnico_preparacao')
     : ORDEM_FASES
-  const linhas = fases.map((fase, i) => ({
+  const linhas = fases.map((fase) => ({
     nota_id: notaId,
     fase,
-    estado: (i === 0 ? 'em_curso' : 'pendente') as EstadoFase,
+    estado: 'pendente' as EstadoFase,
   }))
-  return supabase.from('ne_fluxo').upsert(linhas, { onConflict: 'nota_id,fase', ignoreDuplicates: true })
+  // Cria as fases em falta sem mexer nas que já existam.
+  await supabase.from('ne_fluxo').upsert(linhas, { onConflict: 'nota_id,fase', ignoreDuplicates: true })
+  // Arranca o fluxo: garante a 1ª fase "em curso". Fazê-lo aqui (e não via
+  // estado no upsert) é robusto mesmo quando as fases já tinham sido criadas
+  // antes — ex.: notas importadas em lote, onde o upsert com ignoreDuplicates
+  // não chegaria a promover a 1ª fase.
+  await arrancarFluxoSeParado(notaId)
+}
+
+// Põe a 1ª fase existente "em curso" SE o fluxo ainda não arrancou — ou seja,
+// quando nenhuma fase está em curso nem concluída. Não perturba notas a meio.
+export async function arrancarFluxoSeParado(notaId: string) {
+  const { data } = await supabase.from('ne_fluxo').select('fase, estado').eq('nota_id', notaId)
+  const fases = (data as { fase: Fase; estado: EstadoFase }[] | null) ?? []
+  if (fases.length === 0) return
+  if (fases.some((f) => f.estado === 'em_curso' || f.estado === 'concluido')) return
+  const primeira = fases
+    .map((f) => f.fase)
+    .sort((a, b) => ORDEM_FASES.indexOf(a) - ORDEM_FASES.indexOf(b))[0]
+  await supabase.from('ne_fluxo').update({ estado: 'em_curso' }).eq('nota_id', notaId).eq('fase', primeira)
 }
 
 // Acerta a existência da fase técnica quando se edita uma nota ainda "emitida"
@@ -221,11 +240,12 @@ export async function retrocederFase(
     if (error) return { error }
   }
 
-  // Se estava expedida, reabre: volta a "em_preparacao" e reverte o equipamento.
+  // Se estava expedida, reabre: volta a "em_preparacao" e o equipamento volta a
+  // "Reservado" (o estado em que ficou desde a emissão da nota).
   if (nota.estado === 'expedida') {
     await alterarEstadoNota(nota.id, 'em_preparacao')
     if (nota.equipamento_id) {
-      await supabase.from('equipamentos').update({ status: 'Prep-Logística' }).eq('id', nota.equipamento_id)
+      await supabase.from('equipamentos').update({ status: 'Reservado' }).eq('id', nota.equipamento_id)
     }
   }
 

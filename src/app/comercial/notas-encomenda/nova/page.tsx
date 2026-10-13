@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 import {
-  criarNota, guardarMateriais, marcarEquipamentoEmPreparacao, notificarNovaNota,
+  criarNota, guardarMateriais, reservarEquipamentoParaNota, notificarNovaNota,
 } from '@/lib/notasEncomenda'
 import { criarFluxoInicial } from '@/lib/neFluxo'
 import { limparRascunho } from '@/lib/useFormDraft'
@@ -35,11 +35,11 @@ export default function NovaNotaPage() {
     // Material que acompanha (melhor esforço)
     await guardarMateriais(nota.id, materiais)
 
-    // Ao emitir: equipamento → Prep-Logística + comunicados + arranca o fluxo
-    // de preparação (1ª fase: logística em curso).
+    // Ao emitir: equipamento → Reservado (para o cliente) + comunicados +
+    // arranca o fluxo de preparação (1ª fase: logística em curso).
     if (emitir) {
       await criarFluxoInicial(nota.id, nota.sem_preparacao_tecnica)
-      if (nota.equipamento_id) await marcarEquipamentoEmPreparacao(nota.equipamento_id)
+      if (nota.equipamento_id) await reservarEquipamentoParaNota(nota.equipamento_id, nota.cliente_nome)
       await notificarNovaNota(nota)
     }
 

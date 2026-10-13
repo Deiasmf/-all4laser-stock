@@ -124,12 +124,16 @@ export async function pesquisarEquipamentosStock(q: string): Promise<EquipStockO
 
 // ─── Efeitos ao emitir uma nota ──────────────────────────────────────────────
 
-// Equipamento passa a preparação logística (status oficial existente).
-export async function marcarEquipamentoEmPreparacao(equipamentoId: string) {
-  return supabase
-    .from('equipamentos')
-    .update({ status: 'Prep-Logística' })
-    .eq('id', equipamentoId)
+// Ao emitir a nota, o equipamento fica RESERVADO para o cliente e o campo
+// destino (cliente) passa a ter o nome do cliente da nota. Só escreve o destino
+// quando há nome, para não apagar o que lá estiver.
+export async function reservarEquipamentoParaNota(
+  equipamentoId: string,
+  clienteNome: string | null
+) {
+  const patch: { status: string; destino?: string } = { status: 'Reservado' }
+  if (clienteNome && clienteNome.trim()) patch.destino = clienteNome.trim()
+  return supabase.from('equipamentos').update(patch).eq('id', equipamentoId)
 }
 
 // Cria um comunicado para a área técnica e outro para a logística.
