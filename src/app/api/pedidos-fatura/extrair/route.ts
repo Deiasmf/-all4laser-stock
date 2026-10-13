@@ -27,12 +27,18 @@ export async function POST(req: Request) {
   }
 
   let id: string
-  try { id = String((await req.json()).id ?? '') } catch { return Response.json({ ok: false, erro: 'JSON inválido.' }, { status: 400 }) }
+  let etapa: 'proforma' | 'fatura' = 'fatura'
+  try {
+    const body = await req.json()
+    id = String(body.id ?? '')
+    if (body.etapa === 'proforma') etapa = 'proforma'
+  } catch { return Response.json({ ok: false, erro: 'JSON inválido.' }, { status: 400 }) }
   if (!id) return Response.json({ ok: false, erro: 'Falta o id do pedido.' }, { status: 400 })
 
-  const { data: pedido } = await db.from('pedidos_fatura').select('documento_url').eq('id', id).single()
-  const docUrl = (pedido as { documento_url: string | null } | null)?.documento_url
-  if (!docUrl) return Response.json({ ok: false, erro: 'Anexa primeiro o documento da fatura.' }, { status: 400 })
+  const { data: pedido } = await db.from('pedidos_fatura').select('documento_url, proforma_url').eq('id', id).single()
+  const p = pedido as { documento_url: string | null; proforma_url: string | null } | null
+  const docUrl = etapa === 'proforma' ? p?.proforma_url : p?.documento_url
+  if (!docUrl) return Response.json({ ok: false, erro: 'Anexa primeiro o documento.' }, { status: 400 })
 
   const r = await fetch(docUrl)
   if (!r.ok) return Response.json({ ok: false, erro: 'Não consegui obter o documento anexado.' }, { status: 502 })

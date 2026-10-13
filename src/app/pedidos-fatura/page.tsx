@@ -129,14 +129,19 @@ export default function PedidosFaturaPage() {
   }, [pedidos, pesquisa, fEstado, soMeus, perfil?.id])
 
   const resumo = useMemo(() => {
-    let porRealizar = 0, aRealizar = 0, porPagar = 0
+    let porRealizar = 0, aRealizar = 0, aguardaPagamento = 0, faturaPedida = 0, porPagar = 0
     for (const p of pedidos) {
       if (p.estado === 'nao_realizado') porRealizar++
       if (p.estado === 'a_realizar') aRealizar++
-      if ((p.estado === 'realizado' || p.estado === 'enviado_cliente') && !p.pago) porPagar++
+      if (p.estado === 'aguarda_pagamento') aguardaPagamento++
+      if (p.estado === 'fatura_pedida') faturaPedida++
+      if (['realizado', 'enviado_cliente', 'fatura_realizada'].includes(p.estado) && !p.pago) porPagar++
     }
-    return { porRealizar, aRealizar, porPagar }
+    return { porRealizar, aRealizar, aguardaPagamento, faturaPedida, porPagar }
   }, [pedidos])
+
+  // Clicar num card filtra por esse estado (alterna).
+  const filtrarEstado = (e: string) => setFEstado((atual) => (atual === e ? '' : e))
 
   return (
     <main style={c.page}>
@@ -154,16 +159,24 @@ export default function PedidosFaturaPage() {
         </div>
       </div>
 
-      {/* Cards de resumo */}
+      {/* Cards de resumo (clicáveis → filtram por estado) */}
       <div style={c.cards}>
-        <div style={{ ...c.card, borderTop: '3px solid #991B1B' }}>
+        <button style={{ ...c.card, borderTop: `3px solid #991B1B`, ...(fEstado === 'nao_realizado' ? c.cardAtivo : null) }} onClick={() => filtrarEstado('nao_realizado')}>
           <div style={c.cardNum}>{resumo.porRealizar}</div>
           <div style={c.cardLbl}>Por realizar</div>
-        </div>
-        <div style={{ ...c.card, borderTop: '3px solid #1E40AF' }}>
+        </button>
+        <button style={{ ...c.card, borderTop: `3px solid #1E40AF`, ...(fEstado === 'a_realizar' ? c.cardAtivo : null) }} onClick={() => filtrarEstado('a_realizar')}>
           <div style={c.cardNum}>{resumo.aRealizar}</div>
           <div style={c.cardLbl}>A realizar</div>
-        </div>
+        </button>
+        <button style={{ ...c.card, borderTop: `3px solid #9A3412`, ...(fEstado === 'aguarda_pagamento' ? c.cardAtivo : null) }} onClick={() => filtrarEstado('aguarda_pagamento')}>
+          <div style={c.cardNum}>{resumo.aguardaPagamento}</div>
+          <div style={c.cardLbl}>Aguarda pagamento</div>
+        </button>
+        <button style={{ ...c.card, borderTop: `3px solid #3730A3`, ...(fEstado === 'fatura_pedida' ? c.cardAtivo : null) }} onClick={() => filtrarEstado('fatura_pedida')}>
+          <div style={c.cardNum}>{resumo.faturaPedida}</div>
+          <div style={c.cardLbl}>Fatura final pedida</div>
+        </button>
         <div style={{ ...c.card, borderTop: '3px solid #B45309' }}>
           <div style={c.cardNum}>{resumo.porPagar}</div>
           <div style={c.cardLbl}>Por confirmar pagamento</div>
@@ -308,7 +321,7 @@ export default function PedidosFaturaPage() {
                 {p.valor != null && <span><strong>{formatarEuro(p.valor)}</strong></span>}
                 <span>· Pedido por {p.criado_por_nome ?? '—'}</span>
                 <span>· {(p.created_at ?? '').slice(0, 10)}</span>
-                {p.documento_url && <span style={c.docTag}>📎 documento</span>}
+                {(p.documento_url || p.proforma_url) && <span style={c.docTag}>📎 documento</span>}
               </div>
             </div>
           ))}
@@ -324,7 +337,8 @@ const c: Record<string, React.CSSProperties> = {
   titulo: { fontSize: 22, fontWeight: 700, color: 'var(--primary)' },
   sub: { color: 'var(--muted)', fontSize: 14, marginTop: 2 },
   cards: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 16 },
-  card: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 16, textAlign: 'center' },
+  card: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 16, textAlign: 'center', font: 'inherit', cursor: 'pointer' },
+  cardAtivo: { boxShadow: '0 0 0 2px var(--primary) inset' },
   cardNum: { fontSize: 30, fontWeight: 800, color: 'var(--primary)' },
   cardLbl: { fontSize: 13, color: 'var(--muted)', marginTop: 4 },
   form: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 16, marginBottom: 16 },

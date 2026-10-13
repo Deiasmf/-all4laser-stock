@@ -1,5 +1,8 @@
 import { supabase } from './supabase'
-import type { PedidoFatura, PedidoFaturaInput, PedidoFaturaEstado, PedidoFaturaConfig } from '@/types/pedidoFatura'
+import type { PedidoFatura, PedidoFaturaInput, PedidoFaturaEstado, PedidoFaturaConfig, PedidoFaturaTipo } from '@/types/pedidoFatura'
+
+// Etapa de um documento: pró-forma (1ª) ou fatura final/fiscal (2ª ou direta).
+export type EtapaDoc = 'proforma' | 'fatura'
 
 export const BUCKET_PEDIDOS_FATURA = 'pedidos-fatura-docs'
 
@@ -54,6 +57,48 @@ export async function recusarPedidoFatura(id: string, motivo: string) {
     .single()
 }
 
+// Cancelar o pedido com motivo (em qualquer ponto do ciclo).
+export async function cancelarPedidoFatura(id: string, motivo: string) {
+  return supabase
+    .from('pedidos_fatura')
+    .update({ estado: 'cancelado', motivo_recusa: motivo, respondido_em: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single()
+}
+
+// Sub-pedido da pró-forma: "Pagamento recebido → pedir fatura final".
+// Disponível a quem criou o pedido e ao financeiro. Anexa comprovativo
+// (opcional), guarda a nota de ajuste (se a fatura final diferir), marca o
+// pagamento e passa a "fatura_pedida" — reiniciando o relógio de lembretes para
+// a nova etapa de trabalho da Vanessa. Notifica a faturação como num pedido novo.
+export async function pedirFaturaFinal(
+  id: string,
+  opts: { comprovativo?: File | null; nota?: string | null }
+): Promise<{ ok: boolean; motivo?: string }> {
+  if (opts.comprovativo) {
+    const r = await anexarComprovativo(id, opts.comprovativo)
+    if (!r.ok) return r
+  }
+  const agora = new Date().toISOString()
+  const { error } = await supabase
+    .from('pedidos_fatura')
+    .update({
+      estado: 'fatura_pedida',
+      pago: true,
+      data_pagamento: agora.slice(0, 10),
+      pagamento_recebido_em: agora,
+      fatura_pedida_em: agora,
+      fatura_ajuste_nota: opts.nota?.trim() || null,
+      lembrete_ultimo: null,
+      lembretes_count: 0,
+    })
+    .eq('id', id)
+  if (error) return { ok: false, motivo: error.message }
+  await notificarEventoPedido(id, 'fatura_final')
+  return { ok: true }
+}
+
 // ─── Comprovativo de pagamento (anexo opcional de quem pede) ──────────────────
 
 export async function anexarComprovativo(
@@ -92,24 +137,31 @@ const CONFIG_PADRAO: PedidoFaturaConfig = {
   escalona_cc_andreia: true,
   substituto_id: null,
   substituto_nome: null,
+  aguarda_pagamento_lembrete_ativo: true,
+  aguarda_pagamento_lembrete_dias: 15,
 }
 
-// Guardar os dados da fatura emitida (nº, data, valor total).
+// Guardar os dados do documento emitido (nº, data, valor) na etapa certa:
+// a fatura fiscal nas colunas canónicas; a pró-forma nas suas colunas próprias.
 export async function guardarDadosFatura(
   id: string,
-  campos: { num_fatura: string | null; data_fatura: string | null; valor_total: number | null }
+  campos: { num_fatura: string | null; data_fatura: string | null; valor_total: number | null },
+  etapa: EtapaDoc = 'fatura'
 ) {
-  return supabase.from('pedidos_fatura').update(campos).eq('id', id).select().single()
+  const patch = etapa === 'proforma'
+    ? { proforma_num: campos.num_fatura, proforma_data: campos.data_fatura, proforma_valor: campos.valor_total }
+    : campos
+  return supabase.from('pedidos_fatura').update(patch).eq('id', id).select().single()
 }
 
-// Pré-extração dos dados da fatura anexada (via rota autenticada).
-export async function extrairDadosFatura(id: string): Promise<{ ok: boolean; extraido?: import('@/types/pedidoFatura').FaturaExtraida; erro?: string }> {
+// Pré-extração dos dados do documento anexado na etapa (via rota autenticada).
+export async function extrairDadosFatura(id: string, etapa: EtapaDoc = 'fatura'): Promise<{ ok: boolean; extraido?: import('@/types/pedidoFatura').FaturaExtraida; erro?: string }> {
   const { data: { session } } = await supabase.auth.getSession()
   const token = session?.access_token
   if (!token) return { ok: false, erro: 'Sessão expirada.' }
   const r = await fetch('/api/pedidos-fatura/extrair', {
     method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id }),
+    body: JSON.stringify({ id, etapa }),
   })
   return r.json()
 }
@@ -126,17 +178,23 @@ export async function enviarPedidoAoCliente(id: string, assunto: string, corpo: 
   return r.json()
 }
 
-// Avisar a faturação de um pedido acabado de criar (best-effort).
-export async function notificarNovoPedidoCliente(id: string) {
+// Avisar a faturação de um evento do pedido (best-effort). 'novo' = pedido
+// acabado de criar; 'fatura_final' = pagamento recebido, fatura final pedida.
+export async function notificarEventoPedido(id: string, evento: 'novo' | 'fatura_final' = 'novo') {
   const { data: { session } } = await supabase.auth.getSession()
   const token = session?.access_token
   if (!token) return
   try {
     await fetch('/api/pedidos-fatura/notificar-novo', {
       method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id }),
+      body: JSON.stringify({ id, evento }),
     })
   } catch { /* ignora */ }
+}
+
+// Retrocompatível: avisar de um pedido acabado de criar.
+export async function notificarNovoPedidoCliente(id: string) {
+  return notificarEventoPedido(id, 'novo')
 }
 
 // Registar que o envio foi feito por WhatsApp (canal usado).
@@ -196,31 +254,48 @@ function nomeSeguro(nome: string) {
   return nome.normalize('NFD').replace(/[^\w.\-]/g, '_')
 }
 
-// Carrega o documento emitido pelo financeiro e marca o pedido como "realizado".
+// Carrega o documento emitido pelo financeiro na ETAPA certa e avança o estado:
+//  - proforma → colunas proforma_*, estado "realizado" (proforma emitida)
+//  - fatura final da pró-forma → colunas canónicas, estado "fatura_realizada"
+//  - fatura direta → colunas canónicas, estado "realizado"
 export async function carregarDocumentoPedido(
   id: string,
-  ficheiro: File
+  ficheiro: File,
+  etapa: EtapaDoc = 'fatura',
+  tipoPedido: PedidoFaturaTipo = 'fatura'
 ): Promise<{ ok: boolean; motivo?: string }> {
-  const caminho = `${id}/documento-${Date.now()}-${nomeSeguro(ficheiro.name)}`
+  const prefixo = etapa === 'proforma' ? 'proforma' : 'documento'
+  const caminho = `${id}/${prefixo}-${Date.now()}-${nomeSeguro(ficheiro.name)}`
   const { error } = await supabase.storage.from(BUCKET_PEDIDOS_FATURA).upload(caminho, ficheiro)
   if (error) return { ok: false, motivo: error.message }
 
   const { data: pub } = supabase.storage.from(BUCKET_PEDIDOS_FATURA).getPublicUrl(caminho)
-  const { error: erroBd } = await supabase
-    .from('pedidos_fatura')
-    .update({ documento_url: pub.publicUrl, documento_caminho: caminho, estado: 'realizado' })
-    .eq('id', id)
+  const patch: Partial<PedidoFatura> = etapa === 'proforma'
+    ? { proforma_url: pub.publicUrl, proforma_caminho: caminho, estado: 'realizado' }
+    : {
+        documento_url: pub.publicUrl, documento_caminho: caminho,
+        estado: tipoPedido === 'pro_forma' ? 'fatura_realizada' : 'realizado',
+      }
+  const { error: erroBd } = await supabase.from('pedidos_fatura').update(patch).eq('id', id)
   if (erroBd) return { ok: false, motivo: erroBd.message }
   return { ok: true }
 }
 
-// Remove o documento emitido (ficheiro + referências) e volta o pedido a "a realizar".
-export async function removerDocumentoPedido(id: string, caminho: string | null) {
+// Remove o documento emitido na etapa e recua o estado dessa etapa.
+export async function removerDocumentoPedido(
+  id: string,
+  caminho: string | null,
+  etapa: EtapaDoc = 'fatura',
+  tipoPedido: PedidoFaturaTipo = 'fatura'
+) {
   if (caminho) await supabase.storage.from(BUCKET_PEDIDOS_FATURA).remove([caminho])
-  return supabase
-    .from('pedidos_fatura')
-    .update({ documento_url: null, documento_caminho: null, estado: 'a_realizar' })
-    .eq('id', id)
+  const patch: Partial<PedidoFatura> = etapa === 'proforma'
+    ? { proforma_url: null, proforma_caminho: null, estado: 'a_realizar' }
+    : {
+        documento_url: null, documento_caminho: null,
+        estado: tipoPedido === 'pro_forma' ? 'fatura_pedida' : 'a_realizar',
+      }
+  return supabase.from('pedidos_fatura').update(patch).eq('id', id)
 }
 
 // ─── Seletores ────────────────────────────────────────────────────────────────

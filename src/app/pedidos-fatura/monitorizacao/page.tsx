@@ -20,10 +20,6 @@ function fmtDuracao(horas: number): string {
   if (horas < 48) return `${horas.toFixed(1)} h`
   return `${(horas / 24).toFixed(1)} dias`
 }
-function mesLabel(iso: string): string {
-  const d = new Date(iso)
-  return d.toLocaleDateString('pt-PT', { month: 'long', year: 'numeric' })
-}
 
 export default function MonitorizacaoPedidosPage() {
   const { isFinanceiro, perfilCarregado } = useAuth()
@@ -39,30 +35,27 @@ export default function MonitorizacaoPedidosPage() {
 
   const limiteHoras = cfg?.lembrete_horas ?? 48
 
-  const linhas = useMemo(() => {
-    const agora = new Date().toISOString()
-    return pedidos.map((p) => {
-      const aberto = ESTADOS_ABERTOS.includes(p.estado)
-      const fim = p.respondido_em ?? p.enviado_em
-      const horas = aberto ? horasEntre(p.created_at, agora) : (fim ? horasEntre(p.created_at, fim) : null)
-      return { p, aberto, horas, atrasado: aberto && horas != null && horas > limiteHoras }
+  const { linhas, t1, t2, t3 } = useMemo(() => {
+    const agora = new Date().getTime()
+    const t1: number[] = [] // resposta à 1ª emissão (pedido → proforma/fatura enviada)
+    const t2: number[] = [] // pró-forma enviada → pagamento recebido
+    const t3: number[] = [] // fatura final pedida → fatura final enviada
+    const linhas = pedidos.map((p) => {
+      const trabalho = ESTADOS_ABERTOS.includes(p.estado)
+      const inicio = p.estado === 'fatura_pedida' ? (p.fatura_pedida_em ?? p.created_at) : p.created_at
+      const horas = trabalho ? (agora - new Date(inicio).getTime()) / H : null
+      const atrasado = trabalho && horas != null && horas > limiteHoras
+      const envInicial = p.tipo === 'pro_forma' ? p.proforma_enviada_em : p.enviado_em
+      if (envInicial) t1.push(horasEntre(p.created_at, envInicial))
+      if (p.proforma_enviada_em && p.pagamento_recebido_em) t2.push(horasEntre(p.proforma_enviada_em, p.pagamento_recebido_em))
+      if (p.fatura_pedida_em && p.fechado_em) t3.push(horasEntre(p.fatura_pedida_em, p.fechado_em))
+      return { p, trabalho, horas, atrasado }
     })
+    return { linhas, t1, t2, t3 }
   }, [pedidos, limiteHoras])
 
-  // Média mensal do tempo de resposta (só pedidos já respondidos).
-  const medias = useMemo(() => {
-    const m = new Map<string, { soma: number; n: number; label: string; ordem: string }>()
-    for (const l of linhas) {
-      if (l.aberto || l.horas == null) continue
-      const chave = l.p.created_at.slice(0, 7)
-      const cur = m.get(chave) ?? { soma: 0, n: 0, label: mesLabel(l.p.created_at), ordem: chave }
-      cur.soma += l.horas; cur.n += 1
-      m.set(chave, cur)
-    }
-    return [...m.values()].sort((a, b) => b.ordem.localeCompare(a.ordem))
-  }, [linhas])
-
-  const abertos = linhas.filter((l) => l.aberto)
+  const media = (a: number[]) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : null)
+  const abertos = linhas.filter((l) => l.trabalho)
   const atrasados = abertos.filter((l) => l.atrasado)
 
   if (perfilCarregado && !isFinanceiro) {
@@ -79,29 +72,35 @@ export default function MonitorizacaoPedidosPage() {
       <div style={c.cards}>
         <div style={{ ...c.card, borderTop: '3px solid #1E40AF' }}>
           <div style={c.cardNum}>{abertos.length}</div>
-          <div style={c.cardLbl}>Abertos</div>
+          <div style={c.cardLbl}>Em trabalho</div>
         </div>
         <div style={{ ...c.card, borderTop: '3px solid #B91C1C' }}>
           <div style={{ ...c.cardNum, color: atrasados.length ? '#B91C1C' : undefined }}>{atrasados.length}</div>
           <div style={c.cardLbl}>Parados &gt; {limiteHoras}h</div>
         </div>
-        <div style={{ ...c.card, borderTop: '3px solid #065F46' }}>
-          <div style={c.cardNum}>{medias[0] ? fmtDuracao(medias[0].soma / medias[0].n) : '—'}</div>
-          <div style={c.cardLbl}>Média este mês</div>
-        </div>
       </div>
 
-      {medias.length > 0 && (
-        <section style={c.bloco}>
-          <h2 style={c.blocoTitulo}>Tempo médio de resposta por mês</h2>
-          {medias.map((m) => (
-            <div key={m.ordem} style={c.mediaLinha}>
-              <span style={{ textTransform: 'capitalize' }}>{m.label}</span>
-              <span><strong>{fmtDuracao(m.soma / m.n)}</strong> <span style={{ color: 'var(--muted)' }}>({m.n})</span></span>
-            </div>
-          ))}
-        </section>
-      )}
+      {/* Os três tempos do ciclo, medidos em separado */}
+      <section style={c.bloco}>
+        <h2 style={c.blocoTitulo}>Tempos médios por etapa</h2>
+        <div style={c.tempos}>
+          <div style={c.tempoCard}>
+            <div style={c.tempoLbl}>Resposta à emissão</div>
+            <div style={c.tempoVal}>{media(t1) == null ? '—' : fmtDuracao(media(t1)!)}</div>
+            <div style={c.tempoN}>pedido → documento enviado ({t1.length})</div>
+          </div>
+          <div style={c.tempoCard}>
+            <div style={c.tempoLbl}>Até pagamento</div>
+            <div style={c.tempoVal}>{media(t2) == null ? '—' : fmtDuracao(media(t2)!)}</div>
+            <div style={c.tempoN}>pró-forma enviada → pagamento ({t2.length})</div>
+          </div>
+          <div style={c.tempoCard}>
+            <div style={c.tempoLbl}>Resposta à fatura final</div>
+            <div style={c.tempoVal}>{media(t3) == null ? '—' : fmtDuracao(media(t3)!)}</div>
+            <div style={c.tempoN}>fatura pedida → fatura enviada ({t3.length})</div>
+          </div>
+        </div>
+      </section>
 
       <section style={c.bloco}>
         <h2 style={c.blocoTitulo}>Pedidos</h2>
@@ -111,7 +110,7 @@ export default function MonitorizacaoPedidosPage() {
           <p style={c.info}>Sem pedidos.</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {linhas.map(({ p, aberto, horas, atrasado }) => {
+            {linhas.map(({ p, trabalho, horas, atrasado }) => {
               const est = estadoPedidoInfo(p.estado)
               return (
                 <Link key={p.id} href={`/pedidos-fatura/${p.id}`} style={{ ...c.linha, ...(atrasado ? c.linhaAtraso : null) }}>
@@ -119,7 +118,7 @@ export default function MonitorizacaoPedidosPage() {
                   <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.cliente_nome}</span>
                   <span style={{ ...c.badge, color: est.cor, background: est.bg }}>{est.label}</span>
                   <span style={c.tempo}>
-                    {horas == null ? '—' : aberto ? `há ${fmtDuracao(horas)}` : fmtDuracao(horas)}
+                    {horas == null ? '—' : trabalho ? `há ${fmtDuracao(horas)}` : ''}
                   </span>
                 </Link>
               )
@@ -143,6 +142,11 @@ const c: Record<string, React.CSSProperties> = {
   cardLbl: { fontSize: 13, color: 'var(--muted)', marginTop: 4 },
   bloco: { background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: 16, marginBottom: 16 },
   blocoTitulo: { fontSize: 15, fontWeight: 700, marginBottom: 10 },
+  tempos: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 },
+  tempoCard: { border: '1px solid var(--border)', borderRadius: 10, padding: 12, textAlign: 'center' },
+  tempoLbl: { fontSize: 13, fontWeight: 600, color: 'var(--muted)' },
+  tempoVal: { fontSize: 22, fontWeight: 800, color: 'var(--primary)', margin: '4px 0' },
+  tempoN: { fontSize: 11.5, color: 'var(--muted)' },
   mediaLinha: { display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 14 },
   linha: { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 10, textDecoration: 'none', color: 'inherit', fontSize: 14 },
   linhaAtraso: { borderColor: '#FCA5A5', background: '#FEF2F2' },

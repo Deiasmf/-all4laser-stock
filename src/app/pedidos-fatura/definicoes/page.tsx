@@ -71,6 +71,24 @@ export default function DefinicoesPedidosPage() {
             A partir do 2º lembrete, CC à Andreia
           </label>
         </div>
+        <p style={c.ajuda}>Aplica-se ao trabalho da faturação (pedido por tratar e fatura final por emitir). O estado “aguarda pagamento” não gera lembretes à Vanessa.</p>
+      </section>
+
+      <section style={c.card}>
+        <div style={c.cardTitulo}>Aguarda pagamento — follow-up ao criador</div>
+        <p style={c.ajuda}>Enquanto a pró-forma aguarda pagamento do cliente, lembra quem criou o pedido para fazer follow-up (não é trabalho da Vanessa).</p>
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+          <label style={c.check}>
+            <input type="checkbox" checked={cfg.aguarda_pagamento_lembrete_ativo} onChange={(e) => setCfg({ ...cfg, aguarda_pagamento_lembrete_ativo: e.target.checked })} />
+            Lembrar o criador
+          </label>
+          <label style={c.campo}>
+            <span style={c.rotulo}>Avisar após (dias)</span>
+            <input type="number" min={1} max={365} value={cfg.aguarda_pagamento_lembrete_dias}
+              onChange={(e) => setCfg({ ...cfg, aguarda_pagamento_lembrete_dias: Math.max(1, Number(e.target.value) || 15) })}
+              style={{ ...c.input, maxWidth: 120 }} />
+          </label>
+        </div>
       </section>
 
       <section style={c.card}>
