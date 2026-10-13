@@ -32,10 +32,37 @@ export async function carregarMetricas(): Promise<Metricas> {
   const [alugueresFora, leadsNovas, emPrep, entregasHoje] = await Promise.all([
     contarQuery(sel('alugueres').is('data_recolha', null).eq('recolha_aplicavel', true)),
     contarQuery(sel('leads').eq('estado', 'nova')),
-    contarQuery(sel('equipamentos').in('status', ['Prep-Logística', 'Prep-Técnico'])),
+    contarEmPreparacao(),
     contarQuery(sel('alugueres').eq('data_entrega', hoje)),
   ])
   return { alugueresFora, leadsNovas, emPrep, entregasHoje }
+}
+
+// "Em preparação" = equipamentos em Prep-Logística/Prep-Técnico MAIS os que estão
+// Reservado com uma Nota de Encomenda ainda em curso (emitida/em_preparação) —
+// desde que a emissão passou a reservar o equipamento. Não há dupla contagem:
+// um equipamento Reservado nunca está também em Prep-Logística/Prep-Técnico.
+async function contarEmPreparacao(): Promise<number> {
+  const emPrep = await contarQuery(
+    supabase.from('equipamentos').select('id', { count: 'exact', head: true })
+      .in('status', ['Prep-Logística', 'Prep-Técnico'])
+  )
+  try {
+    const { data } = await supabase
+      .from('notas_encomenda')
+      .select('equipamento_id')
+      .in('estado', ['emitida', 'em_preparacao'])
+      .not('equipamento_id', 'is', null)
+    const ids = Array.from(new Set((data ?? []).map((n) => n.equipamento_id as string)))
+    if (ids.length === 0) return emPrep
+    const reservadosComNota = await contarQuery(
+      supabase.from('equipamentos').select('id', { count: 'exact', head: true })
+        .eq('status', 'Reservado').in('id', ids)
+    )
+    return emPrep + reservadosComNota
+  } catch {
+    return emPrep
+  }
 }
 
 // ----- Comunicados -----
