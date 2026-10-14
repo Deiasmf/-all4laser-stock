@@ -5,6 +5,7 @@ import { TIPO_CLIENTE_OPCOES, type Cliente, type ClienteInput, type TipoCliente 
 import { useFormDraft, RascunhoAviso } from '@/lib/useFormDraft'
 import AvisoDuplicadosCliente from '@/components/AvisoDuplicadosCliente'
 import type { ClienteSemelhante } from '@/lib/clientes'
+import { supabase } from '@/lib/supabase'
 
 type Props = {
   inicial?: Cliente
@@ -27,6 +28,7 @@ type FormState = {
   telefone: string
   contactoNome: string
   nif: string
+  nomeFaturacao: string
   morada: string
   cidade: string
   codigoPostal: string
@@ -42,6 +44,7 @@ function estadoInicial(inicial?: Cliente): FormState {
     telefone: inicial?.telefone ?? '',
     contactoNome: inicial?.contacto_nome ?? '',
     nif: inicial?.nif ?? '',
+    nomeFaturacao: inicial?.nome_faturacao ?? '',
     morada: inicial?.morada ?? '',
     cidade: inicial?.cidade ?? '',
     codigoPostal: inicial?.codigo_postal ?? '',
@@ -54,7 +57,39 @@ export default function ClienteForm({ inicial, aGuardar, erro, submitLabel, onSu
   const [form, setForm] = useState<FormState>(() => estadoInicial(inicial))
   const [avisoNome, setAvisoNome] = useState(false)
   const [avisoEmail, setAvisoEmail] = useState(false)
+  const [aProcurarNif, setAProcurarNif] = useState(false)
+  const [nifMsg, setNifMsg] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null)
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm((f) => ({ ...f, [k]: v }))
+
+  // Consulta o NIF no servidor (NIF.pt) e preenche nome de faturação, morada,
+  // código-postal e cidade. Campos já preenchidos à mão não são sobrepostos.
+  async function procurarPorNif() {
+    const nif = form.nif.replace(/\D/g, '')
+    if (nif.length !== 9) { setNifMsg({ tipo: 'erro', texto: 'Indica um NIF com 9 dígitos.' }); return }
+    setAProcurarNif(true)
+    setNifMsg(null)
+    try {
+      const { data: sess } = await supabase.auth.getSession()
+      const token = sess.session?.access_token
+      const r = await fetch(`/api/nif?nif=${nif}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      const d = await r.json()
+      if (!d.ok) { setNifMsg({ tipo: 'erro', texto: d.erro || 'Não foram encontrados dados.' }); return }
+      setForm((f) => ({
+        ...f,
+        nomeFaturacao: f.nomeFaturacao.trim() || d.nome || '',
+        morada: f.morada.trim() || d.morada || '',
+        codigoPostal: f.codigoPostal.trim() || d.codigo_postal || '',
+        cidade: f.cidade.trim() || d.cidade || '',
+      }))
+      setNifMsg({ tipo: 'ok', texto: 'Dados preenchidos a partir do NIF. Confirma e ajusta se precisares.' })
+    } catch {
+      setNifMsg({ tipo: 'erro', texto: 'Não foi possível consultar o NIF agora.' })
+    } finally {
+      setAProcurarNif(false)
+    }
+  }
 
   // Base = estado inicial (vazio em "novo", valores da BD em edição). Serve para
   // não gravar rascunho sem alterações e para o "Descartar" repor o inicial.
@@ -72,7 +107,7 @@ export default function ClienteForm({ inicial, aGuardar, erro, submitLabel, onSu
     if (form.email.trim() && !form.email.includes('@')) { setAvisoEmail(true); return }
     onSubmit({
       nome: form.nome, pais: form.pais, email: form.email, telefone: form.telefone,
-      contacto_nome: form.contactoNome, nif: form.nif,
+      contacto_nome: form.contactoNome, nif: form.nif, nome_faturacao: form.nomeFaturacao,
       morada: form.morada, cidade: form.cidade, codigo_postal: form.codigoPostal,
       tipo: form.tipo || null, observacoes: form.observacoes,
     })
@@ -136,7 +171,34 @@ export default function ClienteForm({ inicial, aGuardar, erro, submitLabel, onSu
 
       <Grupo titulo="Morada e faturação">
         <Campo label="NIF">
-          <input value={form.nif} onChange={(e) => set('nif', e.target.value)} style={s.input} />
+          <div style={s.nifLinha}>
+            <input
+              value={form.nif}
+              onChange={(e) => { set('nif', e.target.value); setNifMsg(null) }}
+              placeholder="Ex.: 500000000"
+              style={{ ...s.input, flex: 1 }}
+            />
+            <button
+              type="button"
+              onClick={procurarPorNif}
+              disabled={aProcurarNif}
+              style={{ ...s.btnNif, ...(aProcurarNif ? s.btnOff : {}) }}
+            >
+              {aProcurarNif ? 'A procurar...' : '🔍 Procurar'}
+            </button>
+          </div>
+          {nifMsg && (
+            <span style={nifMsg.tipo === 'ok' ? s.nifOk : s.aviso}>{nifMsg.texto}</span>
+          )}
+          <span style={s.nifDica}>Preenche automaticamente os dados de empresas. NIFs de particulares não têm dados públicos.</span>
+        </Campo>
+        <Campo label="Nome de faturação">
+          <input
+            value={form.nomeFaturacao}
+            onChange={(e) => set('nomeFaturacao', e.target.value)}
+            placeholder="Designação legal que sai na fatura"
+            style={s.input}
+          />
         </Campo>
         <Campo label="Morada">
           <input value={form.morada} onChange={(e) => set('morada', e.target.value)} style={s.input} />
@@ -196,6 +258,10 @@ const s: Record<string, React.CSSProperties> = {
   input: { padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface)', color: 'var(--foreground)', font: 'inherit', width: '100%' },
   inputErro: { borderColor: 'var(--danger)' },
   aviso: { fontSize: 12, color: 'var(--danger)' },
+  nifLinha: { display: 'flex', gap: 8, alignItems: 'stretch' },
+  btnNif: { background: 'var(--surface)', color: 'var(--primary)', border: '1px solid var(--primary)', borderRadius: 8, padding: '0 14px', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' },
+  nifOk: { fontSize: 12, color: 'var(--primary)' },
+  nifDica: { fontSize: 11, color: 'var(--muted)' },
   erro: { background: '#fbecea', color: 'var(--danger)', border: '1px solid var(--danger)', borderRadius: 8, padding: '10px 12px', fontSize: 14, fontWeight: 600 },
   btn: { background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '12px 18px', fontWeight: 700, cursor: 'pointer', alignSelf: 'flex-start' },
   btnOff: { opacity: 0.6, cursor: 'default' },

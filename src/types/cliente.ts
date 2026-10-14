@@ -13,6 +13,7 @@ export type Cliente = {
   telefone: string | null
   contacto_nome: string | null
   nif: string | null
+  nome_faturacao: string | null
   morada: string | null
   cidade: string | null
   codigo_postal: string | null
@@ -30,6 +31,7 @@ export type ClienteInput = {
   telefone: string | null
   contacto_nome: string | null
   nif: string | null
+  nome_faturacao: string | null
   morada: string | null
   cidade: string | null
   codigo_postal: string | null

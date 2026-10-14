@@ -61,6 +61,7 @@ function normalizar(input: ClienteInput) {
     telefone: input.telefone?.trim() || null,
     contacto_nome: input.contacto_nome?.trim() || null,
     nif: input.nif?.trim() || null,
+    nome_faturacao: input.nome_faturacao?.trim() || null,
     morada: input.morada?.trim() || null,
     cidade: input.cidade?.trim() || null,
     codigo_postal: input.codigo_postal?.trim() || null,
