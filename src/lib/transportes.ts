@@ -140,14 +140,14 @@ export type TransportStop = {
   exige_registo_pulsos: boolean | null
   pulsos_registado: boolean | null
   pulsos_dispensa_motivo: string | null
-  calendario?: { nome: string | null; equipamento?: { serial_number: string | null } | null } | null
+  calendario?: { nome: string | null; modelo?: string | null; equipamento?: { serial_number: string | null } | null } | null
 }
 
 // Uma paragem com o join ao calendário/equipamento (para o ecrã de registo de pulsos).
 export async function obterParagem(id: string): Promise<TransportStop | null> {
   const { data } = await supabase
     .from('transport_stops')
-    .select('*, calendario:transport_calendars(nome, equipamento:equipamentos(serial_number))')
+    .select('*, calendario:transport_calendars(nome, modelo, equipamento:equipamentos(serial_number))')
     .eq('id', id)
     .maybeSingle()
   return (data as TransportStop | null) ?? null

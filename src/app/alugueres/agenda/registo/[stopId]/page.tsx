@@ -7,9 +7,9 @@ import { useAuth } from '@/lib/auth'
 import { obterParagem, equipamentoParagem, dataCurta, diaSemanaPt, type TransportStop } from '@/lib/transportes'
 import AssinaturaPad from '@/components/AssinaturaPad'
 import {
-  listarCartuchosAtivos, registoDaParagem, gravarEntrega, gravarRecolha,
+  listarCartuchosAtivos, listarUnidadesModelo, registoDaParagem, gravarEntrega, gravarRecolha,
   uploadFotoUltraformer, uploadAssinaturaUltraformer, rotuloCartucho,
-  type Cartucho, type RegistoUltraformer,
+  type Cartucho, type RegistoUltraformer, type UnidadeEquip,
 } from '@/lib/ultraformerRegistos'
 import { calcularValorUltraformer, contarDiasMesAntes, tarifarioVigente, resumoCalculo, type ResultadoCalculo, type Tarifario } from '@/lib/ultraformerCalculo'
 
@@ -26,6 +26,7 @@ export default function RegistoPulsosPage() {
   const [stop, setStop] = useState<TransportStop | null>(null)
   const [registo, setRegisto] = useState<RegistoUltraformer | null>(null)
   const [cartuchos, setCartuchos] = useState<Cartucho[]>([])
+  const [unidades, setUnidades] = useState<UnidadeEquip[]>([])
   const [carregando, setCarregando] = useState(true)
 
   const carregar = useCallback(async () => {
@@ -33,12 +34,15 @@ export default function RegistoPulsosPage() {
     setCarregando(true)
     const s = await obterParagem(stopId)
     setStop(s)
-    const [reg, carts] = await Promise.all([
+    const modelo = s?.calendario?.modelo ?? 'Ultraformer III'
+    const [reg, carts, units] = await Promise.all([
       s ? registoDaParagem({ id: s.id, tipo: s.tipo, google_event_id: s.google_event_id }) : Promise.resolve(null),
       listarCartuchosAtivos(),
+      s && s.tipo === 'entrega' ? listarUnidadesModelo(modelo) : Promise.resolve([]),
     ])
     setRegisto(reg)
     setCartuchos(carts)
+    setUnidades(units)
     setCarregando(false)
   }, [stopId])
 
@@ -65,16 +69,19 @@ export default function RegistoPulsosPage() {
 
       {eRecolha
         ? <FormRecolha stop={stop} registo={registo} responsavelId={session?.user?.id ?? null} responsavelNome={responsavelNome} onFim={() => router.push('/alugueres/agenda/motorista')} />
-        : <FormEntrega stop={stop} cartuchos={cartuchos} registoExistente={registo} responsavelId={session?.user?.id ?? null} responsavelNome={responsavelNome} onFim={() => router.push('/alugueres/agenda/motorista')} />}
+        : <FormEntrega stop={stop} cartuchos={cartuchos} unidades={unidades} registoExistente={registo} responsavelId={session?.user?.id ?? null} responsavelNome={responsavelNome} onFim={() => router.push('/alugueres/agenda/motorista')} />}
     </main>
   )
 }
 
 // ─── ENTREGA ─────────────────────────────────────────────────────────────────
-function FormEntrega({ stop, cartuchos, registoExistente, responsavelId, responsavelNome, onFim }: {
-  stop: TransportStop; cartuchos: Cartucho[]; registoExistente: RegistoUltraformer | null
+function FormEntrega({ stop, cartuchos, unidades, registoExistente, responsavelId, responsavelNome, onFim }: {
+  stop: TransportStop; cartuchos: Cartucho[]; unidades: UnidadeEquip[]; registoExistente: RegistoUltraformer | null
   responsavelId: string | null; responsavelNome: string | null; onFim: () => void
 }) {
+  const [unidadeId, setUnidadeId] = useState<string>(
+    registoExistente?.equipamento_id ?? stop.equipamento_id ?? (unidades.length === 1 ? unidades[0].id : ''),
+  )
   const [contadores, setContadores] = useState<Record<string, string>>({})
   const [clinicaResp, setClinicaResp] = useState(registoExistente?.clinica_resp_entrega ?? '')
   const [validacao, setValidacao] = useState(registoExistente?.clinica_validacao_entrega ?? false)
@@ -104,13 +111,17 @@ function FormEntrega({ stop, cartuchos, registoExistente, responsavelId, respons
 
   async function submeter() {
     setErro(null)
+    const unidade = unidades.find((u) => u.id === unidadeId) ?? null
+    const equipamentoId = unidade?.id ?? stop.equipamento_id ?? null
+    const serial = unidade?.serial_number ?? stop.serial_number ?? stop.calendario?.equipamento?.serial_number ?? null
+    if (unidades.length > 0 && !equipamentoId) { setErro('Escolhe a unidade que vai para a clínica.'); return }
     if (aBordo.length === 0) { setErro('Indica o contador de pelo menos um cartucho.'); return }
     if (!clinicaResp.trim()) { setErro('Indica o nome do responsável da clínica.'); return }
     if (!assinaturaCaminho && !validacao) { setErro('Recolhe a assinatura da clínica ou marca a validação presencial.'); return }
     setGuardando(true)
     const fotoCaminho = foto ? await uploadFotoUltraformer(stop.id, foto) : null
     const r = await gravarEntrega({
-      stop: { id: stop.id, cliente_id: stop.cliente_id, cliente_nome: stop.cliente_nome, equipamento_id: stop.equipamento_id, serial_number: stop.serial_number ?? stop.calendario?.equipamento?.serial_number ?? null },
+      stop: { id: stop.id, cliente_id: stop.cliente_id, cliente_nome: stop.cliente_nome, equipamento_id: equipamentoId, serial_number: serial },
       responsavelId, responsavelNome,
       linhas: aBordo.map((l) => ({ cartucho_id: l.cart.id, area: l.cart.area, profundidade_mm: l.cart.profundidade_mm, serial_number: l.cart.serial_number, contador_entrega: l.n as number })),
       clinicaResp: clinicaResp.trim(), clinicaValidacao: validacao,
@@ -125,6 +136,17 @@ function FormEntrega({ stop, cartuchos, registoExistente, responsavelId, respons
 
   return (
     <div style={c.form}>
+      {unidades.length > 0 && (
+        <Seccao titulo="Unidade que vai para a clínica" subtitulo="Escolhe qual equipamento Ultraformer segue nesta entrega.">
+          <select value={unidadeId} onChange={(e) => setUnidadeId(e.target.value)} style={c.inputTexto}>
+            <option value="">— escolher unidade —</option>
+            {unidades.map((u) => (
+              <option key={u.id} value={u.id}>{u.serial_number ?? u.id}{u.modelo ? ` · ${u.modelo}` : ''}</option>
+            ))}
+          </select>
+        </Seccao>
+      )}
+
       <SeccaoCartuchos
         titulo="Contadores na entrega"
         subtitulo="Preenche o contador de pulsos de cada cartucho a bordo."
