@@ -84,6 +84,9 @@ function FormEntrega({ stop, cartuchos, unidades, registoExistente, responsavelI
     registoExistente?.equipamento_id ?? stop.equipamento_id ?? (unidades.length === 1 ? unidades[0].id : ''),
   )
   const [contadores, setContadores] = useState<Record<string, string>>({})
+  const [seriais, setSeriais] = useState<Record<string, string>>(() =>
+    Object.fromEntries(cartuchos.filter((c) => c.serial_number).map((c) => [c.id, c.serial_number as string])),
+  )
   const [clinicaResp, setClinicaResp] = useState(registoExistente?.clinica_resp_entrega ?? '')
   const [validacao, setValidacao] = useState(registoExistente?.clinica_validacao_entrega ?? false)
   const [assinaturaCaminho, setAssinaturaCaminho] = useState<string | null>(registoExistente?.assinatura_entrega_caminho ?? null)
@@ -124,7 +127,7 @@ function FormEntrega({ stop, cartuchos, unidades, registoExistente, responsavelI
     const r = await gravarEntrega({
       stop: { id: stop.id, cliente_id: stop.cliente_id, cliente_nome: stop.cliente_nome, equipamento_id: equipamentoId, serial_number: serial },
       responsavelId, responsavelNome,
-      linhas: aBordo.map((l) => ({ cartucho_id: l.cart.id, area: l.cart.area, profundidade_mm: l.cart.profundidade_mm, serial_number: l.cart.serial_number, contador_entrega: l.n as number })),
+      linhas: aBordo.map((l) => ({ cartucho_id: l.cart.id, area: l.cart.area, profundidade_mm: l.cart.profundidade_mm, serial_number: (seriais[l.cart.id]?.trim() || l.cart.serial_number) ?? null, contador_entrega: l.n as number })),
       clinicaResp: clinicaResp.trim(), clinicaValidacao: validacao,
       assinaturaCaminho, fotoCaminho, obs: obs.trim() || null,
     })
@@ -156,8 +159,9 @@ function FormEntrega({ stop, cartuchos, unidades, registoExistente, responsavelI
 
       <SeccaoCartuchos
         titulo="Contadores na entrega"
-        subtitulo="Preenche o contador de pulsos de cada cartucho a bordo."
+        subtitulo="Por cada cartucho a bordo: identificação/S/N e os pulsos RESTANTES no manípulo (o contador desce com o uso)."
         cartuchos={cartuchos} valores={contadores} onChange={(id, v) => setContadores((p) => ({ ...p, [id]: v }))}
+        seriais={seriais} onSerial={(id, v) => setSeriais((p) => ({ ...p, [id]: v }))}
       />
 
       <Seccao titulo="Foto do ecrã de contadores (opcional)">
@@ -215,14 +219,14 @@ function FormRecolha({ stop, registo, responsavelId, responsavelNome, onFim }: {
     setEstados((p) => ({ ...p, [id]: { ...est(id), ...patch } }))
   }
 
-  // Pulsos usados por linha (recolha − entrega, ou corrigido manual no override).
-  function usadosLinha(l: { id: string; area: string; contador_entrega: number }): { usados: number | null; regrediu: boolean } {
+  // Pulsos usados por linha (entrega − recolha; o contador do manípulo DESCE com o uso).
+  function usadosLinha(l: { id: string; area: string; contador_entrega: number }): { usados: number | null; subiu: boolean } {
     const e = est(l.id)
     const rec = e.recolha !== '' ? Number(e.recolha) : null
-    if (rec == null || Number.isNaN(rec)) return { usados: null, regrediu: false }
-    const regrediu = rec < l.contador_entrega
-    if (e.override && e.corrigido !== '') return { usados: Math.max(0, Number(e.corrigido)), regrediu }
-    return { usados: Math.max(0, rec - l.contador_entrega), regrediu }
+    if (rec == null || Number.isNaN(rec)) return { usados: null, subiu: false }
+    const subiu = rec > l.contador_entrega // anomalia: o contador não pode subir
+    if (e.override && e.corrigido !== '') return { usados: Math.max(0, Number(e.corrigido)), subiu }
+    return { usados: Math.max(0, l.contador_entrega - rec), subiu }
   }
 
   const totais = useMemo(() => {
@@ -258,8 +262,8 @@ function FormRecolha({ stop, registo, responsavelId, responsavelNome, onFim }: {
       return { l, e, rec }
     })
     if (linhasInput.some((x) => x.rec == null || Number.isNaN(x.rec))) { setErro('Preenche o contador de recolha de todos os cartuchos.'); return }
-    const regrediuSemMotivo = linhasInput.some((x) => (x.rec as number) < x.l.contador_entrega && !(x.e.override && x.e.motivo.trim()))
-    if (regrediuSemMotivo) { setErro('Há contadores de recolha inferiores à entrega. Confirma o override e indica o motivo.'); return }
+    const subiuSemMotivo = linhasInput.some((x) => (x.rec as number) > x.l.contador_entrega && !(x.e.override && x.e.motivo.trim()))
+    if (subiuSemMotivo) { setErro('Há contadores de recolha SUPERIORES à entrega (os pulsos descem com o uso). Confirma o override e indica o motivo.'); return }
     if (!clinicaResp.trim()) { setErro('Indica o nome do responsável da clínica.'); return }
     if (!assinaturaCaminho && !validacao) { setErro('Recolhe a assinatura da clínica ou marca a validação presencial.'); return }
 
@@ -309,10 +313,10 @@ function FormRecolha({ stop, registo, responsavelId, responsavelNome, onFim }: {
 
   return (
     <div style={c.form}>
-      <Seccao titulo="Contadores na recolha" subtitulo="Mostra os contadores da entrega; preenche o da recolha. Os pulsos usados são calculados automaticamente.">
+      <Seccao titulo="Contadores na recolha" subtitulo="Mostra os pulsos da entrega; preenche os pulsos restantes na recolha. Os usados = entrega − recolha (o contador desce com o uso).">
         {linhas.map((l) => {
           const e = est(l.id)
-          const { usados, regrediu } = usadosLinha(l)
+          const { usados, subiu } = usadosLinha(l)
           return (
             <div key={l.id} style={c.linhaRec}>
               <div style={c.linhaTopo}>
@@ -320,14 +324,14 @@ function FormRecolha({ stop, registo, responsavelId, responsavelNome, onFim }: {
                 <span style={c.entregaTag}>Entrega: {l.contador_entrega}</span>
               </div>
               <div style={c.linhaInputs}>
-                <input inputMode="numeric" value={e.recolha} onChange={(ev) => setLinha(l.id, { recolha: ev.target.value.replace(/[^0-9]/g, '') })} placeholder="Contador recolha" style={c.inputNum} />
-                <span style={{ ...c.usados, color: regrediu && !e.override ? 'var(--danger)' : 'var(--foreground)' }}>
+                <input inputMode="numeric" value={e.recolha} onChange={(ev) => setLinha(l.id, { recolha: ev.target.value.replace(/[^0-9]/g, '') })} placeholder="Pulsos restantes" style={c.inputNum} />
+                <span style={{ ...c.usados, color: subiu && !e.override ? 'var(--danger)' : 'var(--foreground)' }}>
                   {usados == null ? '—' : `${usados} pulsos`}
                 </span>
               </div>
-              {regrediu && (
+              {subiu && (
                 <div style={c.overrideBox}>
-                  <div style={c.overrideAviso}>⚠ O contador de recolha é inferior ao da entrega (não pode andar para trás).</div>
+                  <div style={c.overrideAviso}>⚠ A recolha é superior à entrega. Os pulsos descem com o uso — o contador não pode subir.</div>
                   <label style={c.checkRow}>
                     <input type="checkbox" checked={e.override} onChange={(ev) => setLinha(l.id, { override: ev.target.checked })} />
                     Confirmar mesmo assim (troca de cartucho / reset do contador)
@@ -380,16 +384,21 @@ function FormRecolha({ stop, registo, responsavelId, responsavelNome, onFim }: {
 }
 
 // ─── Blocos reutilizáveis ────────────────────────────────────────────────────
-function SeccaoCartuchos({ titulo, subtitulo, cartuchos, valores, onChange }: {
-  titulo: string; subtitulo?: string; cartuchos: Cartucho[]; valores: Record<string, string>; onChange: (id: string, v: string) => void
+function SeccaoCartuchos({ titulo, subtitulo, cartuchos, valores, onChange, seriais, onSerial }: {
+  titulo: string; subtitulo?: string; cartuchos: Cartucho[]
+  valores: Record<string, string>; onChange: (id: string, v: string) => void
+  seriais: Record<string, string>; onSerial: (id: string, v: string) => void
 }) {
   return (
     <Seccao titulo={titulo} subtitulo={subtitulo}>
       {cartuchos.length === 0 && <div style={c.hint}>Sem cartuchos ativos configurados.</div>}
       {cartuchos.map((cart) => (
-        <div key={cart.id} style={c.linhaTopo}>
-          <span style={{ fontWeight: 700 }}>{rotuloCartucho(cart)}</span>
-          <input inputMode="numeric" value={valores[cart.id] ?? ''} onChange={(e) => onChange(cart.id, e.target.value.replace(/[^0-9]/g, ''))} placeholder="Contador" style={c.inputNum} />
+        <div key={cart.id} style={c.cartuchoRow}>
+          <div style={{ fontWeight: 700 }}>{rotuloCartucho(cart)}</div>
+          <div style={c.cartuchoInputs}>
+            <input value={seriais[cart.id] ?? ''} onChange={(e) => onSerial(cart.id, e.target.value)} placeholder="Identificação / S/N" style={c.inputSerial} />
+            <input inputMode="numeric" value={valores[cart.id] ?? ''} onChange={(e) => onChange(cart.id, e.target.value.replace(/[^0-9]/g, ''))} placeholder="Pulsos" style={c.inputNum} />
+          </div>
         </div>
       ))}
     </Seccao>
@@ -529,6 +538,9 @@ const c: Record<string, React.CSSProperties> = {
   entregaTag: { fontSize: 12, color: 'var(--muted)', fontWeight: 600 },
   usados: { fontWeight: 800, fontSize: 15 },
   inputNum: { width: 130, fontSize: 20, fontWeight: 700, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 10, textAlign: 'center', boxSizing: 'border-box' },
+  cartuchoRow: { borderBottom: '1px solid var(--border)', paddingBottom: 10, display: 'flex', flexDirection: 'column', gap: 6 },
+  cartuchoInputs: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' },
+  inputSerial: { flex: 1, minWidth: 150, fontSize: 15, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 10, boxSizing: 'border-box' },
   inputTexto: { width: '100%', fontSize: 15, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 10, boxSizing: 'border-box' },
   textarea: { width: '100%', minHeight: 60, fontSize: 15, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 10, boxSizing: 'border-box', resize: 'vertical' },
   file: { fontSize: 14 },
