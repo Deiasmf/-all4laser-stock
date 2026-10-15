@@ -12,7 +12,7 @@ import {
   type Cartucho, type RegistoUltraformer, type UnidadeEquip,
 } from '@/lib/ultraformerRegistos'
 import { gerarFolhaUltraformerPdf } from '@/lib/ultraformerFolhaPdf'
-import { calcularValorUltraformer, contarDiasMesAntes, tarifarioVigente, resumoCalculo, type ResultadoCalculo, type Tarifario } from '@/lib/ultraformerCalculo'
+import { calcularValorUltraformer, contarDiasMesAntes, tarifarioVigente, resumoCalculo, avisoPulsos, type ResultadoCalculo, type Tarifario } from '@/lib/ultraformerCalculo'
 
 // Ecrã mobile de registo de pulsos do Ultraformer III (entrega e recolha).
 // Feito pelo motorista/logística na clínica, validado pelo responsável da clínica.
@@ -304,6 +304,7 @@ function FormRecolha({ stop, registo, responsavelId, responsavelNome, onFim }: {
       <div style={c.form}>
         <Sucesso texto="Recolha registada ✓" />
         <ResumoValor r={resultadoFinal} />
+        <AvisosSubstituicao itens={(registoFinal?.linhas ?? []).map((l) => ({ rotulo: rotuloCartucho(l), restantes: l.contador_recolha }))} />
         <BotaoFolha stop={stop} />
         <BotaoPedidoFatura registo={registoFinal} user={{ id: responsavelId, nome: responsavelNome }} />
         <button onClick={onFim} style={c.btnSecundario}>Voltar à agenda</button>
@@ -329,6 +330,7 @@ function FormRecolha({ stop, registo, responsavelId, responsavelNome, onFim }: {
                   {usados == null ? '—' : `${usados} pulsos`}
                 </span>
               </div>
+              <BadgeAviso restantes={e.recolha !== '' ? Number(e.recolha) : null} />
               {subiu && (
                 <div style={c.overrideBox}>
                   <div style={c.overrideAviso}>⚠ A recolha é superior à entrega. Os pulsos descem com o uso — o contador não pode subir.</div>
@@ -352,6 +354,7 @@ function FormRecolha({ stop, registo, responsavelId, responsavelNome, onFim }: {
           <span>Corpo: <b>{totais.corpo}</b></span>
           <span>Total: <b>{totais.geral}</b></span>
         </div>
+        <AvisosSubstituicao itens={linhas.map((l) => ({ rotulo: rotuloCartucho(l), restantes: est(l.id).recolha !== '' ? Number(est(l.id).recolha) : null }))} />
       </Seccao>
 
       <Seccao titulo="Dias de aluguer da reserva" subtitulo="1 dia nos open days (o mais comum). Em alugueres de vários dias, os pulsos são repartidos pelos dias.">
@@ -399,6 +402,7 @@ function SeccaoCartuchos({ titulo, subtitulo, cartuchos, valores, onChange, seri
             <input value={seriais[cart.id] ?? ''} onChange={(e) => onSerial(cart.id, e.target.value)} placeholder="Identificação / S/N" style={c.inputSerial} />
             <input inputMode="numeric" value={valores[cart.id] ?? ''} onChange={(e) => onChange(cart.id, e.target.value.replace(/[^0-9]/g, ''))} placeholder="Pulsos" style={c.inputNum} />
           </div>
+          <BadgeAviso restantes={valores[cart.id] && valores[cart.id] !== '' ? Number(valores[cart.id]) : null} />
         </div>
       ))}
     </Seccao>
@@ -447,6 +451,28 @@ function ResumoValor({ r }: { r: ResultadoCalculo }) {
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+function BadgeAviso({ restantes }: { restantes: number | null }) {
+  const a = avisoPulsos(restantes)
+  if (!a) return null
+  const crit = a.nivel === 'critico'
+  return <span style={crit ? c.avisoCritico : c.avisoBaixo}>{crit ? '⛔' : '⚠'} {a.texto}</span>
+}
+
+function AvisosSubstituicao({ itens }: { itens: { rotulo: string; restantes: number | null }[] }) {
+  const avisos = itens.map((i) => ({ rotulo: i.rotulo, a: avisoPulsos(i.restantes) })).filter((x) => x.a)
+  if (avisos.length === 0) return null
+  return (
+    <div style={c.avisosBox}>
+      <div style={{ fontWeight: 800, marginBottom: 4 }}>Cartuchos a substituir</div>
+      {avisos.map((x, i) => (
+        <div key={i} style={x.a!.nivel === 'critico' ? c.avisoCritico : c.avisoBaixo}>
+          {x.a!.nivel === 'critico' ? '⛔' : '⚠'} {x.rotulo}: {x.a!.texto}
+        </div>
+      ))}
     </div>
   )
 }
@@ -563,4 +589,7 @@ const c: Record<string, React.CSSProperties> = {
   btnSecundario: { background: 'var(--surface)', color: 'var(--foreground)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', fontWeight: 700, fontSize: 14, cursor: 'pointer' },
   hint: { fontSize: 12, color: 'var(--muted)' },
   pedidoOk: { background: '#DCFCE7', color: '#166534', borderRadius: 10, padding: 12, fontSize: 14, fontWeight: 600, textAlign: 'center' },
+  avisoBaixo: { display: 'inline-block', marginTop: 4, fontSize: 12, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 8, padding: '3px 8px' },
+  avisoCritico: { display: 'inline-block', marginTop: 4, fontSize: 12, fontWeight: 800, color: '#991B1B', background: '#FEE2E2', border: '1px solid #FECACA', borderRadius: 8, padding: '3px 8px' },
+  avisosBox: { marginTop: 10, display: 'flex', flexDirection: 'column', gap: 4, borderTop: '1px solid var(--border)', paddingTop: 10 },
 }

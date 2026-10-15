@@ -150,6 +150,18 @@ export function calcularValorUltraformer(input: InputCalculo, tarifario: Tarifar
   }
 }
 
+// Avisos de substituição de cartuchos: o manípulo descarrega com o uso; quando os
+// pulsos RESTANTES chegam a 10 000 → preparar substituição; a 5 000 → substituir.
+export const PULSOS_AVISO = 10000
+export const PULSOS_CRITICO = 5000
+export function avisoPulsos(restantes: number | null | undefined): { nivel: 'baixo' | 'critico'; texto: string } | null {
+  if (restantes == null || Number.isNaN(restantes)) return null
+  const fmt = restantes.toLocaleString('pt-PT')
+  if (restantes <= PULSOS_CRITICO) return { nivel: 'critico', texto: `Substituir — ${fmt} pulsos restantes` }
+  if (restantes <= PULSOS_AVISO) return { nivel: 'baixo', texto: `Preparar substituição — ${fmt} pulsos restantes` }
+  return null
+}
+
 // Resumo legível para a recolha / pedido de fatura (ponto 9).
 export function resumoCalculo(r: ResultadoCalculo): string {
   const eur = (n: number) => `${n.toFixed(2)} €`

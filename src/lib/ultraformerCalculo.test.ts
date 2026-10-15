@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calcularValorUltraformer, resumoCalculo, type Tarifario } from './ultraformerCalculo'
+import { calcularValorUltraformer, resumoCalculo, avisoPulsos, type Tarifario } from './ultraformerCalculo'
 
 // Tarifário atual (igual ao seed da migration C).
 const TAR: Tarifario = {
@@ -74,6 +74,16 @@ describe('calcularValorUltraformer', () => {
       TAR,
     )
     expect(r.valorTotal).toBe(150)
+  })
+
+  it('avisoPulsos: limites 10 000 (preparar) e 5 000 (substituir)', () => {
+    expect(avisoPulsos(20000)).toBeNull()
+    expect(avisoPulsos(10001)).toBeNull()
+    expect(avisoPulsos(10000)?.nivel).toBe('baixo')
+    expect(avisoPulsos(5001)?.nivel).toBe('baixo')
+    expect(avisoPulsos(5000)?.nivel).toBe('critico')
+    expect(avisoPulsos(0)?.nivel).toBe('critico')
+    expect(avisoPulsos(null)).toBeNull()
   })
 
   it('resumoCalculo devolve o texto esperado', () => {
