@@ -6,7 +6,7 @@ function linha(area: 'rosto' | 'corpo', mm: number, entrega: number, recolha: nu
   return {
     id: `l-${area}-${mm}`, registo_id: 'reg', cartucho_id: 'c', area, profundidade_mm: mm,
     serial_number: `SN${mm}`, contador_entrega: entrega, contador_recolha: recolha,
-    pulsos_utilizados: recolha - entrega, override_regressao: false, override_motivo: null,
+    pulsos_utilizados: entrega - recolha, override_regressao: false, override_motivo: null,
     pulsos_corrigido: null, ordem: 1,
   }
 }
@@ -22,7 +22,7 @@ const registo: RegistoUltraformer = {
   foto_recolha_caminho: null, obs_recolha: null,
   total_pulsos_rosto: 540, total_pulsos_corpo: 200, total_pulsos_geral: 740,
   dias_aluguer: 1, dias_mes_antes: 0, valor_total: 281.6, valor_detalhe: null, pedido_fatura_id: null,
-  linhas: [linha('rosto', 1.5, 1000, 1300), linha('rosto', 4.5, 500, 740), linha('corpo', 6.0, 2000, 2200)],
+  linhas: [linha('rosto', 1.5, 1300, 1000), linha('rosto', 4.5, 740, 500), linha('corpo', 6.0, 2200, 2000)],
 }
 
 describe('gerarFolhaUltraformerPdf', () => {
