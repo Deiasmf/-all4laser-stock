@@ -143,6 +143,23 @@ export async function urlAssinada(caminho: string, segundos = 3600): Promise<str
   return data?.signedUrl ?? null
 }
 
+// Data URL (base64) de uma assinatura do bucket 'assinaturas' — para embeber no PDF.
+export async function assinaturaDataUrl(caminho: string): Promise<string | null> {
+  const { data } = await supabase.storage.from('assinaturas').createSignedUrl(caminho, 600)
+  if (!data?.signedUrl) return null
+  try {
+    const res = await fetch(data.signedUrl)
+    if (!res.ok) return null
+    const blob = await res.blob()
+    return await new Promise<string | null>((resolve) => {
+      const fr = new FileReader()
+      fr.onloadend = () => resolve(typeof fr.result === 'string' ? fr.result : null)
+      fr.onerror = () => resolve(null)
+      fr.readAsDataURL(blob)
+    })
+  } catch { return null }
+}
+
 // ─── Entrega ─────────────────────────────────────────────────────────────────
 export type EntregaLinhaInput = {
   cartucho_id: string

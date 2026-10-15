@@ -8,9 +8,10 @@ import { obterParagem, equipamentoParagem, dataCurta, diaSemanaPt, type Transpor
 import AssinaturaPad from '@/components/AssinaturaPad'
 import {
   listarCartuchosAtivos, listarUnidadesModelo, registoDaParagem, gravarEntrega, gravarRecolha,
-  uploadFotoUltraformer, uploadAssinaturaUltraformer, rotuloCartucho,
+  uploadFotoUltraformer, uploadAssinaturaUltraformer, assinaturaDataUrl, rotuloCartucho,
   type Cartucho, type RegistoUltraformer, type UnidadeEquip,
 } from '@/lib/ultraformerRegistos'
+import { gerarFolhaUltraformerPdf } from '@/lib/ultraformerFolhaPdf'
 import { calcularValorUltraformer, contarDiasMesAntes, tarifarioVigente, resumoCalculo, type ResultadoCalculo, type Tarifario } from '@/lib/ultraformerCalculo'
 
 // Ecrã mobile de registo de pulsos do Ultraformer III (entrega e recolha).
@@ -132,7 +133,13 @@ function FormEntrega({ stop, cartuchos, unidades, registoExistente, responsavelI
     setFeito(true)
   }
 
-  if (feito) return <Sucesso texto="Entrega registada ✓" onFim={onFim} />
+  if (feito) return (
+    <div style={c.form}>
+      <Sucesso texto="Entrega registada ✓" />
+      <BotaoFolha stop={stop} />
+      <button onClick={onFim} style={c.btnSecundario}>Voltar à agenda</button>
+    </div>
+  )
 
   return (
     <div style={c.form}>
@@ -289,7 +296,8 @@ function FormRecolha({ stop, registo, responsavelId, responsavelNome, onFim }: {
       <div style={c.form}>
         <Sucesso texto="Recolha registada ✓" />
         <ResumoValor r={resultadoFinal} />
-        <div style={c.hint}>Próximos passos (a implementar): gerar o PDF da folha e criar o pedido de fatura pré-preenchido para a Vanessa.</div>
+        <BotaoFolha stop={stop} />
+        <div style={c.hint}>Próximo passo (a implementar): criar o pedido de fatura pré-preenchido para a Vanessa, com esta folha anexada.</div>
         <button onClick={onFim} style={c.btnSecundario}>Voltar à agenda</button>
       </div>
     )
@@ -437,6 +445,30 @@ function Seccao({ titulo, subtitulo, children }: { titulo: string; subtitulo?: s
       {subtitulo && <div style={c.seccaoSub}>{subtitulo}</div>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>{children}</div>
     </section>
+  )
+}
+
+async function baixarFolha(stop: TransportStop) {
+  const reg = await registoDaParagem({ id: stop.id, tipo: stop.tipo, google_event_id: stop.google_event_id })
+  if (!reg) return
+  const sigPath = reg.assinatura_recolha_caminho ?? reg.assinatura_entrega_caminho
+  const sig = sigPath ? await assinaturaDataUrl(sigPath) : null
+  const blob = await gerarFolhaUltraformerPdf(reg, sig)
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `Folha Ultraformer - ${reg.cliente_nome ?? 'cliente'}.pdf`
+  document.body.appendChild(a); a.click(); a.remove()
+  URL.revokeObjectURL(url)
+}
+
+function BotaoFolha({ stop }: { stop: TransportStop }) {
+  const [aGerar, setAGerar] = useState(false)
+  return (
+    <button disabled={aGerar} style={c.btnSecundario}
+      onClick={async () => { setAGerar(true); try { await baixarFolha(stop) } finally { setAGerar(false) } }}>
+      {aGerar ? 'A gerar…' : '📄 Descarregar folha (PDF)'}
+    </button>
   )
 }
 
