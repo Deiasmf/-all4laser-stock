@@ -8,7 +8,7 @@ import { obterParagem, equipamentoParagem, dataCurta, diaSemanaPt, type Transpor
 import AssinaturaPad from '@/components/AssinaturaPad'
 import {
   listarCartuchosAtivos, listarUnidadesModelo, registoDaParagem, gravarEntrega, gravarRecolha,
-  uploadFotoUltraformer, uploadAssinaturaUltraformer, assinaturaDataUrl, rotuloCartucho,
+  uploadFotoUltraformer, uploadAssinaturaUltraformer, assinaturaDataUrl, criarPedidoFaturaDaRecolha, rotuloCartucho,
   type Cartucho, type RegistoUltraformer, type UnidadeEquip,
 } from '@/lib/ultraformerRegistos'
 import { gerarFolhaUltraformerPdf } from '@/lib/ultraformerFolhaPdf'
@@ -200,6 +200,7 @@ function FormRecolha({ stop, registo, responsavelId, responsavelNome, onFim }: {
   const [guardando, setGuardando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [resultadoFinal, setResultadoFinal] = useState<ResultadoCalculo | null>(null)
+  const [registoFinal, setRegistoFinal] = useState<RegistoUltraformer | null>(null)
 
   useEffect(() => {
     tarifarioVigente().then(setTar)
@@ -280,6 +281,9 @@ function FormRecolha({ stop, registo, responsavelId, responsavelNome, onFim }: {
     setGuardando(false)
     if (!r.ok) { setErro(r.erro ?? 'Erro ao guardar.'); return }
     setResultadoFinal(r.resultado ?? resultado ?? null)
+    // Recarrega o registo fresco (totais + valor) para o PDF e o pedido de fatura.
+    const fresh = await registoDaParagem({ id: stop.id, tipo: stop.tipo, google_event_id: stop.google_event_id })
+    setRegistoFinal(fresh)
   }
 
   if (!registo) {
@@ -297,7 +301,7 @@ function FormRecolha({ stop, registo, responsavelId, responsavelNome, onFim }: {
         <Sucesso texto="Recolha registada ✓" />
         <ResumoValor r={resultadoFinal} />
         <BotaoFolha stop={stop} />
-        <div style={c.hint}>Próximo passo (a implementar): criar o pedido de fatura pré-preenchido para a Vanessa, com esta folha anexada.</div>
+        <BotaoPedidoFatura registo={registoFinal} user={{ id: responsavelId, nome: responsavelNome }} />
         <button onClick={onFim} style={c.btnSecundario}>Voltar à agenda</button>
       </div>
     )
@@ -472,6 +476,32 @@ function BotaoFolha({ stop }: { stop: TransportStop }) {
   )
 }
 
+function BotaoPedidoFatura({ registo, user }: { registo: RegistoUltraformer | null; user: { id: string | null; nome: string | null } }) {
+  const [aCriar, setACriar] = useState(false)
+  const [resultado, setResultado] = useState<{ ok: boolean; numero?: string | null; erro?: string } | null>(null)
+  const jaCriado = !!registo?.pedido_fatura_id || (resultado?.ok ?? false)
+
+  async function criar() {
+    if (!registo) return
+    setACriar(true)
+    const r = await criarPedidoFaturaDaRecolha(registo, user)
+    setACriar(false)
+    setResultado(r)
+  }
+
+  if (jaCriado) {
+    return <div style={c.pedidoOk}>🧾 Pedido de fatura criado{resultado?.numero ? ` · ${resultado.numero}` : ''} — segue para a Vanessa com a folha anexada.</div>
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <button disabled={aCriar || !registo} style={c.btnPrincipal} onClick={criar}>
+        {aCriar ? 'A criar…' : '🧾 Criar pedido de fatura'}
+      </button>
+      {resultado && !resultado.ok && <div style={c.erro}>{resultado.erro}</div>}
+    </div>
+  )
+}
+
 function Aviso({ texto }: { texto: string }) { return <main style={c.wrap}><p style={c.info}>{texto}</p></main> }
 function Sucesso({ texto, onFim }: { texto: string; onFim?: () => void }) {
   return (
@@ -520,4 +550,5 @@ const c: Record<string, React.CSSProperties> = {
   btnPrincipal: { background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 12, padding: '16px', fontWeight: 800, fontSize: 16, cursor: 'pointer' },
   btnSecundario: { background: 'var(--surface)', color: 'var(--foreground)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', fontWeight: 700, fontSize: 14, cursor: 'pointer' },
   hint: { fontSize: 12, color: 'var(--muted)' },
+  pedidoOk: { background: '#DCFCE7', color: '#166534', borderRadius: 10, padding: 12, fontSize: 14, fontWeight: 600, textAlign: 'center' },
 }

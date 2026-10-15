@@ -1,8 +1,10 @@
 import { supabase } from './supabase'
 import {
-  calcularValorUltraformer, contarDiasMesAntes, tarifarioVigente,
+  calcularValorUltraformer, contarDiasMesAntes, tarifarioVigente, resumoCalculo,
   type ResultadoCalculo,
 } from './ultraformerCalculo'
+import { criarPedidoFatura, anexarComprovativo, type UserRef } from './pedidosFatura'
+import { gerarFolhaUltraformerPdf } from './ultraformerFolhaPdf'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ULTRAFORMER III — registo de pulsos (entrega/recolha) + gravação do cálculo.
@@ -304,6 +306,71 @@ export async function gravarRecolha(input: RecolhaInput): Promise<{ ok: boolean;
 
   await supabase.from('transport_stops').update({ pulsos_registado: true }).eq('id', input.stopRecolhaId)
   return { ok: true, resultado: resultado ?? undefined }
+}
+
+// Upload do PDF da folha para o bucket privado do Ultraformer.
+export async function uploadPdfUltraformer(stopId: string, blob: Blob): Promise<string | null> {
+  const caminho = `${stopId}/folha-${Date.now()}.pdf`
+  const { error } = await supabase.storage.from('ultraformer-docs').upload(caminho, blob, { contentType: 'application/pdf', upsert: false })
+  return error ? null : caminho
+}
+
+// ─── Pedido de fatura (ponto 6) ──────────────────────────────────────────────
+// Cria o pedido de fatura pré-preenchido a partir da recolha, anexa o PDF da
+// folha e liga de volta ao registo (estado 'faturado'). Idempotente: não recria
+// se já existir pedido para este registo.
+export async function criarPedidoFaturaDaRecolha(
+  registo: RegistoUltraformer,
+  user: UserRef,
+): Promise<{ ok: boolean; pedidoId?: string; numero?: string | null; erro?: string }> {
+  if (registo.pedido_fatura_id) return { ok: false, erro: 'Já existe um pedido de fatura para esta recolha.' }
+  if (registo.estado !== 'recolhido') return { ok: false, erro: 'A recolha ainda não está registada.' }
+
+  const r = (registo.valor_detalhe as ResultadoCalculo | null) ?? null
+  const resumo = r
+    ? resumoCalculo(r)
+    : `${registo.total_pulsos_rosto ?? 0} pulsos rosto + ${registo.total_pulsos_corpo ?? 0} corpo = ${(registo.valor_total ?? 0).toFixed(2)} €`
+  const dataEnt = registo.data_entrega ? registo.data_entrega.slice(0, 10) : ''
+  const descricao = `Aluguer Ultraformer III (pay-per-use)${dataEnt ? ` — ${dataEnt}` : ''}. ${resumo}`
+
+  // Email do cliente (se existir) para o pedido já seguir pré-preenchido.
+  let clienteEmail: string | null = null
+  if (registo.cliente_id) {
+    const { data } = await supabase.from('clientes').select('email').eq('id', registo.cliente_id).maybeSingle()
+    clienteEmail = (data as { email: string | null } | null)?.email ?? null
+  }
+
+  // 1) PDF da folha
+  const sigPath = registo.assinatura_recolha_caminho ?? registo.assinatura_entrega_caminho
+  const sig = sigPath ? await assinaturaDataUrl(sigPath) : null
+  const blob = await gerarFolhaUltraformerPdf(registo, sig)
+  const stopRef = registo.stop_recolha_id ?? registo.stop_entrega_id ?? registo.id
+  const pdfCaminho = await uploadPdfUltraformer(stopRef, blob)
+
+  // 2) criar o pedido de fatura
+  const { data: pedido, error } = await criarPedidoFatura({
+    tipo: 'fatura',
+    cliente_id: registo.cliente_id,
+    cliente_nome: registo.cliente_nome ?? 'Cliente',
+    cliente_email: clienteEmail,
+    descricao,
+    valor: registo.valor_total,
+    notas: 'Gerado a partir da recolha do Ultraformer III (pay-per-use).',
+  }, user)
+  if (error || !pedido) return { ok: false, erro: error?.message ?? 'Falha ao criar o pedido de fatura.' }
+  const pedidoId = (pedido as { id: string }).id
+  const numero = (pedido as { numero: string | null }).numero ?? null
+
+  // 3) anexar o PDF da folha ao pedido
+  const file = new File([blob], `Folha Ultraformer - ${registo.cliente_nome ?? 'cliente'}.pdf`, { type: 'application/pdf' })
+  await anexarComprovativo(pedidoId, file)
+
+  // 4) ligar de volta + marcar faturado
+  await supabase.from('ultraformer_registos').update({
+    pedido_fatura_id: pedidoId, pdf_caminho: pdfCaminho, estado: 'faturado',
+  }).eq('id', registo.id)
+
+  return { ok: true, pedidoId, numero }
 }
 
 // Rótulo de um cartucho: Rosto 1,5 mm (S/N …)
