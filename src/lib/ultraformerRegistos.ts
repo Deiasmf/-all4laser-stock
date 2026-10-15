@@ -74,6 +74,21 @@ function nomeSeguro(nome: string): string {
   return nome.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9.\-_]/g, '_')
 }
 
+export type UnidadeEquip = { id: string; serial_number: string | null; modelo: string | null; status: string | null }
+
+// Unidades de um modelo (p/ o seletor de unidade na entrega, quando o calendário
+// não está ligado a uma unidade fixa — ex.: as duas Ultraformer rodam).
+export async function listarUnidadesModelo(modelo: string): Promise<UnidadeEquip[]> {
+  const padrao = `%${modelo.trim().replace(/\s+/g, '%')}%`
+  const { data } = await supabase
+    .from('equipamentos')
+    .select('id, serial_number, modelo, status')
+    .ilike('modelo', padrao)
+    .order('serial_number', { ascending: true })
+    .limit(50)
+  return (data as UnidadeEquip[]) ?? []
+}
+
 // Cartuchos ativos (rosto antes de corpo, por profundidade).
 export async function listarCartuchosAtivos(): Promise<Cartucho[]> {
   const { data } = await supabase
