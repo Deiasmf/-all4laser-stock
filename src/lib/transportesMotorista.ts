@@ -70,6 +70,11 @@ export async function guardarNotaMotorista(stopId: string, nota: string) {
   return supabase.rpc('transport_stop_nota', { p_stop: stopId, p_nota: nota })
 }
 
+// Dispensar o registo de pulsos (override com motivo) — liberta o gate de conclusão.
+export async function dispensarPulsos(stopId: string, motivo: string) {
+  return supabase.rpc('transport_stop_dispensar_pulsos', { p_stop: stopId, p_motivo: motivo })
+}
+
 // Link de direções do Google Maps para a paragem (usa coordenadas se existirem).
 export function linkMapa(s: Pick<TransportStop, 'lat' | 'lng' | 'morada'>): string | null {
   if (s.lat != null && s.lng != null) {

@@ -78,6 +78,15 @@ export type SituacaoAluguer = {
   notas: string | null
   pack: string | null
   zona: string | null
+  // Ultraformer pay-per-use (por disparo): o aluguer não tem valor mensal; o valor
+  // apura-se na recolha pelos pulsos. `reservaEmCurso` = entrega feita, recolha pendente.
+  payPerUse?: boolean
+  reservaEmCurso?: { desde: string | null } | null
+}
+
+// Modelos faturados por disparo (hoje só o Ultraformer III).
+export function ehPayPerUse(modelo: string | null | undefined): boolean {
+  return /ultraformer/i.test(modelo ?? '')
 }
 
 export type EquipDisponivel = {
@@ -138,7 +147,7 @@ export async function carregarSituacaoAlugueres(): Promise<SituacaoAluguer[]> {
     for (const c of (data as ClienteRow[]) ?? []) clientePorId.set(c.id, c)
   }
 
-  return equip.map((e) => {
+  const rows: SituacaoAluguer[] = equip.map((e) => {
     const f = fichaPorEquip.get(e.id) ?? null
     const c = f?.cliente_id ? clientePorId.get(f.cliente_id) ?? null : null
     return {
@@ -164,8 +173,47 @@ export async function carregarSituacaoAlugueres(): Promise<SituacaoAluguer[]> {
       notas: f?.notas ?? null,
       pack: f?.pack ?? null,
       zona: f?.zona ?? null,
+      payPerUse: ehPayPerUse(e.modelo),
     }
   })
+
+  // Ultraformer pay-per-use: reservas EM CURSO (entrega feita, recolha pendente)
+  // aparecem no quadro Nacional mesmo que o equipamento não esteja em status de
+  // aluguer. O consumo/valor só se apura na recolha.
+  const { data: regsRaw } = await supabase
+    .from('ultraformer_registos')
+    .select('equipamento_id, serial_number, cliente_id, cliente_nome, data_entrega')
+    .eq('estado', 'entrega')
+  type RegEmCurso = { equipamento_id: string | null; serial_number: string | null; cliente_id: string | null; cliente_nome: string | null; data_entrega: string | null }
+  const regPorEquip = new Map<string, RegEmCurso>()
+  for (const g of (regsRaw as RegEmCurso[]) ?? []) {
+    if (g.equipamento_id && !regPorEquip.has(g.equipamento_id)) regPorEquip.set(g.equipamento_id, g)
+  }
+
+  for (const r of rows) {
+    const g = regPorEquip.get(r.equipamento_id)
+    if (g) { r.payPerUse = true; r.reservaEmCurso = { desde: g.data_entrega } }
+  }
+
+  const jaListados = new Set(rows.map((r) => r.equipamento_id))
+  const faltam = Array.from(regPorEquip.keys()).filter((id) => !jaListados.has(id))
+  if (faltam.length) {
+    const { data: eqRaw } = await supabase.from('equipamentos')
+      .select('id, serial_number, marca, modelo, ano, status, destino, data_saida').in('id', faltam)
+    for (const e of (eqRaw as EquipRow[]) ?? []) {
+      const g = regPorEquip.get(e.id)!
+      rows.push({
+        equipamento_id: e.id, serial_number: e.serial_number, marca: e.marca, modelo: e.modelo,
+        ano: e.ano, status: e.status, mercado: 'nacional', destino: e.destino, data_saida: e.data_saida,
+        situacao_id: null, cliente_id: g.cliente_id, cliente_nome: g.cliente_nome, cliente_pais: 'Portugal',
+        cliente_cidade: null, data_inicio: g.data_entrega ? g.data_entrega.slice(0, 10) : null,
+        data_fim_prevista: null, renovacao_automatica: false, valor_mensal: null, localizacao: null,
+        notas: null, pack: null, zona: 'lisboa', payPerUse: true, reservaEmCurso: { desde: g.data_entrega },
+      })
+    }
+  }
+
+  return rows
 }
 
 // ── Disponíveis: frota de aluguer livre / indisponível ──────────────────────
