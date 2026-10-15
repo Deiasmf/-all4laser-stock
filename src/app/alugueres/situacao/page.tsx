@@ -158,6 +158,7 @@ export default function SituacaoAtualPage() {
     const [a, d] = await Promise.all([carregarSituacaoAlugueres(), carregarDisponiveis()])
     setAlugueres(a); setDisponiveis(d); setCarregando(false)
   }, [])
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { carregar() }, [carregar])
 
   const nacionais = useMemo(() => alugueres.filter((a) => classificar(a) === 'nacional'), [alugueres])
@@ -355,6 +356,7 @@ function QuadroAlugueres({ lista, estreito, onEditar, grupoDe, combinarPack = ()
         <span style={c.equip}>
           <span style={c.equipSn}>{s.serial_number ?? '—'}</span>
           <span style={c.equipMarca}>{[s.marca, s.modelo].filter(Boolean).join(' ') || '—'}</span>
+          {s.payPerUse && <BadgePayPerUse s={s} />}
         </span>
         <span>{s.pack ? <span style={c.packTag}>{s.pack}</span> : '—'}</span>
         <span>{clienteTexto(s)}</span>
@@ -468,6 +470,15 @@ function ZonaPorClassificar({ lista, onEditar, onDefinir }: {
   )
 }
 
+function BadgePayPerUse({ s }: { s: SituacaoAluguer }) {
+  const desde = s.reservaEmCurso?.desde ? formatarData(s.reservaEmCurso.desde.slice(0, 10)) : null
+  return (
+    <span style={c.ppuBadge} title="Faturado por disparo (pay-per-use); o valor é apurado na recolha pelos pulsos">
+      ⚡ Pay-per-use{s.reservaEmCurso ? ` · reserva em curso${desde ? ` desde ${desde}` : ''}` : ''}
+    </span>
+  )
+}
+
 function BadgeAlerta({ s, alerta }: { s: SituacaoAluguer; alerta: 'vencido' | 'a-terminar' }) {
   const dias = diasAte(s.data_fim_prevista)
   if (alerta === 'vencido') return <span style={c.badgeVencido} title="Fim ultrapassado sem renovação">⚠ vencido {dias != null ? `há ${-dias}d` : ''}</span>
@@ -484,6 +495,7 @@ function CartaoAluguer({ s, onEditar }: { s: SituacaoAluguer; onEditar: (s: Situ
         {alerta && <BadgeAlerta s={s} alerta={alerta} />}
       </div>
       <div style={c.equipMarca}>{[s.marca, s.modelo].filter(Boolean).join(' ') || '—'}</div>
+      {s.payPerUse && <div style={{ marginTop: 4 }}><BadgePayPerUse s={s} /></div>}
       {s.pack && <div style={c.cartaoLinha}><span style={c.cartaoLabel}>Pack</span><span style={c.packTag}>{s.pack}</span></div>}
       <div style={c.cartaoLinha}><span style={c.cartaoLabel}>Cliente</span><span>{clienteTexto(s)}</span></div>
       <div style={c.cartaoLinha}><span style={c.cartaoLabel}>Localização</span><span>{localizacaoTexto(s)}</span></div>
@@ -1030,6 +1042,7 @@ const c: Record<string, React.CSSProperties> = {
   equipMarca: { color: 'var(--muted)', fontSize: 12 },
   cartaoMembro: { fontSize: 13, lineHeight: 1.4 },
   badgeTerminar: { marginLeft: 6, background: '#FEF3C7', color: '#92400E', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' },
+  ppuBadge: { display: 'inline-block', marginTop: 3, background: '#F3E8FF', color: '#6B21A8', border: '1px solid #E9D5FF', borderRadius: 6, padding: '1px 7px', fontSize: 11, fontWeight: 700 },
   badgeVencido: { marginLeft: 6, background: '#FEE2E2', color: '#B91C1C', borderRadius: 6, padding: '1px 6px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' },
   cartoes: { display: 'grid', gap: 10 },
   cartao: { border: '1px solid var(--border)', borderRadius: 12, padding: 12, background: '#fff', display: 'flex', flexDirection: 'column', gap: 4 },

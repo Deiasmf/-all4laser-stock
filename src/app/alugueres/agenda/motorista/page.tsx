@@ -1,11 +1,12 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useAuth } from '@/lib/auth'
 import { diaSemanaPt, dataCurta, equipamentoParagem, type TransportStop } from '@/lib/transportes'
 import {
   motoristaDoUtilizador, listarMotoristasAtivos, diaDoMotorista, paragensDoMotorista,
-  marcarParagem, guardarNotaMotorista, linkMapa,
+  marcarParagem, guardarNotaMotorista, dispensarPulsos, linkMapa,
   type MotoristaLogado,
 } from '@/lib/transportesMotorista'
 
@@ -76,13 +77,20 @@ export default function MotoristaAgendaPage() {
   const planoVisivel = diaEstado === 'publicado' || diaEstado === 'confirmado'
   const feitas = paragens.filter((p) => p.estado === 'concluida').length
 
+  const [errosMarcar, setErrosMarcar] = useState<Record<string, string>>({})
+
   async function alternarFeita(p: TransportStop) {
     const feita = p.estado !== 'concluida'
+    setErrosMarcar((e) => ({ ...e, [p.id]: '' }))
     setParagens((prev) => prev.map((x) => x.id === p.id
       ? { ...x, estado: feita ? 'concluida' : 'confirmada', concluida_em: feita ? new Date().toISOString() : null }
       : x))
     const { error } = await marcarParagem(p.id, feita)
-    if (error && driverId) carregar(driverId, data) // reverte se falhar
+    if (error) {
+      const msg = /registo de pulsos/i.test(error.message) ? error.message : 'Não foi possível marcar. Tenta novamente.'
+      setErrosMarcar((e) => ({ ...e, [p.id]: msg }))
+      if (driverId) carregar(driverId, data) // reverte o estado otimista
+    }
   }
 
   if (perfilCarregado && !uid) {
@@ -133,7 +141,8 @@ export default function MotoristaAgendaPage() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {paragens.map((p, i) => (
-            <ParagemCard key={p.id} p={p} ordem={p.ordem ?? i + 1} onAlternar={() => alternarFeita(p)} readOnly={!isOwn} />
+            <ParagemCard key={p.id} p={p} ordem={p.ordem ?? i + 1} onAlternar={() => alternarFeita(p)} readOnly={!isOwn}
+              erroMarcar={errosMarcar[p.id] || null} onRecarregar={() => driverId && carregar(driverId, data)} />
           ))}
         </div>
       )}
@@ -141,15 +150,33 @@ export default function MotoristaAgendaPage() {
   )
 }
 
-function ParagemCard({ p, ordem, onAlternar, readOnly }: { p: TransportStop; ordem: number; onAlternar: () => void; readOnly?: boolean }) {
+function ParagemCard({ p, ordem, onAlternar, readOnly, erroMarcar, onRecarregar }: {
+  p: TransportStop; ordem: number; onAlternar: () => void; readOnly?: boolean
+  erroMarcar?: string | null; onRecarregar?: () => void
+}) {
   const [nota, setNota] = useState(p.nota_motorista ?? '')
   const [aGuardarNota, setAGuardarNota] = useState(false)
   const [notaMsg, setNotaMsg] = useState<string | null>(null)
+  const [dispensaAberta, setDispensaAberta] = useState(false)
+  const [dispensaMotivo, setDispensaMotivo] = useState('')
+  const [aDispensar, setADispensar] = useState(false)
   const feita = p.estado === 'concluida'
   const eEntrega = p.tipo === 'entrega'
   const maps = linkMapa(p)
   const janela = janelaTexto(p)
   const equip = equipamentoParagem(p)
+
+  const exigePulsos = !!p.exige_registo_pulsos && (p.tipo === 'entrega' || p.tipo === 'recolha')
+  const registado = !!p.pulsos_registado
+  const dispensado = !!p.pulsos_dispensa_motivo
+
+  async function confirmarDispensa() {
+    if (!dispensaMotivo.trim()) return
+    setADispensar(true)
+    const { error } = await dispensarPulsos(p.id, dispensaMotivo.trim())
+    setADispensar(false)
+    if (!error) { setDispensaAberta(false); onRecarregar?.() }
+  }
 
   async function guardar() {
     setAGuardarNota(true); setNotaMsg(null)
@@ -176,6 +203,25 @@ function ParagemCard({ p, ordem, onAlternar, readOnly }: { p: TransportStop; ord
         </div>
       </div>
 
+      {exigePulsos && (
+        <div style={c.pulsosBox}>
+          {registado ? (
+            <span style={c.pulsosOk}>✓ Pulsos registados</span>
+          ) : dispensado ? (
+            <span style={c.pulsosDispensado}>Registo dispensado · {p.pulsos_dispensa_motivo}</span>
+          ) : (
+            <>
+              <span style={c.pulsosBadge}>⚠ Registo de pulsos obrigatório</span>
+              {!readOnly && (
+                <Link href={`/alugueres/agenda/registo/${p.id}`} style={c.btnPulsos}>
+                  {eEntrega ? '✎ Registar entrega' : '✎ Registar recolha'}
+                </Link>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
         {maps && <a href={maps} target="_blank" rel="noopener noreferrer" style={c.btnMapa}>🧭 Abrir no Maps</a>}
         {readOnly ? (
@@ -188,6 +234,25 @@ function ParagemCard({ p, ordem, onAlternar, readOnly }: { p: TransportStop; ord
           </button>
         )}
       </div>
+
+      {erroMarcar && (
+        <div style={c.gateErro}>
+          {erroMarcar}
+          {exigePulsos && !registado && !dispensado && !readOnly && (
+            dispensaAberta ? (
+              <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <input value={dispensaMotivo} onChange={(e) => setDispensaMotivo(e.target.value)} placeholder="Motivo da dispensa" style={c.notaInput} />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={confirmarDispensa} disabled={aDispensar || !dispensaMotivo.trim()} style={c.btnNota}>{aDispensar ? 'A guardar…' : 'Confirmar dispensa'}</button>
+                  <button onClick={() => setDispensaAberta(false)} style={c.btnDesfazer}>Cancelar</button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={() => setDispensaAberta(true)} style={{ ...c.btnDesfazer, marginTop: 8 }}>Dispensar registo (com motivo)</button>
+            )
+          )}
+        </div>
+      )}
 
       {readOnly ? (
         p.nota_motorista ? <div style={c.notaLida}>📝 {p.nota_motorista}</div> : null
@@ -236,4 +301,10 @@ const c: Record<string, React.CSSProperties> = {
   btnDesfazer: { flex: 1, background: 'var(--surface)', color: 'var(--muted)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 10px', fontWeight: 700, fontSize: 13, cursor: 'pointer' },
   notaInput: { width: '100%', minHeight: 44, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8, resize: 'vertical', font: 'inherit', boxSizing: 'border-box' },
   btnNota: { marginTop: 6, background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontWeight: 700, fontSize: 13, cursor: 'pointer' },
+  pulsosBox: { marginTop: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' },
+  pulsosBadge: { fontSize: 12, fontWeight: 800, color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 999, padding: '4px 10px' },
+  pulsosOk: { fontSize: 13, fontWeight: 700, color: '#166534' },
+  pulsosDispensado: { fontSize: 12, color: 'var(--muted)', fontWeight: 600 },
+  btnPulsos: { textDecoration: 'none', background: '#7C3AED', color: '#fff', borderRadius: 10, padding: '10px 14px', fontWeight: 700, fontSize: 14 },
+  gateErro: { marginTop: 10, background: '#FEE2E2', color: '#B91C1C', borderRadius: 8, padding: 10, fontSize: 13, fontWeight: 600 },
 }

@@ -131,7 +131,7 @@ async function cruzarCliente(sb: SupabaseClient, nome: string | null): Promise<s
   return (data as { id: string }[] | null)?.[0]?.id ?? null
 }
 
-type CalRow = { id: string; google_calendar_id: string; nome: string; zona: string; equipamento_id: string | null }
+type CalRow = { id: string; google_calendar_id: string; nome: string; zona: string; equipamento_id: string | null; exige_registo_pulsos: boolean | null }
 type StopRow = { id: string; hash_evento: string | null; estado: string }
 
 // ─── Sincronização principal ─────────────────────────────────────────────────
@@ -216,6 +216,7 @@ export async function sincronizarParagens(sb: SupabaseClient): Promise<{ ok: boo
           calendar_id: cal.id,
           zona: cal.zona,
           equipamento_id: cal.equipamento_id,
+          exige_registo_pulsos: cal.exige_registo_pulsos ?? false,
           data: papel.data,
           janela_inicio: null,
           janela_fim: null,
