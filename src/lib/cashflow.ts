@@ -364,6 +364,10 @@ export type RecurringExpense = {
   id: string; descricao: string; categoria_id: string | null; valor: number; moeda: string
   periodicidade: 'mensal' | 'trimestral' | 'anual'; dia_mes: number | null
   data_inicio: string; data_fim: string | null; ativo: boolean; notas: string | null
+  por_confirmar: boolean
+}
+export async function confirmarDespesaFixa(id: string) {
+  return supabase.from('cashflow_recurring_expenses').update({ por_confirmar: false }).eq('id', id)
 }
 export async function listarDespesasFixas(): Promise<RecurringExpense[]> {
   const { data } = await supabase.from('cashflow_recurring_expenses').select('*').order('ativo', { ascending: false }).order('descricao')
@@ -406,6 +410,10 @@ export type PaymentPlan = {
   id: string; cliente_id: string | null; cliente_nome: string | null; descricao: string | null
   periodicidade: 'mensal' | 'trimestral' | 'datas_especificas'; valor_prestacao: number | null; moeda: string
   data_inicio: string | null; n_prestacoes: number | null; data_fim: string | null; estado: string; notas: string | null
+  por_confirmar: boolean
+}
+export async function confirmarPlano(id: string) {
+  return supabase.from('cashflow_payment_plans').update({ por_confirmar: false }).eq('id', id)
 }
 export type PlanoPrest = { id: string; plan_id: string; numero: number; data_prevista: string; valor: number; estado: string; valor_recebido: number; data_recebimento: string | null }
 export async function listarPlanos(): Promise<(PaymentPlan & { prestacoes: PlanoPrest[] })[]> {
