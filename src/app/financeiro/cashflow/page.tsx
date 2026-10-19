@@ -6,9 +6,9 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 import {
   construirMapa, obterConfig, guardarConfig, rotuloMes, formatarMoeda,
-  listarCategorias, listarDespesasFixas, guardarDespesaFixa, eliminarDespesaFixa,
+  listarCategorias, listarDespesasFixas, guardarDespesaFixa, eliminarDespesaFixa, confirmarDespesaFixa,
   listarPontuais, guardarPontual, eliminarPontual, marcarPontualRealizado,
-  listarPlanos, criarPlano, eliminarPlano, gerarPrestacoesPlano, marcarPrestPlanoRecebida,
+  listarPlanos, criarPlano, eliminarPlano, gerarPrestacoesPlano, marcarPrestPlanoRecebida, confirmarPlano,
   realizadoRecente,
   type MapaCashflow, type CashflowConfig, type Categoria, type RecurringExpense,
   type ManualEntry, type PaymentPlan, type PlanoPrest, type FonteLinha, type Mes, type DetalheItem, type RealizadoMes,
@@ -360,6 +360,8 @@ function Definicoes() {
   )
 }
 
+const badgeAviso: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: '#92400E', background: '#FEF3C7', borderRadius: 999, padding: '1px 8px', marginLeft: 6 }
+
 // ─── Vista: Despesas fixas ───────────────────────────────────────────────────
 function DespesasFixas() {
   const { perfil } = useAuth()
@@ -377,12 +379,14 @@ function DespesasFixas() {
     setEdit(null); recarregar()
   }
   async function remover(id: string) { if (window.confirm('Eliminar esta despesa fixa?')) { await eliminarDespesaFixa(id); recarregar() } }
+  async function confirmar(id: string) { await confirmarDespesaFixa(id); recarregar() }
   const nomeCat = (id: string | null) => cats.find((c0) => c0.id === id)?.nome ?? '—'
+  const porConfirmar = lista.filter((d) => d.por_confirmar).length
 
   return (
     <div>
       <div style={c.barra}>
-        <span style={c.contagem}>{lista.length} despesa(s) fixa(s)</span>
+        <span style={c.contagem}>{lista.length} despesa(s) fixa(s){porConfirmar > 0 && <span style={badgeAviso}> · {porConfirmar} por confirmar</span>}</span>
         <button style={c.btnPrimSm} onClick={() => setEdit({ periodicidade: 'mensal', moeda: 'EUR', ativo: true, data_inicio: new Date().toISOString().slice(0, 10) })}>+ Nova</button>
       </div>
       {edit && (
@@ -409,10 +413,11 @@ function DespesasFixas() {
       )}
       <div style={c.lista}>
         {lista.map((d) => (
-          <div key={d.id} style={{ ...c.linhaItem, opacity: d.ativo ? 1 : 0.5 }}>
-            <div><strong>{d.descricao}</strong> <span style={c.muted}>· {nomeCat(d.categoria_id)} · {d.periodicidade}</span></div>
+          <div key={d.id} style={{ ...c.linhaItem, opacity: d.ativo ? 1 : 0.5, ...(d.por_confirmar ? { background: '#FFFBEB' } : {}) }}>
+            <div><strong>{d.descricao}</strong> <span style={c.muted}>· {nomeCat(d.categoria_id)} · {d.periodicidade}</span>{d.por_confirmar && <span style={badgeAviso}> por confirmar</span>}</div>
             <div style={c.linhaDir}>
               <span>{formatarMoeda(d.valor, d.moeda)}</span>
+              {d.por_confirmar && <button style={c.miniBtn} onClick={() => confirmar(d.id)} title="Confirmar valor">✓ Confirmar</button>}
               <button style={c.miniBtn} onClick={() => setEdit(d)}>Editar</button>
               <button style={c.miniPerigo} onClick={() => remover(d.id)}>×</button>
             </div>
@@ -548,8 +553,13 @@ function CartaoPlanoManual({ plano, onMudou, onRemover }: { plano: PaymentPlan &
       <div style={c.barra}>
         <div>
           <strong>{plano.cliente_nome}</strong> <span style={c.muted}>· {plano.descricao || 'plano'} · {pagas}/{plano.prestacoes.length} recebidas</span>
+          {plano.por_confirmar && <span style={badgeAviso}> por confirmar</span>}
+          {!plano.cliente_id && <span style={{ ...badgeAviso, color: '#991B1B', background: '#FEE2E2' }}> cliente por ligar</span>}
         </div>
-        <button style={c.miniPerigo} onClick={onRemover}>Eliminar</button>
+        <div style={c.linhaDir}>
+          {plano.por_confirmar && <button style={c.miniBtn} onClick={async () => { await confirmarPlano(plano.id); onMudou() }} title="Confirmar plano">✓ Confirmar</button>}
+          <button style={c.miniPerigo} onClick={onRemover}>Eliminar</button>
+        </div>
       </div>
       <div style={c.lista}>
         {plano.prestacoes.map((pr) => (

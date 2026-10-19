@@ -6,7 +6,8 @@ import { readSheet } from 'read-excel-file/browser'
 import { useAuth } from '@/lib/auth'
 import {
   listarContas, processarFolhas, importarMovimentos, listarLotes, ehFolhaExtrato, formatarValor,
-  type ContaBancaria, type MovExtrato, type ResultadoImport, type LoteImport,
+  estadoImportacoes,
+  type ContaBancaria, type MovExtrato, type ResultadoImport, type LoteImport, type EstadoConta,
 } from '@/lib/conciliacaoBancaria'
 
 type Folha = { nome: string; linhas: unknown[][] }
@@ -24,11 +25,15 @@ export default function ConciliacaoPage() {
   const [aImportar, setAImportar] = useState(false)
   const [resultado, setResultado] = useState<ResultadoImport | null>(null)
   const [lotes, setLotes] = useState<LoteImport[]>([])
+  const [estados, setEstados] = useState<EstadoConta[]>([])
   const [contaForcada, setContaForcada] = useState('') // '' = automático (pelo nome/cabeçalho)
 
   const moedaDaConta = useCallback((id: string) => contas.find((c) => c.id === id)?.moeda ?? 'EUR', [contas])
 
-  const carregarLotes = useCallback(async () => { setLotes(await listarLotes()) }, [])
+  const carregarLotes = useCallback(async () => {
+    setLotes(await listarLotes())
+    setEstados(await estadoImportacoes())
+  }, [])
   useEffect(() => { listarContas().then(setContas) }, [])
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { carregarLotes() }, [carregarLotes])
@@ -121,10 +126,33 @@ export default function ConciliacaoPage() {
           <p style={c.sub}>Importa o extrato do banco e concilia os recebimentos com as faturas.</p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Link href="/financeiro/conciliacao/regras" style={{ ...c.btnPrim, background: '#fff', color: 'var(--primary)', border: '1px solid var(--primary)' }}>🏷️ Regras</Link>
           <Link href="/financeiro/conciliacao/controlo" style={{ ...c.btnPrim, background: '#fff', color: 'var(--primary)', border: '1px solid var(--primary)' }}>📊 Controlo</Link>
           <Link href="/financeiro/conciliacao/fila" style={c.btnPrim}>Conciliar recebimentos →</Link>
         </div>
       </div>
+
+      {/* Estado dos dados bancários (o ritual mensal) */}
+      {estados.length > 0 && (
+        <section style={{ ...c.card, ...(estados.some((e) => e.desatualizado) ? { borderColor: '#FCD34D', background: '#FFFBEB' } : {}) }}>
+          <div style={c.cardTitulo}>Estado dos dados bancários</div>
+          <div style={c.resumo}>
+            {estados.map((e) => (
+              <div key={e.conta_id} style={{ ...c.blocoConta, minWidth: 220, borderColor: e.desatualizado ? '#FCD34D' : 'var(--border)' }}>
+                <div style={c.blocoContaNome}>{e.conta_nome} <span style={c.muted}>({e.moeda})</span></div>
+                <div style={{ fontSize: 13 }}>
+                  {e.ultimaData
+                    ? <>Último movimento: <strong>{e.ultimaData}</strong> <span style={c.muted}>({e.diasDesde} dias)</span></>
+                    : <span style={c.muted}>Sem dados importados.</span>}
+                </div>
+                {e.desatualizado && (
+                  <div style={{ fontSize: 12.5, color: '#92400E', fontWeight: 600 }}>⚠️ Dados desatualizados — importa o extrato mais recente.</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Contas */}
       <section style={c.card}>
@@ -221,6 +249,9 @@ export default function ConciliacaoPage() {
                 <span title={m.observacoes ?? undefined}>
                   {m.descritivo}
                   {m.observacoes && <span style={c.obs}> · {m.observacoes}</span>}
+                  {m.categoria && (
+                    <span style={c.catTag}>{m.interna ? '↔ interna · ' : ''}{m.categoria}{m.rubrica ? ` · ${m.rubrica}` : ''}</span>
+                  )}
                 </span>
                 <span style={{ textAlign: 'right', color: m.sentido === 'credito' ? '#065F46' : '#B91C1C', fontWeight: 600 }}>
                   {m.sentido === 'credito' ? '+' : '−'}{formatarValor(m.valor, moedaDaConta(m.conta_id))}
@@ -303,6 +334,7 @@ const c: Record<string, React.CSSProperties> = {
   linha: { display: 'grid', gridTemplateColumns: '1fr 0.8fr 3fr 1fr 1fr', gap: 8, padding: '9px 8px', fontSize: 13.5, borderBottom: '1px solid #f2f2f2', alignItems: 'center', minWidth: 820 },
   linhaRepetida: { opacity: 0.5 },
   obs: { color: '#6D28D9', fontSize: 12 },
+  catTag: { display: 'inline-block', marginLeft: 6, fontSize: 11, fontWeight: 700, color: '#3730A3', background: '#EEF2FF', borderRadius: 999, padding: '1px 8px', whiteSpace: 'nowrap' },
   linhaLote: { display: 'grid', gridTemplateColumns: '1.4fr 1.6fr 1.6fr 1fr', gap: 8, padding: '9px 8px', fontSize: 13, borderBottom: '1px solid #f2f2f2', alignItems: 'center', minWidth: 620 },
   cab: { fontWeight: 700, color: 'var(--muted)', fontSize: 12, borderBottom: '2px solid var(--border)' },
   muted: { color: 'var(--muted)', fontSize: 13 },

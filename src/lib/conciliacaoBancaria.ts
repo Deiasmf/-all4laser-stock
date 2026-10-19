@@ -39,9 +39,15 @@ export type MovExtrato = {
   saldo: number | null
   observacoes: string | null
   referencia: string | null
+  flag_fr: string | null       // coluna "F / R" do extrato BPI
   hash: string
+  ocorrencia: number           // n.º da repetição no mesmo dia (desambigua 2 rendas iguais)
   estado: EstadoMov
   ignorar_categoria: IgnorarCategoria | null
+  categoria: string | null     // Parte B — categoria de cashflow (regra)
+  rubrica: string | null       // Parte B — detalhe/entidade
+  categoria_origem: 'regra' | null
+  interna: boolean             // transferência entre contas próprias (EUR↔USD)
   jaExiste: boolean            // já está na BD (não será reinserido)
 }
 
@@ -100,12 +106,111 @@ export function normDescritivo(s: string): string {
   return semAcentos(s).toUpperCase().replace(/\s+/g, ' ').trim()
 }
 
-function hashMovimento(conta_id: string, data: string, valor: number, sentido: Sentido, descritivo: string, saldo: number | null): string {
-  return [conta_id, data, valor.toFixed(2), sentido, normDescritivo(descritivo), saldo == null ? '' : saldo.toFixed(2)].join('§')
+// Hash BASE (sem desambiguação). O hash final junta a ocorrência (ver abaixo) para
+// que 2 movimentos idênticos no mesmo dia (ex.: 2 rendas iguais) continuem a ser 2.
+function hashBase(conta_id: string, data: string, valor: number, sentido: Sentido, descritivo: string): string {
+  return [conta_id, data, valor.toFixed(2), sentido, normDescritivo(descritivo)].join('§')
+}
+
+// ── Motor de categorização (Parte B) ────────────────────────────────────────
+export type RegraCategoria = {
+  id?: string
+  ordem: number
+  ativo: boolean
+  campo: 'descritivo' | 'observacoes' | 'ambos'
+  operador: 'contem' | 'regex' | 'igual' | 'comeca'
+  sentido: Sentido | null
+  padrao: string
+  categoria: string
+  rubrica: string | null
+  marcar_interna: boolean
+  nota?: string | null
+}
+
+const SEL_REGRA = 'id, ordem, ativo, campo, operador, sentido, padrao, categoria, rubrica, marcar_interna, nota'
+
+// Só as ativas (para o motor de import).
+export async function listarRegrasCategoria(): Promise<RegraCategoria[]> {
+  const { data } = await supabase
+    .from('bank_category_rules')
+    .select(SEL_REGRA)
+    .eq('ativo', true)
+    .order('ordem')
+  return (data as RegraCategoria[]) ?? []
+}
+
+// Todas (para a gestão na UI).
+export async function listarRegrasCategoriaTodas(): Promise<RegraCategoria[]> {
+  const { data } = await supabase.from('bank_category_rules').select(SEL_REGRA).order('ordem')
+  return (data as RegraCategoria[]) ?? []
+}
+
+export async function guardarRegraCategoria(r: RegraCategoria, autorNome?: string | null) {
+  const payload = {
+    ordem: r.ordem, ativo: r.ativo, campo: r.campo, operador: r.operador,
+    sentido: r.sentido, padrao: r.padrao, categoria: r.categoria,
+    rubrica: r.rubrica || null, marcar_interna: r.marcar_interna, nota: r.nota || null,
+  }
+  if (r.id) return supabase.from('bank_category_rules').update(payload).eq('id', r.id)
+  return supabase.from('bank_category_rules').insert({ ...payload, criado_por_nome: autorNome ?? null })
+}
+
+export async function apagarRegraCategoria(id: string) {
+  return supabase.from('bank_category_rules').delete().eq('id', id)
+}
+
+// Categorias existentes (para sugestões na UI).
+export async function categoriasExistentes(): Promise<string[]> {
+  const { data } = await supabase.from('bank_category_rules').select('categoria')
+  const set = new Set<string>((data as { categoria: string }[] ?? []).map((r) => r.categoria))
+  return [...set].sort()
+}
+
+function primeiraPalavra(s: string | null): string {
+  return (s ?? '').trim().split(/\s+/)[0] ?? ''
+}
+
+// Resolve o template da rubrica: $1..$9 (capturas do regex no campo que bateu),
+// $0 (campo todo), $OBS / $OBS1 (Observações), $DESC1 (1.ª palavra do descritivo).
+function resolverRubrica(tpl: string | null, campoBatido: string, m: RegExpMatchArray | null, descritivo: string, observacoes: string | null): string | null {
+  if (!tpl) return null
+  let r = tpl.replace(/\$([0-9])/g, (_, d) => (Number(d) === 0 ? campoBatido : m?.[Number(d)] ?? ''))
+  r = r.replace(/\$OBS1/g, primeiraPalavra(observacoes))
+       .replace(/\$OBS/g, (observacoes ?? '').trim())
+       .replace(/\$DESC1/g, primeiraPalavra(descritivo))
+  r = r.replace(/\s+/g, ' ').trim()
+  return r || null
+}
+
+export type ResultadoCategoria = { categoria: string; rubrica: string | null; interna: boolean } | null
+
+// Aplica as regras por ordem; a 1.ª que bate ganha.
+export function categorizar(descritivo: string, observacoes: string | null, sentido: Sentido, regras: RegraCategoria[]): ResultadoCategoria {
+  for (const r of regras) {
+    if (r.sentido && r.sentido !== sentido) continue
+    const campos: { nome: string; valor: string }[] =
+      r.campo === 'observacoes' ? [{ nome: 'obs', valor: observacoes ?? '' }]
+      : r.campo === 'ambos' ? [{ nome: 'desc', valor: descritivo }, { nome: 'obs', valor: observacoes ?? '' }]
+      : [{ nome: 'desc', valor: descritivo }]
+    for (const c of campos) {
+      let bateu = false
+      let match: RegExpMatchArray | null = null
+      if (r.operador === 'contem') bateu = c.valor.toUpperCase().includes(r.padrao.toUpperCase())
+      else if (r.operador === 'comeca') bateu = c.valor.toUpperCase().trimStart().startsWith(r.padrao.toUpperCase())
+      else if (r.operador === 'igual') bateu = c.valor.trim().toUpperCase() === r.padrao.toUpperCase()
+      else if (r.operador === 'regex') {
+        try { match = c.valor.match(new RegExp(r.padrao, 'i')); bateu = !!match } catch { bateu = false }
+      }
+      if (bateu) {
+        return { categoria: r.categoria, rubrica: resolverRubrica(r.rubrica, c.valor, match, descritivo, observacoes), interna: r.marcar_interna }
+      }
+    }
+  }
+  return null
 }
 
 // ── Deteção de colunas dentro de uma folha do extrato ────────────────────────
-type Mapeamento = { dataMov: number; dataValor: number; descritivo: number; valor: number; obs: number }
+type Mapeamento = { dataMov: number; dataValor: number; descritivo: number; valor: number; obs: number; fr: number }
 
 function acha(cab: string[], termos: string[]): number {
   const n = cab.map((h) => semAcentos(String(h ?? '')).toLowerCase())
@@ -127,7 +232,9 @@ function detetarCabecalho(linhas: unknown[][]): { headerRow: number; map: Mapeam
     let dataMov = acha(cab, ['data', 'mov'])
     if (dataMov < 0) dataMov = norm.findIndex((h, idx) => h.includes('data') && idx !== dataValor)
     if (dataMov >= 0 && descritivo >= 0 && valor >= 0) {
-      return { headerRow: i, map: { dataMov, dataValor, descritivo, valor, obs: acha(cab, ['observ']) } }
+      // Coluna "F / R" (bandeira do extrato BPI): cabeçalho normaliza para "f / r".
+      const fr = norm.findIndex((h) => /^f\s*\/?\s*r$/.test(h.trim()))
+      return { headerRow: i, map: { dataMov, dataValor, descritivo, valor, obs: acha(cab, ['observ']), fr } }
     }
   }
   return null
@@ -208,18 +315,33 @@ export async function processarFolhas(
       const sentido: Sentido = valorBruto < 0 ? 'debito' : 'credito'
       const valor = Math.abs(valorBruto)
       const obs = det.map.obs >= 0 ? String(row[det.map.obs] ?? '').trim() || null : null
+      const fr = det.map.fr >= 0 ? String(row[det.map.fr] ?? '').trim() || null : null
       const dataValor = det.map.dataValor >= 0 ? parseDataCelula(row[det.map.dataValor]) : null
       brutos.push({
         conta_id: conta.id, conta_nome: conta.nome,
         data, data_valor: dataValor, descritivo, valor, sentido,
-        saldo: null, observacoes: obs, referencia: null,
-        hash: hashMovimento(conta.id, data, valor, sentido, descritivo, null),
-        estado: 'por_conciliar', ignorar_categoria: null, jaExiste: false,
+        saldo: null, observacoes: obs, referencia: null, flag_fr: fr,
+        hash: hashBase(conta.id, data, valor, sentido, descritivo), // base; ocorrência junta-se a seguir
+        ocorrencia: 0,
+        estado: 'por_conciliar', ignorar_categoria: null,
+        categoria: null, rubrica: null, categoria_origem: null, interna: false,
+        jaExiste: false,
       })
     }
   }
 
-  // Regras de auto-ignorar + débitos → ignorado; créditos limpos → por_conciliar.
+  // Ocorrência + hash final: em ordem de leitura, conta repetições do hash BASE
+  // para que 2 movimentos idênticos no mesmo dia fiquem com hashes distintos
+  // (§#1, §#2…). Reimportar o mesmo ficheiro dá a mesma sequência → idempotente.
+  const contador = new Map<string, number>()
+  for (const m of brutos) {
+    const n = (contador.get(m.hash) ?? 0) + 1
+    contador.set(m.hash, n)
+    m.ocorrencia = n
+    m.hash = `${m.hash}§#${n}`
+  }
+
+  // Regras de auto-ignorar (fila de conciliação) + débitos → ignorado.
   const regras = await listarRegrasIgnorar()
   for (const m of brutos) {
     const d = normDescritivo(m.descritivo)
@@ -229,7 +351,15 @@ export async function processarFolhas(
     else m.estado = 'por_conciliar'
   }
 
-  // Dedup dentro do lote + contra a BD (hash).
+  // Categorização de cashflow (independente da fila): categoria/rubrica/interna.
+  const regrasCat = await listarRegrasCategoria()
+  for (const m of brutos) {
+    const r = categorizar(m.descritivo, m.observacoes, m.sentido, regrasCat)
+    if (r) { m.categoria = r.categoria; m.rubrica = r.rubrica; m.categoria_origem = 'regra'; m.interna = r.interna }
+  }
+
+  // Dedup contra repetições EXATAS do hash final (não colapsa repetições legítimas,
+  // porque essas já têm ocorrências diferentes) + contra a BD.
   const vistos = new Set<string>()
   const unicos = brutos.filter((m) => (vistos.has(m.hash) ? false : (vistos.add(m.hash), true)))
   const existentes = await hashesExistentes(unicos.map((m) => m.hash))
@@ -304,7 +434,9 @@ export async function importarMovimentos(
         conta_id: m.conta_id, import_lote_id: (lote as { id: string }).id,
         data: m.data, data_valor: m.data_valor, descritivo: m.descritivo,
         valor: m.valor, sentido: m.sentido, saldo: m.saldo,
-        referencia: m.referencia, observacoes: m.observacoes,
+        referencia: m.referencia, observacoes: m.observacoes, flag_fr: m.flag_fr,
+        ocorrencia: m.ocorrencia, interna: m.interna,
+        categoria: m.categoria, rubrica: m.rubrica, categoria_origem: m.categoria_origem,
         estado: m.estado, ignorar_categoria: m.ignorar_categoria, hash: m.hash,
         criado_por: autor.id, criado_por_nome: autor.nome,
       }))
@@ -321,6 +453,38 @@ export async function importarMovimentos(
   }
 
   return { porConta, erro }
+}
+
+// ── Estado de atualização por conta (Parte D — o ritual mensal) ──────────────
+// Para cada conta: a data do último movimento importado e há quantos dias.
+// Acima de 35 dias → "dados bancários desatualizados".
+export type EstadoConta = {
+  conta_id: string
+  conta_nome: string
+  moeda: string
+  ultimaData: string | null       // data do movimento mais recente (periodo_fim)
+  ultimaImportacao: string | null  // quando foi feita a última importação
+  diasDesde: number | null
+  desatualizado: boolean
+}
+export async function estadoImportacoes(limiteDias = 35): Promise<EstadoConta[]> {
+  const contas = await listarContas()
+  const { data } = await supabase
+    .from('bank_import_lotes')
+    .select('conta_id, created_at, periodo_fim')
+  const lotes = (data as { conta_id: string; created_at: string; periodo_fim: string | null }[]) ?? []
+  const hoje = new Date()
+  return contas.map((c) => {
+    const seus = lotes.filter((l) => l.conta_id === c.id)
+    const ultimaData = seus.map((l) => l.periodo_fim).filter(Boolean).sort().at(-1) ?? null
+    const ultimaImportacao = seus.map((l) => l.created_at).sort().at(-1) ?? null
+    const diasDesde = ultimaData ? Math.floor((hoje.getTime() - new Date(ultimaData).getTime()) / 86400000) : null
+    return {
+      conta_id: c.id, conta_nome: c.nome, moeda: c.moeda,
+      ultimaData, ultimaImportacao, diasDesde,
+      desatualizado: diasDesde == null || diasDesde > limiteDias,
+    }
+  })
 }
 
 // ── Histórico de importações ─────────────────────────────────────────────────
