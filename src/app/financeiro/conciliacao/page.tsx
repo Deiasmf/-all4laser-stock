@@ -6,7 +6,7 @@ import { readSheet } from 'read-excel-file/browser'
 import { useAuth } from '@/lib/auth'
 import {
   listarContas, processarFolhas, importarMovimentos, listarLotes, ehFolhaExtrato, formatarValor,
-  estadoImportacoes,
+  estadoImportacoes, autoconciliarReferencia,
   type ContaBancaria, type MovExtrato, type ResultadoImport, type LoteImport, type EstadoConta,
 } from '@/lib/conciliacaoBancaria'
 
@@ -26,6 +26,7 @@ export default function ConciliacaoPage() {
   const [resultado, setResultado] = useState<ResultadoImport | null>(null)
   const [lotes, setLotes] = useState<LoteImport[]>([])
   const [estados, setEstados] = useState<EstadoConta[]>([])
+  const [autoConc, setAutoConc] = useState<{ conciliados: number; valor: number } | null>(null)
   const [contaForcada, setContaForcada] = useState('') // '' = automático (pelo nome/cabeçalho)
 
   const moedaDaConta = useCallback((id: string) => contas.find((c) => c.id === id)?.moeda ?? 'EUR', [contas])
@@ -96,6 +97,8 @@ export default function ConciliacaoPage() {
     setAImportar(true)
     const r = await importarMovimentos(movimentos, mapPorConta as Record<string, never>, ficheiroNome, { id: perfil?.id ?? null, nome: perfil?.nome ?? null })
     setResultado(r)
+    // Conciliação automática por referência (liga recebimentos a faturas pela ref. "A4L FT …")
+    setAutoConc(r.erro ? null : await autoconciliarReferencia())
     await carregarLotes()
     if (folhas.length) await analisar(folhas, contas, contaForcada || undefined)  // refresca "já existe"
     setAImportar(false)
@@ -231,6 +234,9 @@ export default function ConciliacaoPage() {
               {resultado.erro
                 ? `⚠️ Erro na importação: ${resultado.erro}`
                 : '✅ ' + resultado.porConta.map((p) => `${p.conta_nome}: ${p.novos} novo(s), ${p.repetidos} repetido(s)`).join(' · ')}
+              {autoConc && autoConc.conciliados > 0 && (
+                <div style={{ marginTop: 6 }}>🔗 {autoConc.conciliados} recebimento(s) conciliado(s) automaticamente por referência ({formatarValor(autoConc.valor, 'EUR')}).</div>
+              )}
             </div>
           )}
 
