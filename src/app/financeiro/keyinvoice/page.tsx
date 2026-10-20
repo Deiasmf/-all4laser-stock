@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { readSheet } from 'read-excel-file/browser'
 import { useAuth } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 import {
@@ -110,7 +111,19 @@ export default function KeyinvoicePage() {
 
   async function aoCarregarFicheiro(file: File | undefined) {
     if (!file) return
-    const conteudo = await file.text()
+    let conteudo: string
+    if (/\.xlsx$/i.test(file.name)) {
+      // Mapas nativos do Keyinvoice vêm em Excel (ex.: "Listagem de facturas").
+      // Converte a 1.ª folha para o texto ;-separado que o parseCsv entende.
+      const linhas = (await readSheet(file)) as unknown[][]
+      conteudo = linhas.map((r) => r.map((c) => {
+        if (c == null) return ''
+        if (c instanceof Date) return `${c.getFullYear()}-${String(c.getMonth() + 1).padStart(2, '0')}-${String(c.getDate()).padStart(2, '0')}`
+        return String(c).replace(/;/g, ',')
+      }).join(';')).join('\n')
+    } else {
+      conteudo = await file.text()
+    }
     setTexto(conteudo)
     await analisar(conteudo)
   }
@@ -187,13 +200,13 @@ export default function KeyinvoicePage() {
           <li>Clica em <strong>Importar</strong>. Documentos novos são criados; os já importados são atualizados (refresca o valor pendente).</li>
         </ol>
         <p style={c.nota}>
-          Aceita o <strong>export do Keyinvoice</strong> tal como sai (Data · RefªDocº · Cliente · Contribuinte · … · Valor Pendente) — o tipo vem da referência e o valor é o pendente. As entidades são associadas por NIF (ou nome). Também aceita o modelo próprio (<code style={c.code}>{CABECALHO_CSV}</code>).
+          Aceita o <strong>export do Keyinvoice</strong> (CSV ou Excel) tal como sai (Data · RefªDocº · Cliente · Contribuinte · … · Valor Pendente). Na <strong>Listagem de facturas</strong> (RefªDocº &quot;71 Nº 352&quot;) usa o valor total e alinha com as faturas da API (sem duplicados); no mapa de pendentes usa o pendente. As entidades são associadas por NIF (ou nome). Também aceita o modelo próprio (<code style={c.code}>{CABECALHO_CSV}</code>).
         </p>
         <div style={c.acoesTopo}>
           <button style={c.btnSec} onClick={descarregarModeloCsv}>⬇️ Descarregar modelo CSV</button>
           <label style={c.btnPrim}>
-            📄 Carregar ficheiro CSV
-            <input type="file" accept=".csv,text/csv" style={{ display: 'none' }} onChange={(e) => aoCarregarFicheiro(e.target.files?.[0])} />
+            📄 Carregar ficheiro (CSV / Excel)
+            <input type="file" accept=".csv,text/csv,.xlsx" style={{ display: 'none' }} onChange={(e) => aoCarregarFicheiro(e.target.files?.[0])} />
           </label>
         </div>
         <p style={c.aviso2}>

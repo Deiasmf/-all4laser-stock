@@ -148,8 +148,19 @@ function tipoDeRef(ref: string): TipoDocumento {
 // ─── Parsing ─────────────────────────────────────────────────────────────────
 
 export function parseCsv(texto: string): { docs: DocKeyinvoice[]; erros: string[] } {
-  const linhas = texto.split(/\r?\n/).filter((l) => l.trim() !== '')
-  if (linhas.length === 0) return { docs: [], erros: ['Ficheiro vazio.'] }
+  const todas = texto.split(/\r?\n/).filter((l) => l.trim() !== '')
+  if (todas.length === 0) return { docs: [], erros: ['Ficheiro vazio.'] }
+  // O cabeçalho pode não estar na 1.ª linha: os mapas nativos ("Listagem de
+  // facturas") têm título e período antes. Procura a linha de cabeçalho real.
+  let hIdx = 0
+  for (let i = 0; i < Math.min(todas.length, 15); i++) {
+    const cols = celulas(todas[i], detetarDelim(todas[i])).map(normHeader)
+    if (cols.includes('faturada') || cols.includes('refdoc') || cols.includes('contribuinte')
+      || cols.includes('numero') || (cols.includes('data') && (cols.includes('cliente') || cols.includes('fornecedor')))) {
+      hIdx = i; break
+    }
+  }
+  const linhas = todas.slice(hIdx)
   const delim = detetarDelim(linhas[0])
   const header = celulas(linhas[0], delim).map(normHeader)
   // Export de Orçamentos / "Fatura Proforma" do Keyinvoice (tem coluna "Faturada?"):
@@ -178,16 +189,30 @@ function parseKeyinvoice(linhas: string[], delim: string | RegExp, header: strin
     const cols = celulas(linhas[i], delim)
     const ref = (cols[iRef] ?? '').trim()
     if (!ref) continue
-    const tipo = tipoDeRef(ref)
     const data = parseData(cols[iData] ?? '')
     if (!data) { erros.push(`Linha ${i + 1}: data inválida ("${cols[iData] ?? ''}").`); continue }
-    const bruto = iPend >= 0 ? cols[iPend] : cols[iCiva]
-    const valor = parseValor(bruto ?? '')
-    if (isNaN(valor)) { erros.push(`Linha ${i + 1}: valor inválido ("${bruto ?? ''}").`); continue }
-    if (valor <= 0) continue // nada pendente (documento liquidado) → fora da conta corrente
+
+    // "Listagem de facturas": RefªDocº = "<série> Nº <número>" (ex.: "71 Nº 352").
+    // Chave ALINHADA com o sync da API (ki|4|série|número) → sem duplicados e a
+    // conciliação bancária por referência casa. Valor = total C/IVA (o que foi/está
+    // por pagar vem da conciliação, não do "pendente" do Keyinvoice).
+    const mSerie = ref.match(/(\d+)\s*N[ºo]\s*(\d+)/i)
+    let tipo: TipoDocumento, keyinvoice_doc_id: string, numero: string, bruto: string
+    if (mSerie) {
+      tipo = 'fatura'; numero = mSerie[2]
+      keyinvoice_doc_id = `ki|4|${mSerie[1]}|${mSerie[2]}`
+      bruto = (iCiva >= 0 ? cols[iCiva] : cols[iPend]) ?? ''
+    } else {
+      tipo = tipoDeRef(ref); numero = ref
+      keyinvoice_doc_id = `${tipo}|${ref}`
+      bruto = (iPend >= 0 ? cols[iPend] : cols[iCiva]) ?? ''
+    }
+    const valor = parseValor(bruto)
+    if (isNaN(valor)) { erros.push(`Linha ${i + 1}: valor inválido ("${bruto}").`); continue }
+    if (valor <= 0) continue // documento a zero → fora da conta corrente
     const descricao = (iDesc >= 0 ? cols[iDesc] ?? '' : '').trim() || null
     docs.push({
-      keyinvoice_doc_id: `${tipo}|${ref}`,
+      keyinvoice_doc_id,
       descricao,
       categoria: categorizar(descricao, ref),
       subcategoria_id: null,
@@ -195,7 +220,7 @@ function parseKeyinvoice(linhas: string[], delim: string | RegExp, header: strin
       nome: (cols[iNome] ?? '').trim() || '—',
       nif: normalizarNif(cols[iNif]) || null,
       tipo_documento: tipo,
-      numero: ref,
+      numero,
       data_documento: data,
       data_vencimento: iVenc >= 0 ? parseData(cols[iVenc] ?? '') : null,
       valor,
