@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { semAcentos } from './categorizacaoFinanceira'
+import { mensagemErro } from './erros'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONCILIAÇÃO BANCÁRIA — Fase A: importação do extrato (Excel/CSV do BPI).
@@ -378,10 +379,11 @@ export async function listarRegrasIgnorar(): Promise<RegraIgnorar[]> {
 }
 
 async function hashesExistentes(hashes: string[]): Promise<Set<string>> {
+  // Via RPC com text[] — o filtro .in() parte-se com vírgulas/§ dentro do hash.
   const set = new Set<string>()
-  for (let i = 0; i < hashes.length; i += 400) {
-    const lote = hashes.slice(i, i + 400)
-    const { data } = await supabase.from('bank_movements').select('hash').in('hash', lote)
+  for (let i = 0; i < hashes.length; i += 1000) {
+    const lote = hashes.slice(i, i + 1000)
+    const { data } = await supabase.rpc('bank_hashes_existentes', { p_hashes: lote })
     for (const r of (data as { hash: string }[]) ?? []) set.add(r.hash)
   }
   return set
@@ -404,55 +406,38 @@ export async function importarMovimentos(
   ficheiroNome: string,
   autor: { id: string | null; nome: string | null }
 ): Promise<ResultadoImport> {
-  const porContaIds = Array.from(new Set(movimentos.map((m) => m.conta_id)))
-  const porConta: ResultadoImportConta[] = []
-  let erro: string | undefined
-
-  for (const contaId of porContaIds) {
-    const doConta = movimentos.filter((m) => m.conta_id === contaId)
-    const novos = doConta.filter((m) => !m.jaExiste)
-    const nomeConta = doConta[0]?.conta_nome ?? ''
-    const datas = doConta.map((m) => m.data).sort()
-
-    // Guarda o mapeamento de colunas na conta (reutilização/referência).
-    if (mapPorConta[contaId]) {
-      await supabase.from('bank_accounts')
-        .update({ mapeamento_colunas: mapPorConta[contaId] }).eq('id', contaId)
-    }
-
-    // Lote (relatório).
-    const { data: lote, error: eLote } = await supabase.from('bank_import_lotes').insert({
-      conta_id: contaId, ficheiro_nome: ficheiroNome,
-      periodo_inicio: datas[0] ?? null, periodo_fim: datas[datas.length - 1] ?? null,
-      total_linhas: doConta.length, novos: novos.length, repetidos: doConta.length - novos.length,
-      criado_por: autor.id, criado_por_nome: autor.nome,
-    }).select('id').single()
-    if (eLote) { erro = eLote.message; break }
-
-    if (novos.length > 0) {
-      const rows = novos.map((m) => ({
-        conta_id: m.conta_id, import_lote_id: (lote as { id: string }).id,
-        data: m.data, data_valor: m.data_valor, descritivo: m.descritivo,
-        valor: m.valor, sentido: m.sentido, saldo: m.saldo,
-        referencia: m.referencia, observacoes: m.observacoes, flag_fr: m.flag_fr,
-        ocorrencia: m.ocorrencia, interna: m.interna,
-        categoria: m.categoria, rubrica: m.rubrica, categoria_origem: m.categoria_origem,
-        estado: m.estado, ignorar_categoria: m.ignorar_categoria, hash: m.hash,
-        criado_por: autor.id, criado_por_nome: autor.nome,
-      }))
-      const { error } = await supabase.from('bank_movements').insert(rows)
-      if (error) { erro = error.message; break }
-    }
-
-    porConta.push({
-      conta_id: contaId, conta_nome: nomeConta,
-      novos: novos.length, repetidos: doConta.length - novos.length,
-      ignorados: novos.filter((m) => m.estado === 'ignorado').length,
-      porConciliar: novos.filter((m) => m.estado === 'por_conciliar').length,
-    })
+  // Guarda o mapeamento de colunas na conta (reutilização/referência). Não é
+  // crítico para a importação — se falhar, segue na mesma.
+  for (const [contaId, map] of Object.entries(mapPorConta)) {
+    try { await supabase.from('bank_accounts').update({ mapeamento_colunas: map }).eq('id', contaId) } catch { /* ignora */ }
   }
 
-  return { porConta, erro }
+  // Importação ATÓMICA e TOLERANTE numa RPC: ON CONFLICT (hash) DO NOTHING — uma
+  // colisão é "já importado", salta e continua; nunca aborta o ficheiro. Enviamos
+  // todos os movimentos (os repetidos são ignorados pela BD) só com os campos que
+  // a BD precisa (sem conta_nome/jaExiste).
+  const payload = movimentos.map((m) => ({
+    conta_id: m.conta_id, data: m.data, data_valor: m.data_valor, descritivo: m.descritivo,
+    valor: m.valor, sentido: m.sentido, saldo: m.saldo, referencia: m.referencia,
+    observacoes: m.observacoes, flag_fr: m.flag_fr, ocorrencia: m.ocorrencia, interna: m.interna,
+    categoria: m.categoria, rubrica: m.rubrica, categoria_origem: m.categoria_origem,
+    estado: m.estado, ignorar_categoria: m.ignorar_categoria, hash: m.hash,
+  }))
+
+  const { data, error } = await supabase.rpc('bank_importar', {
+    p_ficheiro: ficheiroNome,
+    p_autor: autor.id,
+    p_autor_nome: autor.nome,
+    p_movimentos: payload,
+  })
+  if (error) return { porConta: [], erro: mensagemErro(error, { entidade: 'movimento' }) }
+
+  const porConta = ((data as ResultadoImportConta[]) ?? []).map((p) => ({
+    conta_id: p.conta_id, conta_nome: p.conta_nome,
+    novos: Number(p.novos ?? 0), repetidos: Number(p.repetidos ?? 0),
+    ignorados: Number(p.ignorados ?? 0), porConciliar: Number(p.porConciliar ?? 0),
+  }))
+  return { porConta }
 }
 
 // ── Estado de atualização por conta (Parte D — o ritual mensal) ──────────────
