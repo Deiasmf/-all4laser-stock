@@ -488,13 +488,20 @@ export async function estadoImportacoes(limiteDias = 35): Promise<EstadoConta[]>
 }
 
 // Conciliação automática por referência ("A4L FT …" nas Observações) — corre no
-// fim de cada importação. Só liga recebimentos de cliente a faturas em casos de
-// alta confiança (1 fatura, chave série/nº, valor exato). Devolve quantos ligou.
+// fim de cada importação. Liga recebimentos de cliente a faturas em casos de alta
+// confiança: (1) uma fatura, valor exato; (2) VÁRIAS faturas ("…/352+440"),
+// incluindo prestações, quando o conjunto fecha exatamente. Parciais ficam manuais.
 export async function autoconciliarReferencia(): Promise<{ conciliados: number; valor: number }> {
-  const { data, error } = await supabase.rpc('bank_autoconciliar_referencia')
-  if (error) return { conciliados: 0, valor: 0 }
-  const row = Array.isArray(data) ? data[0] : data
-  return { conciliados: Number(row?.conciliados ?? 0), valor: Number(row?.valor_total ?? 0) }
+  let conciliados = 0
+  let valor = 0
+  for (const fn of ['bank_autoconciliar_referencia', 'bank_autoconciliar_multifatura']) {
+    const { data, error } = await supabase.rpc(fn)
+    if (error) continue
+    const row = Array.isArray(data) ? data[0] : data
+    conciliados += Number(row?.conciliados ?? 0)
+    valor += Number(row?.valor_total ?? 0)
+  }
+  return { conciliados, valor }
 }
 
 // ── Histórico de importações ─────────────────────────────────────────────────
