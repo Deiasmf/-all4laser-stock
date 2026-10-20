@@ -494,7 +494,7 @@ export async function estadoImportacoes(limiteDias = 35): Promise<EstadoConta[]>
 export async function autoconciliarReferencia(): Promise<{ conciliados: number; valor: number }> {
   let conciliados = 0
   let valor = 0
-  for (const fn of ['bank_autoconciliar_referencia', 'bank_autoconciliar_multifatura']) {
+  for (const fn of ['bank_autoconciliar_referencia', 'bank_autoconciliar_multifatura', 'bank_autoconciliar_parcial']) {
     const { data, error } = await supabase.rpc(fn)
     if (error) continue
     const row = Array.isArray(data) ? data[0] : data
