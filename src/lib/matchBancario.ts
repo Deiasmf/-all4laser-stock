@@ -144,23 +144,45 @@ export function clientesQueBatem(desc: string, obs: string | null, clientes: Cli
   return clientesPorNome(alvoNome, clientes)
 }
 
+// Um token do extrato "casa" um token do cliente se forem iguais, ou (ambos com
+// ≥4 letras) um for prefixo do outro — para apanhar nomes TRUNCADOS no extrato
+// (ex.: "…MARQUES FERRE" → "FERREIRA", "…AGOST" → "AGOSTINHO", "…CINTR" → "CINTRA").
+function tokenCasa(a: string, b: string): boolean {
+  if (a === b) return true
+  return Math.min(a.length, b.length) >= 4 && (a.startsWith(b) || b.startsWith(a))
+}
+
 // Casa um nome (ex.: extraído ou sugerido pela IA) com os clientes por tokens.
+// Tolera truncagem: o extrato bancário corta o nome a meio (limite de caracteres),
+// por isso aceitamos (1) sobreposição de tokens distintivos com prefixo e
+// (2) o nome do extrato ser prefixo do nome completo do cliente.
 export function clientesPorNome(alvoNome: string | null, clientes: ClienteIdx[]): ClienteIdx[] {
   if (!alvoNome) return []
   const alvoTokens = tokensSignificativos(alvoNome)
-  if (alvoTokens.length === 0) return []
-  // Pontua cada cliente pela sobreposição de tokens distintivos.
+  const alvoNorm = normNome(alvoNome)
   const pontuados = clientes
     .map((c) => {
-      if (c.tokens.length === 0) return { c, score: 0 }
-      const inter = alvoTokens.filter((t) => c.tokens.includes(t))
-      const subconjunto = inter.length >= 1 && (inter.length === alvoTokens.length || inter.length === c.tokens.length)
-      const ok = inter.length >= 2 || subconjunto
-      return { c, score: ok ? inter.length : 0 }
+      // (1) sobreposição de tokens distintivos, tolerante a prefixos.
+      let inter = 0
+      if (c.tokens.length && alvoTokens.length) {
+        const usados = new Set<number>()
+        for (const t of alvoTokens) {
+          const j = c.tokens.findIndex((ct, idx) => !usados.has(idx) && tokenCasa(t, ct))
+          if (j >= 0) { inter++; usados.add(j) }
+        }
+      }
+      const subconjunto = inter >= 1 && (inter === alvoTokens.length || inter === c.tokens.length)
+      let score = (inter >= 2 || subconjunto) ? inter * 100 : 0
+      // (2) nome do extrato é prefixo (≥8 letras) do nome do cliente, ou vice-versa.
+      if (c.nomeNorm && alvoNorm.length >= 8 &&
+          (c.nomeNorm.startsWith(alvoNorm) || alvoNorm.startsWith(c.nomeNorm))) {
+        score = Math.max(score, 50 + Math.min(alvoNorm.length, c.nomeNorm.length))
+      }
+      return { c, score }
     })
     .filter((x) => x.score > 0)
   if (pontuados.length === 0) return []
-  // Fica só com a melhor camada de sobreposição (evita falsos múltiplos por 1 token).
+  // Fica só com a melhor camada (tokens distintivos ganham ao prefixo simples).
   const max = Math.max(...pontuados.map((x) => x.score))
   return pontuados.filter((x) => x.score === max).map((x) => x.c)
 }
