@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { procurarMensagens, obterEmail, garantirEtiqueta, aplicarEtiqueta, caixaLeads } from '@/lib/gmailRead'
 import { classificar, queryCandidatos, ETIQUETA_PROCESSADA } from '@/lib/leadSources'
-import { extrairLead } from '@/lib/leadExtract'
+import { extrairLead, falhaGlobalIA, type LeadExtraida } from '@/lib/leadExtract'
 
 // Ingestão automática de leads por email. Lê a caixa (Gmail API, Service
 // Account), identifica os emails-lead por remetente/padrão, extrai os campos
@@ -50,14 +50,30 @@ export async function GET(req: Request) {
 
     const resultados: Array<Record<string, unknown>> = []
     let criados = 0
+    let falhaGlobal: string | null = null
 
     for (const id of ids) {
       const email = await obterEmail(id)
       const def = classificar(email)
       if (!def) { resultados.push({ id, assunto: email.assunto, estado: 'ignorado (não é lead)' }); continue }
-      if (jaEmBd.has(id)) { resultados.push({ id, assunto: email.assunto, estado: 'ignorado (já em BD)' }); continue }
+      if (jaEmBd.has(id)) {
+        // Já foi ingerida: etiquetar (a etiqueta pode ter falhado antes) para
+        // não voltar a entrar nos candidatos de todas as corridas.
+        if (!dryrun) await aplicarEtiqueta(id, labelId).catch(() => {})
+        resultados.push({ id, assunto: email.assunto, estado: 'ignorado (já em BD)' }); continue
+      }
 
-      const extra = await extrairLead(email, def.fonte)
+      // A falha de um email não pode deitar abaixo a corrida toda; só uma falha
+      // global (sem créditos, chave errada, API em baixo) interrompe o resto.
+      let extra: LeadExtraida
+      try {
+        extra = await extrairLead(email, def.fonte)
+      } catch (e) {
+        const erro = e instanceof Error ? e.message : 'Falha na extração.'
+        resultados.push({ id, assunto: email.assunto, estado: 'falhou (extração)', erro })
+        if (falhaGlobalIA(e)) { falhaGlobal = erro; break }
+        continue
+      }
       // Sem qualquer forma de contacto → não é uma lead útil (ex.: auto-resposta).
       if (!extra.email && !extra.telefone) {
         resultados.push({ id, assunto: email.assunto, estado: 'ignorado (sem contacto)' }); continue
@@ -92,7 +108,12 @@ export async function GET(req: Request) {
       resultados.push({ id, fonte: def.fonte, assunto: email.assunto, estado: 'criada', nome: lead.nome })
     }
 
-    return Response.json({ ok: true, dryrun, caixa: caixaLeads(), total: ids.length, criados, resultados })
+    // Uma falha global é reportada como 500 (o cron fica vermelho e avisa),
+    // mas as leads criadas antes disso ficam gravadas e etiquetadas.
+    return Response.json(
+      { ok: !falhaGlobal, dryrun, caixa: caixaLeads(), total: ids.length, criados, erro: falhaGlobal ?? undefined, resultados },
+      falhaGlobal ? { status: 500 } : undefined,
+    )
   } catch (e) {
     return Response.json({ ok: false, erro: e instanceof Error ? e.message : 'Falha na ingestão.' }, { status: 500 })
   }
