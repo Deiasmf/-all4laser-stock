@@ -48,7 +48,9 @@ export const PLACEHOLDERS_FATURA: { chave: keyof FaturaEmailVars; desc: string }
 ]
 
 // Placeholders que, se vazios, tornam o email incompleto (avisar antes de enviar).
-export const CRITICOS: (keyof FaturaEmailVars)[] = ['n_fatura', 'data_fatura', 'valor_total']
+// O template já não mostra valor nem data (remete para a fatura em anexo), por
+// isso o único campo crítico é o número da fatura.
+export const CRITICOS: (keyof FaturaEmailVars)[] = ['n_fatura']
 
 // Substitui {chave} e {{chave}} pelos valores; chaves em falta ficam vazias.
 // Faz primeiro as chavetas duplas e só depois as simples (para não partir
