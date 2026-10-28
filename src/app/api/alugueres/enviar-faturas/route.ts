@@ -17,6 +17,8 @@ export const maxDuration = 300
 const BUCKET = 'faturas-alugueres'
 const THROTTLE_MS = 600      // pausa entre envios (limites do Gmail)
 const TENTATIVAS_MAX = 2     // tentativas por fatura
+// CC fixo em todas as faturas de aluguer: Vanessa (financeiro) + Andreia.
+const CC_FIXO = ['vanessa.tavares@all4laser.com', 'andreia.fernandes@all4laser.com']
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 type ItemEnvio = {
@@ -67,10 +69,10 @@ export async function POST(req: Request) {
 
   for (let idx = 0; idx < itens.length; idx++) {
     const item = itens[idx]
-    const registar = async (estado: 'enviado' | 'falhou', extra: { erro?: string; msgId?: string; threadId?: string; mes?: string | null; aluguerId?: string | null }) => {
+    const registar = async (estado: 'enviado' | 'falhou', extra: { erro?: string; msgId?: string; threadId?: string; mes?: string | null; aluguerId?: string | null; cc?: string[] }) => {
       await db.from('alugueres_fatura_envios').insert({
         faturacao_id: item.faturacaoId, aluguer_id: extra.aluguerId ?? null, mes: extra.mes ?? null,
-        para: item.para, cc: item.cc ?? null, template_chave: item.templateChave,
+        para: item.para, cc: extra.cc?.join(', ') ?? item.cc ?? null, template_chave: item.templateChave,
         assunto: item.assuntoOverride ?? null, estado, erro: extra.erro ?? null,
         gmail_message_id: extra.msgId ?? null, gmail_thread_id: extra.threadId ?? null,
         enviado_por: userData.user.id, enviado_por_nome: remetenteNome,
@@ -129,7 +131,15 @@ export async function POST(req: Request) {
 
       const nomeFicheiro = fat.fatura_nome ?? `fatura-${fat.mes}.pdf`
       const mime = nomeFicheiro.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream'
-      const cc = (item.cc ?? '').split(/[,;\n]/).map((e) => e.trim()).filter((e) => e.includes('@'))
+      // CC = fixo (Vanessa + Andreia) + o que vier do modal, sem duplicados e
+      // sem repetir o destinatário (compara em minúsculas).
+      const ccManual = (item.cc ?? '').split(/[,;\n]/).map((e) => e.trim()).filter((e) => e.includes('@'))
+      const cc: string[] = []
+      const vistos = new Set<string>([para.toLowerCase()])
+      for (const e of [...CC_FIXO, ...ccManual]) {
+        const k = e.toLowerCase()
+        if (!vistos.has(k)) { vistos.add(k); cc.push(e) }
+      }
       // O template pode já fechar com a sua assinatura (incluir_assinatura=false):
       // nesse caso não acrescentamos a assinatura do Gmail, para não empilhar duas.
       const incluirAssin = templates.get(item.templateChave)?.incluir_assinatura ?? true
@@ -147,7 +157,7 @@ export async function POST(req: Request) {
       if (enviado) {
         await db.from('alugueres_faturacao_mensal').update({ fatura_enviada_em: new Date().toISOString(), fatura_enviada_para: para }).eq('id', item.faturacaoId)
         if (al?.cliente_id) await db.from('clientes').update({ email_faturacao: para }).eq('id', al.cliente_id)
-        await registar('enviado', { msgId, threadId, mes: fat.mes, aluguerId: fat.aluguer_id })
+        await registar('enviado', { msgId, threadId, mes: fat.mes, aluguerId: fat.aluguer_id, cc })
         resultados.push({ faturacaoId: item.faturacaoId, estado: 'enviado' })
       } else {
         await registar('falhou', { erro: ultimoErro, mes: fat.mes, aluguerId: fat.aluguer_id })
