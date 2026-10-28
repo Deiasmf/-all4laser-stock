@@ -123,6 +123,8 @@ export default function EnvioMensalPage() {
             {semEmail > 0 && <span style={c.avisoChip}>⚠ {semEmail} sem email</span>}
           </div>
 
+          <p style={c.ccNota}>Cada fatura vai de comercial@all4laser.com, com a Vanessa e a Andreia sempre em CC.</p>
+
           {relatorio && (
             <div style={c.relatorio}>
               <strong>Relatório:</strong> {relatorio.filter((r) => r.estado === 'enviado').length} enviadas · {falhadas.length} falhadas
@@ -191,6 +193,7 @@ const c: Record<string, React.CSSProperties> = {
   input: { padding: 10, border: '1px solid var(--border)', borderRadius: 8, fontSize: 15, background: 'var(--background)', color: 'var(--foreground)' },
   resumo: { display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', marginBottom: 12 },
   avisoChip: { background: '#FEF3C7', color: '#92400E', border: '1px solid #FCD34D', borderRadius: 999, padding: '2px 10px', fontSize: 12, fontWeight: 700 },
+  ccNota: { fontSize: 12, color: 'var(--muted)', margin: '8px 0 0' },
   relatorio: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 12, marginBottom: 12 },
   falhasLista: { margin: '8px 0', paddingLeft: 18, color: '#B91C1C', fontSize: 13 },
   barra: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 },

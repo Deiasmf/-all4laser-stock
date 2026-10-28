@@ -1006,6 +1006,7 @@ function ModalEnviarFatura({
 
         <label style={c.label}>CC (opcional, separar por vírgula)</label>
         <input style={c.input} value={cc} onChange={(e) => setCc(e.target.value)} placeholder="contabilidade@exemplo.com" />
+        <p style={c.ccNota}>A Vanessa e a Andreia vão sempre em CC.</p>
 
         <label style={c.label}>Assunto</label>
         <input style={c.input} value={assunto} onChange={(e) => { setAssunto(e.target.value); setEditado(true) }} />
@@ -1352,6 +1353,7 @@ const c: Record<string, React.CSSProperties> = {
   btnEnviar: { background: '#fff', color: 'var(--primary)', border: '1px solid var(--primary)', borderRadius: 6, padding: '4px 8px', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 },
   btnEnviada: { background: '#e8f5ec', color: '#1b873f', border: '1px solid #1b873f', borderRadius: 6, padding: '4px 8px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 },
   envInfo: { fontSize: 14, color: 'var(--foreground)', marginTop: 8, lineHeight: 1.6 },
+  ccNota: { fontSize: 12, color: 'var(--muted)', margin: '4px 0 0' },
   envNota: { fontSize: 12, color: 'var(--muted)', marginTop: 4, display: 'block' },
 
   // Modal de edição
