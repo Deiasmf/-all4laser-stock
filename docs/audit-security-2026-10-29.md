@@ -23,9 +23,9 @@ Foi reconstruída uma referência do schema público através dos catálogos de 
 | Políticas RLS | 505 | 505 |
 | Gatilhos públicos | 112 | 112 |
 | Views | 16 | 16 |
-| Funções próprias | 123 | 122 |
+| Funções próprias | 123 | 123 |
 
-As opções `security_invoker` das views foram preservadas. O restauro de `fundir_pedido_proforma_fatura(uuid,uuid)` continua pendente: `apply_migration` e o editor SQL devolveram `Invalid or expired requestState`. As outras funções que tiveram esse erro foram recuperadas individualmente. A função pendente não participa no fluxo de stock testado.
+As opções `security_invoker` das views foram preservadas. O conector devolveu `Invalid or expired requestState` ao restaurar algumas funções. A última, `fundir_pedido_proforma_fatura(uuid,uuid)`, foi restaurada pelo SQL Editor do painel na mesma branch, sem executar a operação financeira. A existência da função e a contagem de 123 funções próprias foram confirmadas por consulta independente.
 
 O plano de controlo continua a marcar `MIGRATIONS_FAILED`, embora a base responda como `ACTIVE_HEALTHY`. Não foi forçado um reset/rebase: apagaria o trabalho isolado ou voltaria a executar migrações históricas incompletas. O schema público reconstruído permite testar stock; não equivale a uma aplicação de staging completa. Configuração de Auth, ligações de triggers em `auth`, buckets/políticas Storage, Edge Functions e integrações externas não foram clonadas.
 
@@ -74,7 +74,7 @@ O executor só aceita `db.wvdmhohijzyymadsfiaz.supabase.co` ou o pooler Supabase
 
 ## Pendências antes de qualquer aprovação de publicação
 
-1. Reparar a baseline e o histórico de migrações de forma reproduzível, incluindo versões duplicadas; recuperar a função financeira pendente e resolver o estado `MIGRATIONS_FAILED`.
+1. Reparar a baseline e o histórico de migrações de forma reproduzível, incluindo versões duplicadas, e resolver o estado `MIGRATIONS_FAILED`. O schema público foi recuperado; o pipeline histórico continua por reparar.
 2. Configurar um preview com URL, chave e credenciais apenas de staging e sem fallback para produção; só depois executar E2E e confirmar os caminhos de receção/reparação na interface.
 3. Tratar as vulnerabilidades de dependências, os dois testes unitários e os três erros de tipagem.
 4. Rever os restantes avisos dos advisors: funções DEFINER acessíveis, views DEFINER, funções com search_path mutável, extensão em public e tabelas com RLS sem políticas. Os avisos `authenticated_security_definer_function_executable` para estas cinco RPC são esperados enquanto se mantém EXECUTE para colaboradores: a autorização no corpo foi testada; não se declara o advisor global limpo.
