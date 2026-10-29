@@ -6,7 +6,7 @@ Estado: correções de stock verificadas em isolamento; recuperação global ain
 
 - Produção `lykfbclxsyazerffcpta`: apenas consultas de metadados. As definições das cinco funções de stock foram comparadas no início e no fim e são idênticas.
 - Alterações SQL apenas na branch existente `audit-security-staging`, ref `wvdmhohijzyymadsfiaz`.
-- Nenhum projeto/branch adicional criado; nenhum merge, deploy de produção ou alteração de variáveis Vercel.
+- Nenhum projeto/branch Supabase adicional criado; nenhum merge, deploy de produção ou alteração de variáveis Vercel.
 - Dados comerciais não foram copiados. A contagem real de linhas das 263 tabelas públicas da branch, após os testes, é zero.
 
 ## Evidências e recuperação
@@ -60,7 +60,7 @@ Em produção, `has_function_privilege('anon', …, 'execute')` continua verdade
 
 Os dois testes Vitest falhados tratam do nome `fatura_123.PDF` e dos placeholders críticos de email. Nenhum ficheiro TypeScript da aplicação foi alterado neste PR. As dependências críticas reportadas são `next` e `dompurify` transitivo; a atualização de framework exige revisão e testes próprios e não foi misturada com estas correções SQL.
 
-Não foram executados testes concorrentes entre sessões, testes de carga, E2E do navegador ou build/deploy Vercel. Confirmou-se o projeto Vercel `all4laser-stock` (`prj_MZ7StnfZZ8ioAq5AZU7XPl1dw9ZJ`). `src/lib/supabase.ts` usa a URL/chave pública de produção como fallback: um preview sem configuração explícita poderá ligar a produção. Não usar esse fallback em testes. As credenciais de integrações não foram exportadas.
+Não foram executados testes concorrentes entre sessões, testes de carga, E2E do navegador ou build/deploy manual. A integração GitHub/Vercel criou um preview automaticamente após a publicação, e o respetivo check concluiu com sucesso. Esse resultado não valida fluxos autenticados nem o isolamento das credenciais do preview. Confirmou-se o projeto Vercel `all4laser-stock` (`prj_MZ7StnfZZ8ioAq5AZU7XPl1dw9ZJ`). `src/lib/supabase.ts` usa a URL/chave pública de produção como fallback: um preview sem configuração explícita poderá ligar a produção. Não usar esse fallback em testes. As credenciais de integrações não foram exportadas.
 
 ## Repetir os testes em segurança
 
