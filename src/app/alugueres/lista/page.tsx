@@ -10,6 +10,7 @@ import BotaoExportar from '@/components/BotaoExportar'
 import type { ColunaExport } from '@/lib/exportar'
 import { formatarEuro, mesAtual, nomeMes, somar, parseNumeroPt } from '@/lib/alugueres'
 import { ehZimmer } from '@/lib/zimmer'
+import { mesesDoAluguer, mesesEntre } from '@/lib/alugueresMensal'
 import {
   render, periodoDoMes, nFaturaDoNome, formatarValor, formatarDataFatura, criticosEmFalta,
   type FaturaEmailTemplate, type FaturaEmailVars,
@@ -63,36 +64,6 @@ function agruparZimmer(linhas: LinhaMes[]): LinhaMes[] {
     else sobra.push(z)
   }
   return [...lasers, ...sobra]
-}
-
-// Soma `n` meses a um 'YYYY-MM'.
-function mesMais(ym: string, n: number): string {
-  let [y, m] = ym.split('-').map(Number)
-  m += n
-  y += Math.floor((m - 1) / 12)
-  m = ((m - 1) % 12 + 12) % 12 + 1
-  return `${y}-${String(m).padStart(2, '0')}`
-}
-// Lista de meses 'YYYY-MM' entre de..ate (inclusive).
-function mesesEntre(de: string, ate: string): string[] {
-  if (!de || !ate || de > ate) return de && (!ate || de === ate) ? [de] : []
-  const out: string[] = []
-  let cur = de
-  for (let i = 0; i < 120 && cur <= ate; i++) { out.push(cur); cur = mesMais(cur, 1) }
-  return out
-}
-// Meses em que um aluguer deve aparecer, dentro da seleção.
-// - Normal: só o mês de entrega.
-// - Mensal: do mês de entrega até ao fim (data_fim_prevista, ou +12 meses se
-//   aberto), nunca além do mês de recolha se já recolhido.
-function mesesDoAluguer(a: Aluguer, selecao: string[]): string[] {
-  const inicio = (a.data_entrega ?? '').slice(0, 7)
-  if (!inicio) return []
-  if (!a.mensal) return selecao.includes(inicio) ? [inicio] : []
-  let fim = (a.data_fim_prevista ?? '').slice(0, 7) || mesMais(inicio, 12)
-  const recolha = (a.data_recolha ?? '').slice(0, 7)
-  if (recolha && recolha < fim) fim = recolha
-  return selecao.filter((em) => em >= inicio && em <= fim)
 }
 
 // Faturação vazia (mês ainda por definir)
