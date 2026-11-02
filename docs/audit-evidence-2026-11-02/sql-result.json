@@ -1,0 +1,9 @@
+{
+  "target": "wvdmhohijzyymadsfiaz",
+  "suite": "supabase/tests/stock_rpc_security.sql",
+  "result": "PASS: 34 security and regression assertions; all fixtures rolled back",
+  "post_test_rows": {"pecas": 0, "profiles": 0, "envios_pecas": 0},
+  "anon_execute": {"descontar_stock_peca": false, "incrementar_stock_peca": false, "anular_envio_pecas": false, "expedir_envio_pecas": false, "recalcular_reparacao_peca": false},
+  "branch_status": "MIGRATIONS_FAILED",
+  "database_status": "ACTIVE_HEALTHY"
+}

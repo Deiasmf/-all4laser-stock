@@ -1,0 +1,16 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> all4laser-stock@0.1.0 test
+> vitest --run
+
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.12 /workspace/scratch/aa4503d1dc1a/-all4laser-stock
+
+
+ Test Files  16 passed (16)
+      Tests  111 passed (111)
+   Start at  20:34:13
+   Duration  896ms (transform 979ms, setup 0ms, import 1.63s, tests 374ms, environment 2ms)

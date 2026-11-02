@@ -1,0 +1,1000 @@
+{
+  "files": 201,
+  "duplicateVersions": 28,
+  "duplicates": {
+    "20250625": [
+      "20250625_envios_pecas.sql",
+      "20250625_envios_responsavel.sql",
+      "20250625_tabela_precos.sql"
+    ],
+    "20260723": [
+      "20260723_consolidar_fornecedores_reparacao_dados.sql",
+      "20260723_consolidar_fornecedores_reparacao_fk_drop.sql",
+      "20260723_envios_entrega_em_maos.sql",
+      "20260723_envios_transportadora_check_entrega_maos.sql",
+      "20260723_fornecedores_estruturados.sql",
+      "20260723_reparacao_no_anular.sql",
+      "20260723_saldos_pecas_ligar_peca_id.sql",
+      "20260723_saldos_pecas_limpeza_nomes.sql",
+      "20260723_saldos_pecas_views.sql"
+    ],
+    "20260724": [
+      "20260724_alugueres_inatividade_clientes.sql",
+      "20260724_financeiro_cobrancas_e_recolhas_equipamento.sql",
+      "20260724_financeiro_cofre_documentos.sql",
+      "20260724_financeiro_documentos_ficheiro_bucket.sql",
+      "20260724_financeiro_modulo_base_rls.sql",
+      "20260724_financeiro_movimentos_conta_corrente.sql",
+      "20260724_financeiro_revoke_anon_helper.sql",
+      "20260724_roles_admin_financeiro_standard.sql"
+    ],
+    "20260727": [
+      "20260727_fornecedores_reparacao_texto_livre.sql",
+      "20260727_minha_area_tarefas_recados.sql",
+      "20260727_recolhas_equipamento_completa.sql",
+      "20260727_saldos_unificados_e_sn_indices.sql",
+      "20260727_tarefas_multi_pessoa_e_comentarios.sql"
+    ],
+    "20260728": [
+      "20260728_alugueres_marcado_venda.sql",
+      "20260728_alugueres_notificacoes.sql",
+      "20260728_alugueres_recolha_aplicavel.sql",
+      "20260728_minha_area_editar.sql",
+      "20260728_minha_area_equipa.sql",
+      "20260728_minha_area_notificar_conclusao.sql"
+    ],
+    "20260803": [
+      "20260803_envios_tracking_awb.sql",
+      "20260803_shipments_tracking.sql",
+      "20260803_shipments_tracking_backfill.sql",
+      "20260803_tracking_role_administrativo.sql",
+      "20260803_tracking_storage_bucket.sql"
+    ],
+    "20260805": [
+      "20260805_freight_forwarders_grupos.sql",
+      "20260805_freight_quote_requests.sql",
+      "20260805_freight_remetente_por_pedido.sql",
+      "20260805_freight_standard_boxes.sql",
+      "20260805_leads_email_ingestao.sql"
+    ],
+    "20260806": [
+      "20260806_fo_reutilizacao_logica.sql",
+      "20260806_fo_reutilizacao_schema.sql",
+      "20260806_packing_lists.sql"
+    ],
+    "20260807": [
+      "20260807_alugueres_fatura_email.sql",
+      "20260807_expeditions_logica.sql",
+      "20260807_expeditions_schema.sql",
+      "20260807_tracking_upload_carta_porte.sql"
+    ],
+    "20260824": [
+      "20260824_tarefas_anexos.sql",
+      "20260824_tarefas_estados_tabela.sql",
+      "20260824_tarefas_historico.sql",
+      "20260824_tarefas_privacidade_e_badge.sql"
+    ],
+    "20260825": [
+      "20260825_equipamentos_normalizar_status.sql",
+      "20260825_equipamentos_status_revisao_manual.sql",
+      "20260825_fichas_produto_acessorios_migrar.sql",
+      "20260825_fichas_produto_completude_view.sql",
+      "20260825_fichas_produto_link_publico_rpc.sql",
+      "20260825_fichas_produto_schema.sql",
+      "20260825_tarefas_revoke_trigger_fns.sql"
+    ],
+    "20260827": [
+      "20260827_clientes_duplicados.sql",
+      "20260827_fichas_condicoes_envio.sql",
+      "20260827_roles_simplificacao_staff.sql",
+      "20260827_tracking_soft_delete.sql"
+    ],
+    "20260828": [
+      "20260828_acessorio_catalogo.sql",
+      "20260828_fichas_about.sql",
+      "20260828_fichas_model_descriptions.sql",
+      "20260828_fichas_traducoes.sql",
+      "20260828_fichas_v2_grants.sql",
+      "20260828_pecas_grupos_lista.sql",
+      "20260828_pecas_marca_dropdown.sql",
+      "20260828_pecas_media.sql"
+    ],
+    "20260831": [
+      "20260831_financeiro_tabelas.sql",
+      "20260831_pedidos_fatura.sql"
+    ],
+    "20260901": [
+      "20260901_aluguer_situacao_add_pack.sql",
+      "20260901_aluguer_situacao_add_zona.sql",
+      "20260901_keyinvoice_categorias_cobrancas_comissoes.sql"
+    ],
+    "20260907": [
+      "20260907_marketing_canais.sql",
+      "20260907_marketing_mvp_conteudo.sql",
+      "20260907_marketing_plano_documento.sql",
+      "20260907_marketing_promocao.sql"
+    ],
+    "20260914": [
+      "20260914_email_assinatura_unica.sql",
+      "20260914_freight_prazo_24_48h.sql",
+      "20260914_freight_texto_final.sql",
+      "20260914_tarefas_notion_parte_a.sql",
+      "20260914_tarefas_notion_parte_b.sql",
+      "20260914_tarefas_notion_touch.sql"
+    ],
+    "20260916": [
+      "20260916_freight_agrad_assunto_sufixo.sql",
+      "20260916_freight_cargo_embalagem.sql",
+      "20260916_freight_cotacoes_auditoria.sql",
+      "20260916_freight_fase3.sql",
+      "20260916_freight_pedir_tempo_transito.sql"
+    ],
+    "20260917": [
+      "20260917_carriers_ship24_codes.sql",
+      "20260917_tracking_auto_default.sql",
+      "20260917_tracking_ship24.sql"
+    ],
+    "20260918": [
+      "20260918_transport_calendars.sql",
+      "20260918_transport_calendars_modelo.sql",
+      "20260918_transport_driver_days_confirmado.sql",
+      "20260918_transport_planeamento.sql",
+      "20260918_transport_recursos.sql",
+      "20260918_transport_rota.sql",
+      "20260918_transport_stops.sql",
+      "20260918_transport_stops_evento_tipo.sql",
+      "20260918_transport_stops_serial.sql"
+    ],
+    "20260921": [
+      "20260921_leads_followup_cron.sql",
+      "20260921_leads_followup_engine.sql",
+      "20260921_leads_followup_schema.sql",
+      "20260921_pedidos_fatura_circuito.sql",
+      "20260921_transport_stops_motorista_mobile.sql"
+    ],
+    "20260925": [
+      "20260925_alugueres_zimmer_justificacao.sql",
+      "20260925_cc_portal_auth_usermeta.sql",
+      "20260925_compras_cotacao_pagamento.sql",
+      "20260925_equip_sai_de_aluguer.sql"
+    ],
+    "20260928": [
+      "20260928_cc_venda_downpayment_prazo.sql",
+      "20260928_compras_estados_novos.sql",
+      "20260928_pedidos_compra_fotos.sql"
+    ],
+    "20260929": [
+      "20260929_alugueres_fatura_template.sql",
+      "20260929_alugueres_fatura_template_ajustes.sql",
+      "20260929_cliente_notas.sql"
+    ],
+    "20261015": [
+      "20261015_ultraformer_a_agenda_gate.sql",
+      "20261015_ultraformer_b_registos.sql",
+      "20261015_ultraformer_c_tarifario.sql",
+      "20261015_ultraformer_pulsos_direcao.sql"
+    ],
+    "20261019": [
+      "20261019_bank_categorizacao_cashflow.sql",
+      "20261019_bank_category_rules_seed.sql"
+    ],
+    "20261020": [
+      "20261020_bank_autoconciliar_multifatura.sql",
+      "20261020_bank_autoconciliar_parcial.sql",
+      "20261020_bank_autoconciliar_referencia.sql",
+      "20261020_bank_importar_robusto.sql"
+    ],
+    "20260626120000": [
+      "20260626120000_pedidos_compra_contador_rls.sql",
+      "20260626120000_portal_reservas.sql"
+    ]
+  },
+  "manifest": [
+    {
+      "file": "001_processos.sql",
+      "sha256": "228a8b2596a47e196bffff82171452847ec938e37b1fa093b2b208cdf8d6f727"
+    },
+    {
+      "file": "002_leads.sql",
+      "sha256": "db54dfd068ee215e16c0047857782cf7931ae3b09cd600ef8dba5dda9be0a014"
+    },
+    {
+      "file": "003_disponibilidade_packs.sql",
+      "sha256": "608831883f6dc779a20042d4f81c180dc47262ae3154d50f89038b283dfe24c4"
+    },
+    {
+      "file": "005_dashboard_tables.sql",
+      "sha256": "f09338c4fa2d297355f063e554c51baaa569908c5ab34bc216f62bfc5370984e"
+    },
+    {
+      "file": "20250619_alugueres_faturacao.sql",
+      "sha256": "198b3a448a631be7f99dff2cebaf4b8d34af3b429e477eb83cdc3304b4f4836f"
+    },
+    {
+      "file": "20250625_envios_pecas.sql",
+      "sha256": "f1d95ce81b4458e714aa690a5e7a896b999be0e5a461865c90c4f0b6aa999c70"
+    },
+    {
+      "file": "20250625_envios_responsavel.sql",
+      "sha256": "cd3a0a36a48e0c5b4f378c98d1f99865f9297af94fb3cdf7566ab2b7c924288f"
+    },
+    {
+      "file": "20250625_tabela_precos.sql",
+      "sha256": "68313675e7f59fc0bfce1cc27f45e2b49d6c7c0c3ad3e3e5a33232f228cd570b"
+    },
+    {
+      "file": "20250630_recepcao_encomendas.sql",
+      "sha256": "fd06f5c5ba94ced8bdcbadc47419bb3ffc5a7acef146b198376f3b8d47360792"
+    },
+    {
+      "file": "20250701_encomendas_fusao.sql",
+      "sha256": "6ff94ab02d9b393e577da4c1e7e0f38ec0d84cac30d455f32bf2e4adececd4f0"
+    },
+    {
+      "file": "20250702_envio_destinatario_motivo.sql",
+      "sha256": "e0307111d2f331ea64b7e0f8957300cd4168a8a5a6ccf42185d65b3c9b0cb172"
+    },
+    {
+      "file": "20250703_recepcao_delete_policy.sql",
+      "sha256": "6bb9f279a921cd877dbfb6e87984401db8ccfa42f55e9952156452c8f9899b77"
+    },
+    {
+      "file": "20260616142631_folhas_obra.sql",
+      "sha256": "e2af191c719148ecbe8105911671a04eb8f0aa40090ad6c65866fddc19822ea2"
+    },
+    {
+      "file": "20260616145300_assinaturas_storage.sql",
+      "sha256": "b518c981c28dc77c9003f09ba883055e5c523419d5d62c0ae7e1ce48af43d0cc"
+    },
+    {
+      "file": "20260616145931_folhas_obra_docs_storage.sql",
+      "sha256": "aa433d9325c8080131468ba5b6961e8e6458f8afe8caf507dfeac81e4946f8dd"
+    },
+    {
+      "file": "20260616151408_folhas_obra_fotos_storage.sql",
+      "sha256": "d5abfcf0c96e143d9427794aa25fb06e24f93701cca90357a0bef0f07e82ac50"
+    },
+    {
+      "file": "20260616155406_folha_assinatura_rpc.sql",
+      "sha256": "3312b9ae82549529deb63b4e4e87487ee5b9b6a6ee563f4c886f09baf6799666"
+    },
+    {
+      "file": "20260616160000_folha_valores_yag.sql",
+      "sha256": "db98d86061f1b28b5af47718427bf47a1222ba46ad7afad44e2fc9f081846d0d"
+    },
+    {
+      "file": "20260616170000_pecas_stock.sql",
+      "sha256": "e55b5dd31d30322d25bbe36435a52f44b2c1807db6f182c09048e79f66d5ec63"
+    },
+    {
+      "file": "20260617151038_notas_encomenda.sql",
+      "sha256": "5ea4c67f1c573aaeb80b306eaa7f6532030b2bdb3955ac113683c9d197f8bfa4"
+    },
+    {
+      "file": "20260618120000_capas_pintadas.sql",
+      "sha256": "3bfa46c34b79181612e75166f121ff228e4cd683fa58443034bc12546bd865bc"
+    },
+    {
+      "file": "20260618130000_ne_fluxo_preparacao.sql",
+      "sha256": "df210582bd96949f9b13bf36abcac590ce2ab590f32078e2952bf13780c0c1e6"
+    },
+    {
+      "file": "20260618140000_folha_obra_nota_encomenda.sql",
+      "sha256": "33cd51b00ef9ae16ce18e8badaf7911b1107d99380544dec3da58755f2fbd88c"
+    },
+    {
+      "file": "20260618150000_pecas_compras.sql",
+      "sha256": "30c9d2cee325c864090bb9a62b8d88c21a1711a51d66dc2cbdf55853106c5241"
+    },
+    {
+      "file": "20260619120000_contratos_aluguer.sql",
+      "sha256": "58ef72cb081d53a5526defd3e8437fefcd355487feeb1cd4d67beeecd03fde20"
+    },
+    {
+      "file": "20260619130000_contratos_aluguer_ficheiros.sql",
+      "sha256": "a41420dff373e362cc0bcb415e82b75c9d3f7c43694b667659e87f41ad1ae3aa"
+    },
+    {
+      "file": "20260619140000_leads_grant_service_role.sql",
+      "sha256": "311d6a259ded8f03838bd9e82f816cd446e58e4689e27aea95432d351e8b45e0"
+    },
+    {
+      "file": "20260622120000_fatura_envio_email.sql",
+      "sha256": "2d5cd9ea9d4784fa10726c5e670ccb8d6d2d6a0fab5e268e652fb47b07690012"
+    },
+    {
+      "file": "20260623120000_clientes_crm.sql",
+      "sha256": "6d5168f06f70382daf8deccffc7493a49a3a2f209cabb6565e87815d8acdb01a"
+    },
+    {
+      "file": "20260625120000_pecas_serial_number.sql",
+      "sha256": "e01aac87a34a5b03e313a5016d805ad2ce1ac1867d42565e049e66ef7f09cd14"
+    },
+    {
+      "file": "20260625130000_pecas_status.sql",
+      "sha256": "0f79e527fc61ffc60098eb5b009701c73b7962cee5e8ff6ed03019100590239d"
+    },
+    {
+      "file": "20260626120000_pedidos_compra_contador_rls.sql",
+      "sha256": "c1a52585a78b3e2fe36cdb2e38f60eb38fadabf307fdb064080a121ecaefc910"
+    },
+    {
+      "file": "20260626120000_portal_reservas.sql",
+      "sha256": "d872885ad106ff4b9c34c93584145576c03669156ef989f9023c65876f2ab9b7"
+    },
+    {
+      "file": "20260626121000_portal_registo_trigger.sql",
+      "sha256": "74b62f2a0b6708d495b9746a38483fe11e097d38719a7a5235cba0e723dd318d"
+    },
+    {
+      "file": "20260626130000_portal_registo_so_clientes_crm.sql",
+      "sha256": "431c1864cd33a88c3243afdfdc9f97639951641a3a37ce07da28d0d261759818"
+    },
+    {
+      "file": "20260626140000_restaurar_grants_service_role.sql",
+      "sha256": "fe5c22b7e6b3202a42756fc1c7245f914233507a548fc2f1219c9959d617ad36"
+    },
+    {
+      "file": "20260629120000_alugueres_validado.sql",
+      "sha256": "161c1bdf3f9b4f040db487ebf48defb8481269328d656dce1fc1058edbc465b5"
+    },
+    {
+      "file": "20260629140000_calendarios_aluguer.sql",
+      "sha256": "1bc654103d3c3c69f9b8ee348c4ac5bd5bef8f2460821014e3d8d6138f69edca"
+    },
+    {
+      "file": "20260630120000_reparacao_pecas.sql",
+      "sha256": "4f31245d4dc25e1cb6672022bdf78d869bc7d4702afea5ee5047fb109819c6c3"
+    },
+    {
+      "file": "20260701120000_reparacao_pecas_v2.sql",
+      "sha256": "40f7dfdc0c8e3f8af5117587738f97b703ea1b1fa96e95265d5b11a0f80ddfeb"
+    },
+    {
+      "file": "20260701130000_descontar_stock_reparacao.sql",
+      "sha256": "869721751c8217e71c93240068ce3cb000c0c602a1c10cf2742fed7ddca65c37"
+    },
+    {
+      "file": "20260703140000_processos_pecas.sql",
+      "sha256": "26ac7c07ed64d5619491ea550fca84c2479580f788e15e5ce4ae56eddaafb29d"
+    },
+    {
+      "file": "20260703150000_processo_livro_encomendas.sql",
+      "sha256": "123c57b3b95409bacc62aa6a37e23d18e07c2eda5802aea048874182c6fe18e1"
+    },
+    {
+      "file": "20260703_rececoes_pecas.sql",
+      "sha256": "509d48a97664860144a810edcd868d95ddf7fd18ffa3a6fb460e97f6a3745c4e"
+    },
+    {
+      "file": "20260715120000_formulario_registo_cliente.sql",
+      "sha256": "de3ecd84e60fcff4413f65ec1649a956ae56642e0c902f3268f9cf4ae831482d"
+    },
+    {
+      "file": "20260716120000_envio_match_status_por_estado.sql",
+      "sha256": "be176c37765cbdfa62d0de48a4d11bbf2e92ed1d0e4c7a1b941f8a2171f76125"
+    },
+    {
+      "file": "20260716130000_envios_pecas_fotos.sql",
+      "sha256": "927fdd19bd6a3c519381a65799200c242e915b7dd55be8727841b69af65e45ca"
+    },
+    {
+      "file": "20260716140000_envios_pecas_iva.sql",
+      "sha256": "33fbfa35b22ced69b0b108354bae00b30aa073f24809b30ffb2e22655195ceb0"
+    },
+    {
+      "file": "20260716150000_fix_contador_numero_processo.sql",
+      "sha256": "36777e93e48e7789d4748c3284d5b534fa947a3bb21f2a766dbf91400df2f236"
+    },
+    {
+      "file": "20260716160000_processos_pecas_data_rececao.sql",
+      "sha256": "35e55b326b1ac73cff00e4545ecaa0b7aea9cda4ba12663706b49097e381db5b"
+    },
+    {
+      "file": "20260717120000_alugueres_faturacao_mensal.sql",
+      "sha256": "e41e41933182775588ff25c6d8519e2c607dd4590f795475d1b05a2d9b1abe8b"
+    },
+    {
+      "file": "20260717130000_pecas_em_reparacao.sql",
+      "sha256": "a8cb3db77f2d82e5f7a911d7c5b85dca2f09ffc0125a5d2cb860b328a428e8d1"
+    },
+    {
+      "file": "20260720120000_alugueres_faturacao_pago.sql",
+      "sha256": "9eb25795e700dabeced3eeefd08fb81c65e7ba7da96a7b9106bb8636d93ffaab"
+    },
+    {
+      "file": "20260720140000_alugueres_faturacao_grants.sql",
+      "sha256": "113dacc6b02218d8807a78eb5f895bacfed852286018e20540102028b717860f"
+    },
+    {
+      "file": "20260720150000_leads_canal_bimedis.sql",
+      "sha256": "70f073201e3dce4e575121519b636bb32d0ddb3cdc2684496d6bab9a5c9f32b0"
+    },
+    {
+      "file": "20260722_stock_movements_envios.sql",
+      "sha256": "07cd55d9a72751534a36edf2a1d3a48a8e81245adeef7cfa57019f2f533d6df2"
+    },
+    {
+      "file": "20260723_consolidar_fornecedores_reparacao_dados.sql",
+      "sha256": "3cd1b3f6e8af77661e32a5d0283a5f45a5bceb4669838fbc9e1d2d1d3aea8de7"
+    },
+    {
+      "file": "20260723_consolidar_fornecedores_reparacao_fk_drop.sql",
+      "sha256": "a20b106b16d3fb6f9070e4d785216fd12d1430c95b4f1dd8be0425ae07ae93e8"
+    },
+    {
+      "file": "20260723_envios_entrega_em_maos.sql",
+      "sha256": "1126c9e268c018d07ef5773f8e290d4ade8297ff68048e9bc46cefa0d3599c15"
+    },
+    {
+      "file": "20260723_envios_transportadora_check_entrega_maos.sql",
+      "sha256": "c94123c57a5df84c099a2eb98a404d31ca04738413e322c478714c02cdc5b594"
+    },
+    {
+      "file": "20260723_fornecedores_estruturados.sql",
+      "sha256": "e2d3acacd0ffaf7b1cd612ff8a85ece348481502a074175eabd7d9d17fe7ca83"
+    },
+    {
+      "file": "20260723_reparacao_no_anular.sql",
+      "sha256": "55bc763fcfd7ba93c4f223b47cc356d329c5476f1f8f4b9d689fbde21436a452"
+    },
+    {
+      "file": "20260723_saldos_pecas_ligar_peca_id.sql",
+      "sha256": "b41a4541100d391ab90c4039c1bb87ec4cf5845981a9694d316a3dff5fdf305e"
+    },
+    {
+      "file": "20260723_saldos_pecas_limpeza_nomes.sql",
+      "sha256": "dae579957c98ae232ca5ea9ed0420351720729abd042d151be15fe227eaf45ec"
+    },
+    {
+      "file": "20260723_saldos_pecas_views.sql",
+      "sha256": "7761b724f9a0168470878369ee9b901f4f187cd8db64513c99bd320e68a0b6c2"
+    },
+    {
+      "file": "20260724_alugueres_inatividade_clientes.sql",
+      "sha256": "7d29d2376122c211b1c1c9423f20eaf0f7f0f0aa5938ff5ac9bbe88ae551810a"
+    },
+    {
+      "file": "20260724_financeiro_cobrancas_e_recolhas_equipamento.sql",
+      "sha256": "a6e91ada469c9526b6adba05421b5eb2b64c5c516e76624bd2b8cd609d0ab5f7"
+    },
+    {
+      "file": "20260724_financeiro_cofre_documentos.sql",
+      "sha256": "ddbde26502f83d88975d317a07b0bab3c3fd36e5c93d1437f281f83cafb4cd9a"
+    },
+    {
+      "file": "20260724_financeiro_documentos_ficheiro_bucket.sql",
+      "sha256": "ebad52f6675a02c3b23e38b565dfa5bcd53053980e162969d4844efc3d94343a"
+    },
+    {
+      "file": "20260724_financeiro_modulo_base_rls.sql",
+      "sha256": "6d228aaab71ca0713751099795ccd141d82cb9b3f59342ffd691e3c193bfca2e"
+    },
+    {
+      "file": "20260724_financeiro_movimentos_conta_corrente.sql",
+      "sha256": "5948a2e7b08a59026b908749bc20a429459bb176ec242db0c2a617978e0659a3"
+    },
+    {
+      "file": "20260724_financeiro_revoke_anon_helper.sql",
+      "sha256": "54c538b32eff9d5d52f303bfd18c994a60f7e65d5322bb7f14655ba306baf529"
+    },
+    {
+      "file": "20260724_roles_admin_financeiro_standard.sql",
+      "sha256": "8863261d5db466228351080ec6d6c1c6fb43432d5dec38e61ff31a44665a1938"
+    },
+    {
+      "file": "20260727_fornecedores_reparacao_texto_livre.sql",
+      "sha256": "125ea56291267aa21d36ff4533f8574d43db330e2af14faffc06d93436ccbf9b"
+    },
+    {
+      "file": "20260727_minha_area_tarefas_recados.sql",
+      "sha256": "625e37df55fc255a19e9240de7dfce183d9bbe6e0fc7d31cca3ffc4dfab7587a"
+    },
+    {
+      "file": "20260727_recolhas_equipamento_completa.sql",
+      "sha256": "da506ab5a957a270a84759e94e7d2136ae679ea3b87c3b2c3bf83f4f866fd681"
+    },
+    {
+      "file": "20260727_saldos_unificados_e_sn_indices.sql",
+      "sha256": "c332c235ccef66eee6be2af86c24f9bdf074eb818924ce2f779500f8883d4776"
+    },
+    {
+      "file": "20260727_tarefas_multi_pessoa_e_comentarios.sql",
+      "sha256": "e968b5b524e52adfe3b8d906b1b7b78641124350e2d3d46e322f0f0ff311c9e9"
+    },
+    {
+      "file": "20260728_alugueres_marcado_venda.sql",
+      "sha256": "60816333459bdf1bc0da1a8a7b0092291dbbc14d37851d8843769e7ab0b17c39"
+    },
+    {
+      "file": "20260728_alugueres_notificacoes.sql",
+      "sha256": "6bc7c57eb1fa431256a3e221c224fa20506db1d790cc91e5df1587ecfb340899"
+    },
+    {
+      "file": "20260728_alugueres_recolha_aplicavel.sql",
+      "sha256": "5e5ec4c47a7ec8767f1066c10600f1675917889303c34cdfa073d96c0be014f6"
+    },
+    {
+      "file": "20260728_minha_area_editar.sql",
+      "sha256": "f31e8cdee8b806390499ea1ca09ad9c5c8049c2ef1018db4cbeeb39d7e01cca7"
+    },
+    {
+      "file": "20260728_minha_area_equipa.sql",
+      "sha256": "9c726a7168483b2939b0e4190629eb837d8bd34aa831323dc77c7a930059dce9"
+    },
+    {
+      "file": "20260728_minha_area_notificar_conclusao.sql",
+      "sha256": "b6bbba4afebac70983973ad223261b3e009e72ceacabb57b9028cd9a70d97dac"
+    },
+    {
+      "file": "20260803_envios_tracking_awb.sql",
+      "sha256": "e1f078b507440f800eb0f187317732c109c0a6b749fda2b2b82b6987b357dadb"
+    },
+    {
+      "file": "20260803_shipments_tracking.sql",
+      "sha256": "9dbc95e0d3434251df98c48fea02ef41144176adb7a889d3e5c4e0b0647cdb0a"
+    },
+    {
+      "file": "20260803_shipments_tracking_backfill.sql",
+      "sha256": "cf67926d7532b8a2f72da57a791bf33e906b6286549e8391570d69f30dee8a39"
+    },
+    {
+      "file": "20260803_tracking_role_administrativo.sql",
+      "sha256": "f01a5114d2ad7e444d9125c0a45fdc58b3612678531beeda8fd28e4006153a7a"
+    },
+    {
+      "file": "20260803_tracking_storage_bucket.sql",
+      "sha256": "9912f6de6a8ef37c8f336bd02b622da374a893dc7134e8228d4c0d2013a41463"
+    },
+    {
+      "file": "20260805_freight_forwarders_grupos.sql",
+      "sha256": "abc8cfc2eac2bf8d26e851d44784c356a69d6bf215a99470b78be431b972c776"
+    },
+    {
+      "file": "20260805_freight_quote_requests.sql",
+      "sha256": "4524c9cde8c367c96b10a05abdeb56a1d0208982d602694deff886fa350dbb95"
+    },
+    {
+      "file": "20260805_freight_remetente_por_pedido.sql",
+      "sha256": "f69d464c91b2b7b2d95a5d391d6e25b5b22c32f81041846238fe40231ea543a9"
+    },
+    {
+      "file": "20260805_freight_standard_boxes.sql",
+      "sha256": "4e210816ee87cb1216198bcf983bf9ca4f44efb58387c4304c588160e97f120a"
+    },
+    {
+      "file": "20260805_leads_email_ingestao.sql",
+      "sha256": "a0c94f9b1212adf5fd14e480b44bc73d1fa8af4e90fceffb3e8041942dfed984"
+    },
+    {
+      "file": "20260806_fo_reutilizacao_logica.sql",
+      "sha256": "4c33b413c7f8181e05e2c179812591885687e5db78b5a09736c4daa03c0e45dc"
+    },
+    {
+      "file": "20260806_fo_reutilizacao_schema.sql",
+      "sha256": "390b558951079dcc162ec4704fef9c3b4d25f7465ff2e977ad0964dd1405bc1c"
+    },
+    {
+      "file": "20260806_packing_lists.sql",
+      "sha256": "ee433ddf3cc8cdddece3b5844475554ef57b923840fa1607820719693cefba1a"
+    },
+    {
+      "file": "20260807_alugueres_fatura_email.sql",
+      "sha256": "bf8afda05fe7ed4776dcee983d031de4fccba48c552b00c608174658baf43bce"
+    },
+    {
+      "file": "20260807_expeditions_logica.sql",
+      "sha256": "b451faf82b04bea455a3e32348f93e9827d09c7e011a9cdb2fc3e03660a52aec"
+    },
+    {
+      "file": "20260807_expeditions_schema.sql",
+      "sha256": "10bf1a67ea0b6b4f28253abcac1065f1911718389af6c087e2c02114a1c24877"
+    },
+    {
+      "file": "20260807_tracking_upload_carta_porte.sql",
+      "sha256": "05f352c4194541bb8ef0f154f82e980f84c6322e78d01c55dfac1357ba05fd56"
+    },
+    {
+      "file": "20260824_tarefas_anexos.sql",
+      "sha256": "c73c50e26f1689e5d10acee70ce1a84a9ebed1d65c6ef4cd28a64610f13705b3"
+    },
+    {
+      "file": "20260824_tarefas_estados_tabela.sql",
+      "sha256": "4c5f999a03f2cc106beedf9ba0f6bd7442f53d3c641837126a1ce5814d5e2e14"
+    },
+    {
+      "file": "20260824_tarefas_historico.sql",
+      "sha256": "f16ea6b9223bb9243940717ba389639255a4d825f4dcd5569e2b1cf685bb50c4"
+    },
+    {
+      "file": "20260824_tarefas_privacidade_e_badge.sql",
+      "sha256": "a1918957fa4d02e2dd2216b24bd1d834371ac1248018553b28e619fe4badd3cc"
+    },
+    {
+      "file": "20260825_equipamentos_normalizar_status.sql",
+      "sha256": "9510f4e55133b38f7deeea32f2f81831a06ef665c529d03d01e71d88180c6ce4"
+    },
+    {
+      "file": "20260825_equipamentos_status_revisao_manual.sql",
+      "sha256": "5628707f530f4cce2f8febbfc3fc679166df051c5b36f43cf0af7f9b88061574"
+    },
+    {
+      "file": "20260825_fichas_produto_acessorios_migrar.sql",
+      "sha256": "529bc165b54bbc70f56fcad2d7745ce37526ef833b206068ca6c04c6758befd7"
+    },
+    {
+      "file": "20260825_fichas_produto_completude_view.sql",
+      "sha256": "02347d8c07b1067f9e1164a98dfa191d95a4ad5ac8033fb63743f04369c9d8e0"
+    },
+    {
+      "file": "20260825_fichas_produto_link_publico_rpc.sql",
+      "sha256": "51cb8d95fdd8238a7bc6bcc86e33ded41363c899e0ffa8f96f2a52eb6c5bd133"
+    },
+    {
+      "file": "20260825_fichas_produto_schema.sql",
+      "sha256": "b710ef822b4b0aebf1f06a7300de733561e58adf9b1ce6f7c8a9df4c209d4828"
+    },
+    {
+      "file": "20260825_tarefas_revoke_trigger_fns.sql",
+      "sha256": "7a3c2bee8592442701a3534e82306ae71c8fe5e89d0f2a309524edeacfae6b2c"
+    },
+    {
+      "file": "20260827_clientes_duplicados.sql",
+      "sha256": "3800b9a992537ecf70994d6d247b6de57c00373c68b57c5a08808bdfaf68a9e4"
+    },
+    {
+      "file": "20260827_fichas_condicoes_envio.sql",
+      "sha256": "52e1d065574b47e6ea8d32e2197a0068524efa856f0c90cc061920854f6340af"
+    },
+    {
+      "file": "20260827_roles_simplificacao_staff.sql",
+      "sha256": "d5698f9e5c0ba0adc440ccebf8613d9c5ea053ab6cd17b54a70f269509d78f5a"
+    },
+    {
+      "file": "20260827_tracking_soft_delete.sql",
+      "sha256": "9e0c0f82592bdd520b1a8adcf483ed89c610b15280de1b02c6469b387ea3f14b"
+    },
+    {
+      "file": "20260828_acessorio_catalogo.sql",
+      "sha256": "47e0a6eaec8ffdb87df5e42cccd0b39f498e0d86d5e2e7dfe7280959eadc1b99"
+    },
+    {
+      "file": "20260828_fichas_about.sql",
+      "sha256": "62583eaefdb9420612d5c07c4afddef8f2fe480800c893375c1ea14211e0305f"
+    },
+    {
+      "file": "20260828_fichas_model_descriptions.sql",
+      "sha256": "beef4223778de59021680e18f89e595aaba9915db59e33dc5cb5582950a23042"
+    },
+    {
+      "file": "20260828_fichas_traducoes.sql",
+      "sha256": "7d435af7d2980b371616b3f8977bc7e418519c9f33bd7b1ca3979132b86128b8"
+    },
+    {
+      "file": "20260828_fichas_v2_grants.sql",
+      "sha256": "06811d05fda2d87ab4769a5a1f44ba855c6ab117788a9c1b025868a743e7fd50"
+    },
+    {
+      "file": "20260828_pecas_grupos_lista.sql",
+      "sha256": "c1eab5e3541c116ccfe62750f625c67a04770828f4ae88326862b3ab94f6a4b2"
+    },
+    {
+      "file": "20260828_pecas_marca_dropdown.sql",
+      "sha256": "7160ff4b728ef94202f96d742e1e8125a23d7e98fe9f65af1ffdd466f4a98e95"
+    },
+    {
+      "file": "20260828_pecas_media.sql",
+      "sha256": "2b9a8c04fa120d54ab75aa33cde613f844d97316c20a1bff7656ab20d0dfe973"
+    },
+    {
+      "file": "20260831_financeiro_tabelas.sql",
+      "sha256": "e1769badc0a60e1a5148612058966df9c97cdd2fac7d0a41a51a1013491337e4"
+    },
+    {
+      "file": "20260831_pedidos_fatura.sql",
+      "sha256": "e05d20dd0ed9d547dd2daac22b69e0dcc5102bf55da15d77d1af7a077f7104a2"
+    },
+    {
+      "file": "20260901_aluguer_situacao_add_pack.sql",
+      "sha256": "cdb07ce45869e78908f816460196ce67f203634790e0525ca8489387c3595cce"
+    },
+    {
+      "file": "20260901_aluguer_situacao_add_zona.sql",
+      "sha256": "5eaa33805aef13843f4b943a7cd1bababd3fe4d6d27c964edbe204cb78cd9396"
+    },
+    {
+      "file": "20260901_keyinvoice_categorias_cobrancas_comissoes.sql",
+      "sha256": "13e2d41c7eba5b5fcd4fbc525cddcbbd7008e28c21ccbf0c9b7297ded7edb908"
+    },
+    {
+      "file": "20260902_financeiro_categorias_gerivel.sql",
+      "sha256": "17810b168463e857432d4a6f2947bb024eaa3754ebe8ac5650e3c043950d1a00"
+    },
+    {
+      "file": "20260904_marketing_fase1.sql",
+      "sha256": "03f4cdafb05723488c8e585913d2483f8ec881bb609cc1376e64954ad51dc834"
+    },
+    {
+      "file": "20260907_marketing_canais.sql",
+      "sha256": "35f67158936db4647466cfdee6e7b57b34a05e06380d34becabc897f97fe19c7"
+    },
+    {
+      "file": "20260907_marketing_mvp_conteudo.sql",
+      "sha256": "6b26ec8e39e2e2a7b142b8f4dce3b0e5d866fb15e14b46c3c492ceab2c9adbb3"
+    },
+    {
+      "file": "20260907_marketing_plano_documento.sql",
+      "sha256": "1de870f7a9a43b65c9410d06f237c7e3445f4b5794601047b4eb06055cd5c06f"
+    },
+    {
+      "file": "20260907_marketing_promocao.sql",
+      "sha256": "71cef52ef674cd95b1ba23622f70be88e13c26512fc1f23528c39b87dddd2da3"
+    },
+    {
+      "file": "20260909_despesas_alugueres.sql",
+      "sha256": "7f42caa72c0130b97fa282fbfc5592c15a8bb5510ec752ce3f7cef9d342bcde8"
+    },
+    {
+      "file": "20260914_email_assinatura_unica.sql",
+      "sha256": "fd2b4938192975d4cd7323dbaaa290500fc3cd3e8b4667838fc1e230ba49d5b2"
+    },
+    {
+      "file": "20260914_freight_prazo_24_48h.sql",
+      "sha256": "483218dce8d9c526348f72d73877e6f7b0a48fb4515569768efd66ae185a31fd"
+    },
+    {
+      "file": "20260914_freight_texto_final.sql",
+      "sha256": "071745858d8420e9b7605c88028cd2d1beeb46a81ff107cecc09b7b5ae1d3956"
+    },
+    {
+      "file": "20260914_tarefas_notion_parte_a.sql",
+      "sha256": "4ef5beb5c141d50301b28897fed73df82e945ac3bf159e1d4c41c9275aa98ee1"
+    },
+    {
+      "file": "20260914_tarefas_notion_parte_b.sql",
+      "sha256": "0d6ce51130dcd3f27a95922d598d8eede081472818f9b5f7c2d002a84c83012e"
+    },
+    {
+      "file": "20260914_tarefas_notion_touch.sql",
+      "sha256": "5d19a6f5dbab733a19dfc864aa5077fccc22c9ba155de962934955f21117eb54"
+    },
+    {
+      "file": "20260915_area_cliente.sql",
+      "sha256": "fd645a54b6217f88077cdd79ac045fdc40923f8607d702dd0150183569b479c6"
+    },
+    {
+      "file": "20260916_freight_agrad_assunto_sufixo.sql",
+      "sha256": "ea7a0506d48634de4f68095ed0481301a5c7dbf76d44c31cd28fcf0e1f739336"
+    },
+    {
+      "file": "20260916_freight_cargo_embalagem.sql",
+      "sha256": "1af4fd1219e8fc7d0ff98e772e1cb583129dcc9ddc047a7933523c51e72e00f4"
+    },
+    {
+      "file": "20260916_freight_cotacoes_auditoria.sql",
+      "sha256": "26eb710de1c0f297479f5b82842100961fe41787c649be0608509785a0c13fd3"
+    },
+    {
+      "file": "20260916_freight_fase3.sql",
+      "sha256": "b2dd9f05b2d5789d60416d44b61e7d8f5ee0bc95dc1dc3e750a385db5671e80a"
+    },
+    {
+      "file": "20260916_freight_pedir_tempo_transito.sql",
+      "sha256": "c743cb59aa6c09564161b06e527ea4f54ea2f76c58ef938e9a6759e90ac6927c"
+    },
+    {
+      "file": "20260917_carriers_ship24_codes.sql",
+      "sha256": "10cdb9dbb0fe474631ce982190fb43934bc095618c6858a7b612ff5759f69a2d"
+    },
+    {
+      "file": "20260917_tracking_auto_default.sql",
+      "sha256": "7946b68f3af0f386139c689f065a7de07a5029305952b972a0692f3abd0f509e"
+    },
+    {
+      "file": "20260917_tracking_ship24.sql",
+      "sha256": "c91a2d38a1c4455fa5eabf75974cc6eb6671abf26ad8a9674863504161c1cddb"
+    },
+    {
+      "file": "20260918_transport_calendars.sql",
+      "sha256": "a2d19bc19a29c0382478e87efef599fb63bb8f293e210e1b0f0ba3341b01f878"
+    },
+    {
+      "file": "20260918_transport_calendars_modelo.sql",
+      "sha256": "2e49a3eba2fe5cfe02f0bb185f73b9161d487fad98409786bf8839e859768e82"
+    },
+    {
+      "file": "20260918_transport_driver_days_confirmado.sql",
+      "sha256": "41d226f8f15c1f67a615847a36413f1f1f81becfb89f18e46fbd63969b7ce785"
+    },
+    {
+      "file": "20260918_transport_planeamento.sql",
+      "sha256": "ed4262628adb17fb59d70c69e5974a92746c5747e5e5e168ddcadbf3cb9b103d"
+    },
+    {
+      "file": "20260918_transport_recursos.sql",
+      "sha256": "1580e5bed8486179a7e4eb2fb483b4f3b75c30e4d26ab44f73b613954478d1c7"
+    },
+    {
+      "file": "20260918_transport_rota.sql",
+      "sha256": "77968d6fd127dad9c181045c4a68fceff578f6df2cc4670b3d30041f8a752a50"
+    },
+    {
+      "file": "20260918_transport_stops.sql",
+      "sha256": "799641a5339197c7c5837d6954c550444269134e52eda9e9dc21be1c67c84f6a"
+    },
+    {
+      "file": "20260918_transport_stops_evento_tipo.sql",
+      "sha256": "5a0455dedff14807c1b435e3111d126ac99087f08cdfdc9fcc4ec45943c4421f"
+    },
+    {
+      "file": "20260918_transport_stops_serial.sql",
+      "sha256": "98f1549b1c39aa0b6b6337aa2bb4b2071c4f81777fb6e378a27dba84f64c9abf"
+    },
+    {
+      "file": "20260921_leads_followup_cron.sql",
+      "sha256": "6f8005ed2a578726ba9e0341c21b518dd18f180f657e95f563a34657efa724fd"
+    },
+    {
+      "file": "20260921_leads_followup_engine.sql",
+      "sha256": "c36e838b4d359bdf2446ea5403cb4876808a516b3a9dc6dd93f19b582d02d169"
+    },
+    {
+      "file": "20260921_leads_followup_schema.sql",
+      "sha256": "87dc339b45644bf5159c3aa3a31d95fd28b95e19e90427d3bbb94f55cfd9df73"
+    },
+    {
+      "file": "20260921_pedidos_fatura_circuito.sql",
+      "sha256": "59a44ff21e4326770134f612fb6852213eb23af811709e3f483ec9e70fde8a57"
+    },
+    {
+      "file": "20260921_transport_stops_motorista_mobile.sql",
+      "sha256": "1e8e3a1e7aabc61906935df0a425551024688cb004a50d3b8b10ff70c70730e9"
+    },
+    {
+      "file": "20260922_contas_correntes.sql",
+      "sha256": "6ab5b48c7350adee4eeca112367d76a4735779f8776bf5ff26b92f19753eb541"
+    },
+    {
+      "file": "20260923_cc_portal_auth.sql",
+      "sha256": "79b87eb57304365af629285a61b24ddd69df7c7386238057d196da63ea0d7d8a"
+    },
+    {
+      "file": "20260924_cc_alertas.sql",
+      "sha256": "1b30c604fba07273f78a41da06eaa51300a0050da29611865e261c0ac2ddfbc6"
+    },
+    {
+      "file": "20260925_alugueres_zimmer_justificacao.sql",
+      "sha256": "4c07a54989d0cea41fc26f67cfad0276833c6e09dbe6359e37737ba951f154e7"
+    },
+    {
+      "file": "20260925_cc_portal_auth_usermeta.sql",
+      "sha256": "88978c151cd5e7ef2ae488117b475865c4783f911aefa1266759c8685dd8333d"
+    },
+    {
+      "file": "20260925_compras_cotacao_pagamento.sql",
+      "sha256": "6245ae219b8e5a13985b49fe2a741f02a893369317d24c751b31cc6a3cf2cee2"
+    },
+    {
+      "file": "20260925_equip_sai_de_aluguer.sql",
+      "sha256": "3a0c6c3ba6b1f54213ae428e24da503d8fbc1cdb4fe6928d6fb8aef12b1a9283"
+    },
+    {
+      "file": "20260926_cc_laserix_clearing_taxa_por_maquina.sql",
+      "sha256": "7719a6b925195a60ef5cba08b98d296e5760e1786a2f5c0f66b56c094ab2df42"
+    },
+    {
+      "file": "20260927_cc_saldo_multi_moeda.sql",
+      "sha256": "62718536e7302bf17942fc18f478847724874eca8ae7fd0e9dc7004921fc2c28"
+    },
+    {
+      "file": "20260928_cc_venda_downpayment_prazo.sql",
+      "sha256": "25a43d17bc7e027fe6b6db5dc2b81f498ccf0d40d5984c19bc79d0e237ae359b"
+    },
+    {
+      "file": "20260928_compras_estados_novos.sql",
+      "sha256": "2dc9c3e8e4c7c32456f6380de4377e4759797e29c13c3b9848b13711d0c86654"
+    },
+    {
+      "file": "20260928_pedidos_compra_fotos.sql",
+      "sha256": "9f4e915e4053b93c8e4b2cf7012cd87a4ce17a0befd5678e74a7d0cc2f0fc623"
+    },
+    {
+      "file": "20260929_alugueres_fatura_template.sql",
+      "sha256": "f8bb9775f7dec52f775bc53541d8ac99ac7f218da8ceaad647f27be8eecbaa9d"
+    },
+    {
+      "file": "20260929_alugueres_fatura_template_ajustes.sql",
+      "sha256": "9b4ec6618eac37c49c2704b321378c4941c608e9bbdc5a8c7afdef347145a377"
+    },
+    {
+      "file": "20260929_cliente_notas.sql",
+      "sha256": "c4181fcabca46f52ed9dba11ace5bbd3ec40fe953c8d19c8dfbcd05acf7517c7"
+    },
+    {
+      "file": "20260930_cc_rls_financeiro.sql",
+      "sha256": "3ab9c9305f1d3e1cd87da1e53a9968022628d2212a7be14dc9bd2988ddd5d7aa"
+    },
+    {
+      "file": "20261001_cc_incidencias_dossie.sql",
+      "sha256": "1ae010a6a102b152651ea36652040609a8c9de4049c909904be0a1cef803ed42"
+    },
+    {
+      "file": "20261002_cc_conciliacao_bancaria.sql",
+      "sha256": "0a3e201acccbc58163dbbfc3997f612dc1e55612ccc8d668dadfc9b63f32d8bf"
+    },
+    {
+      "file": "20261003_cc_plano_equipamentos.sql",
+      "sha256": "63c82436dfc55e79009d3d9ca712a2d871c36d19651e52ba0ca409669869e440"
+    },
+    {
+      "file": "20261004_cashflow.sql",
+      "sha256": "e73885f980aec397e8c284ff4f3083c059f081e7f113ad7f697dafaa96a3acd0"
+    },
+    {
+      "file": "20261005_cashflow_conciliacao_plano.sql",
+      "sha256": "18246de134c7ca077146eafbc1e9cc2dc8a6921adb73c19f35bf9aa6a1633f66"
+    },
+    {
+      "file": "20261006_alugueres_mensal.sql",
+      "sha256": "ac871859d2852ef5ffa5c678100234427efb9d20ac41f4a10c5e364292b7d3ef"
+    },
+    {
+      "file": "20261013_pedidos_fatura_proforma_ciclo.sql",
+      "sha256": "4ea656563e43959cb3984a0091cc9f9c7e51c7574b1136c5d96216541eb746b5"
+    },
+    {
+      "file": "20261014_cliente_nome_faturacao.sql",
+      "sha256": "8a577a4d13032bab2452c13cdfe22f8bec2b55fb258d4b695f05b6bc7eccf0e2"
+    },
+    {
+      "file": "20261015_ultraformer_a_agenda_gate.sql",
+      "sha256": "b66d52bfd48fe3b07d0b6c9842c21eb8a95492be59d905b7751d8f342938e7d3"
+    },
+    {
+      "file": "20261015_ultraformer_b_registos.sql",
+      "sha256": "791a63dab5c618f3a7772aa5e824b64aeb345dc33162ca81b010c404586b88d4"
+    },
+    {
+      "file": "20261015_ultraformer_c_tarifario.sql",
+      "sha256": "2ec95d0d49e65f87df6e5b7d866b1de23329f8ff8fc74c2d81a0040687a4169a"
+    },
+    {
+      "file": "20261015_ultraformer_pulsos_direcao.sql",
+      "sha256": "da26e42513cd10460424b91f1ba7e8babf28c214c3c7bf8dcc9f8b724fc4d3f3"
+    },
+    {
+      "file": "20261019_bank_categorizacao_cashflow.sql",
+      "sha256": "d9d5958a41bd83b2fbfff814fd27e4d4ecd58a97bf017f03ebc1a385bc290071"
+    },
+    {
+      "file": "20261019_bank_category_rules_seed.sql",
+      "sha256": "a3fb3bdae7fb1ba6e774736be0b08849f77c98da6ecbef1173fb2c08ef2094a5"
+    },
+    {
+      "file": "20261020_bank_autoconciliar_multifatura.sql",
+      "sha256": "215e718a6b73b557ba6ad4c0e3ef8593a1b2a91fe9c450221fbcef66e0698afe"
+    },
+    {
+      "file": "20261020_bank_autoconciliar_parcial.sql",
+      "sha256": "2c8732386205741170c67778199c195f9e17ac24b9c14013cbbcbaf63c4d4320"
+    },
+    {
+      "file": "20261020_bank_autoconciliar_referencia.sql",
+      "sha256": "a67620f2997f2ebd136a532901ba0ceac2ea9de57a2f155f1c1ef5f8761f5ba7"
+    },
+    {
+      "file": "20261020_bank_importar_robusto.sql",
+      "sha256": "3cd216a36c2bef889a538d442d7805a1415069a468c420d51da7cd82680e37ef"
+    },
+    {
+      "file": "20261028_alugueres_fatura_template_sem_valor_data.sql",
+      "sha256": "707027cd947d74a9d1e5b7e82c727e819c9ce86b836d18176c96cc4ad3c61d4e"
+    },
+    {
+      "file": "20261029111959_harden_stock_rpcs.sql",
+      "sha256": "c5e80b3e0a3c7e9256bdcd570ca83f3173a8edbf8e39dffb2416b03124609e13"
+    }
+  ],
+  "reproducible": false,
+  "reason": "Baseline ausente; nomes duplicados e dependências históricas requerem reconciliação antes de db push/reset remoto."
+}

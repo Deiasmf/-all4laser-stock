@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test'
+import { validateSupabaseConfig } from './src/lib/supabaseConfig'
 
 // Carrega o .env.local (gitignored) para os testes E2E — inclui as credenciais
 // da conta de teste (E2E_EMAIL / E2E_PASSWORD). Em CI as variáveis vêm do ambiente.
@@ -8,7 +9,11 @@ try {
   // .env.local pode não existir (ex: CI) — segue com as variáveis do ambiente
 }
 
+validateSupabaseConfig(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, 'preview')
+
 const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:3000'
+
+if (!['localhost', '127.0.0.1'].includes(new URL(BASE_URL).hostname)) throw new Error('E2E de auditoria requer servidor local.')
 
 export default defineConfig({
   testDir: './e2e',
@@ -34,7 +39,7 @@ export default defineConfig({
   webServer: {
     command: 'npm run dev',
     url: BASE_URL,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
     timeout: 120_000,
   },
 })

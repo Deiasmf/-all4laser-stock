@@ -1,0 +1,7 @@
+▲ Next.js 16.4.4 (Turbopack)
+⨯ Failed to load next.config.ts, see more info here https://nextjs.org/docs/messages/next-config-error
+
+> Build error occurred
+Error: Defina NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY explicitamente.
+    at validateSupabaseConfig (src/lib/supabaseConfig.ts:13:45)
+    at Object.<anonymous> (next.config.compiled.js:15:44)
