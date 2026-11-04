@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { enviarGmail } from '@/lib/gmailSend'
-import { obterAssinaturaHtml, corpoHtmlComAssinatura } from '@/lib/emailAssinatura'
+import { obterAssinaturaHtml, corpoHtmlComAssinatura, textoParaHtml } from '@/lib/emailAssinatura'
 import {
   render, varsAssunto, moradaOrigem, moradaDestino, datasTexto, extrasTexto,
   tabelaVolumesEmail, tabelaVolumesEmailHtml, tipoTransporteAdjetivo, remetenteValido, ccCruzadoRemetente,
@@ -20,13 +20,11 @@ const TENTATIVAS_MAX = 2     // tentativas por destinatário dentro de um envio
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-function escaparHtml(t: string): string {
-  return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
-
 function blocoTextoHtml(t: string): string {
   if (!t) return ''
-  return `<div style="white-space:pre-wrap;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111827;line-height:1.5;">${escaparHtml(t)}</div>`
+  // Sem `white-space:pre-wrap` (o Outlook ignora-o): converte-se o texto à mão
+  // com textoParaHtml (quebras → <br>, espaços múltiplos → &nbsp;).
+  return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111827;line-height:1.5;">${textoParaHtml(t)}</div>`
 }
 
 function corpoHtmlFreight(corpoTexto: string, tabelaTexto: string, tabelaHtml: string, assinaturaHtml: string): string {
