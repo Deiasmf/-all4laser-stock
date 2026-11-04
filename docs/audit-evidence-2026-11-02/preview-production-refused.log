@@ -1,0 +1,7 @@
+▲ Next.js 16.4.4 (Turbopack)
+⨯ Failed to load next.config.ts, see more info here https://nextjs.org/docs/messages/next-config-error
+
+> Build error occurred
+Error: Fora de produção, apenas a branch de auditoria ou Supabase local são permitidos.
+    at validateSupabaseConfig (src/lib/supabaseConfig.ts:23:15)
+    at Object.<anonymous> (next.config.compiled.js:15:44)

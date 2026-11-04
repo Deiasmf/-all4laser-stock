@@ -12,6 +12,7 @@ const carrier = (over: Partial<Carrier>): Carrier => ({
   deteta_regex: over.deteta_regex ?? null,
   carrier_code_api: over.carrier_code_api ?? null,
   ativo: over.ativo ?? true,
+  suporta_ship24: over.suporta_ship24 ?? false,
 })
 
 const CARRIERS: Carrier[] = [

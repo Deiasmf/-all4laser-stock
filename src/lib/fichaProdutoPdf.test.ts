@@ -13,7 +13,7 @@ const base: Omit<FichaProdutoDados, 'idioma'> = {
   voltagem: '230V', frequencia: '50/60 Hz', dimensoes: '120×60×110 cm', pesoKg: 92, softwareVersao: 'v4.2',
   handpieces: Array.from({ length: 12 }, (_, i) => ({ nome: `Handpiece ${i + 1}`, contador_pulsos: 100000 + i * 1234, data_leitura: '2026-02-15' })),
   acessorios: ['Pedal', 'Cabo de alimentação', 'Óculos de proteção (3)', 'Manípulo IPL', 'Carrinho'],
-  preco: 39500,
+  preco: 39500, moeda: 'EUR', garantia: null, shippingTraining: false, descricaoModelo: null, aboutTexto: null,
   fotos: [],
 }
 
@@ -33,6 +33,7 @@ describe('gerarPdfFichaProduto', () => {
       condicao: null, condicaoDescricao: null,
       voltagem: null, frequencia: null, dimensoes: null, pesoKg: null, softwareVersao: null,
       handpieces: [], acessorios: [], preco: null, fotos: [],
+      moeda: 'EUR', garantia: null, shippingTraining: false, descricaoModelo: null, aboutTexto: null,
     })
     expect(blob).toBeInstanceOf(Blob)
     expect(blob.size).toBeGreaterThan(500)

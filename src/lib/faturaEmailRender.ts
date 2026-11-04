@@ -90,7 +90,9 @@ export function periodoDoMes(mes: string | null | undefined): string {
 export function nFaturaDoNome(nome: string | null | undefined): string {
   if (!nome) return ''
   const semExt = nome.replace(/\.[a-z0-9]+$/i, '').trim()
-  return semExt.split('_')[0].trim()
+  // Só o formato numérico exportado pela faturação tem sufixos técnicos.
+  // Nomes livres como fatura_123 devem permanecer completos.
+  return /^\d+_/.test(semExt) ? semExt.split('_')[0].trim() : semExt
 }
 
 // Formata o valor em euros (ex.: 1234.5 -> '1.234,50').

@@ -23,6 +23,7 @@ describe('nFaturaDoNome', () => {
   it('tira a extensão do nome do ficheiro', () => {
     expect(nFaturaDoNome('FT2026-06.pdf')).toBe('FT2026-06')
     expect(nFaturaDoNome('fatura_123.PDF')).toBe('fatura_123')
+    expect(nFaturaDoNome('71000000723_CAROLINAPE_3EBA8.pdf')).toBe('71000000723')
     expect(nFaturaDoNome(null)).toBe('')
   })
 })
@@ -39,6 +40,7 @@ describe('criticosEmFalta', () => {
   it('lista os placeholders críticos vazios', () => {
     expect(criticosEmFalta({ n_fatura: 'FT-1', periodo: 'Junho 2026', valor: '50,00', equipamento: 'Gmax', nome_contacto: 'Ana' })).toEqual([])
     expect(criticosEmFalta({ n_fatura: '', valor: '50,00' })).toContain('n_fatura')
-    expect(criticosEmFalta({})).toEqual(['n_fatura', 'periodo', 'valor', 'equipamento', 'nome_contacto'])
+    expect(criticosEmFalta({})).toEqual(['n_fatura'])
+    expect(criticosEmFalta({ n_fatura: '  ' })).toEqual(['n_fatura'])
   })
 })
