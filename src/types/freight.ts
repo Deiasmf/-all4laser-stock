@@ -373,7 +373,7 @@ export function tabelaVolumesEmailHtml(linhas: LinhaCarga[], idioma: IdiomaFreig
     ? `Totals: ${t.volumes} packages · ${t.pesoTotal} kg · ${t.volumeM3} m&sup3;`
     : `Totais: ${t.volumes} volumes · ${t.pesoTotal} kg · ${t.volumeM3} m&sup3;`
   return [
-    '<table style="border-collapse:collapse;margin:8px 0 12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.4;">',
+    '<table cellspacing="0" cellpadding="0" border="0" role="presentation" style="border-collapse:collapse;margin:8px 0 12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.4;">',
     `<thead><tr>${cab.map((h) => `<th style="${thStyle}">${escaparHtml(h)}</th>`).join('')}</tr></thead>`,
     `<tbody>${rows}</tbody>`,
     '</table>',
